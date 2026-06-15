@@ -38,7 +38,7 @@ func Run(cfg Config) error {
     e.Use(a.requestIDMiddleware)
     e.GET("/healthz", a.health)
     e.Static("/ui", cfg.PublicDir)
-    e.Static("/swagger", "docs/swagger")
+    e.Static("/swagger", cfg.PublicDir)
     e.POST("/api/auth/login", a.login)
 
     api := e.Group("/api", a.authMiddleware)
