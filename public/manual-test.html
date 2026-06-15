@@ -1,2 +1,49 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>IronPage Vault Manual Test</title><style>body{font-family:Arial;margin:24px;background:#f6f7fb}.box{background:white;border:1px solid #ddd;border-radius:10px;padding:16px;margin:12px 0}pre{background:#111827;color:#e5e7eb;padding:12px;border-radius:8px;white-space:pre-wrap}</style></head><body><h1>IronPage Vault Manual Test Console</h1><p>This is an informal frontend page for acceptance guidance only.</p><div class="box"><h2>Coverage</h2><p>Use this page with API_tests scripts to verify login, document upload, reviewer annotation, editor redaction, Bates numbering, workflow transitions, audit logs, notifications, and finalized immutability.</p></div><div class="box"><h2>Start</h2><pre>docker compose up --build</pre></div></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IronPage Vault Backend Test UI</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#f6f7fb;color:#1f2937}.wrap{max-width:1100px;margin:auto;padding:24px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}.card{background:white;border:1px solid #d9dee8;border-radius:12px;padding:16px}input,select,textarea,button{width:100%;box-sizing:border-box;margin:6px 0;padding:10px;border:1px solid #c8d0dc;border-radius:8px}button{background:#1f3a5f;color:white;cursor:pointer}button:hover{background:#162944}pre{background:#111827;color:#e5e7eb;padding:12px;border-radius:8px;white-space:pre-wrap;max-height:380px;overflow:auto}.note{color:#667085}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>IronPage Vault Backend Test UI</h1>
+<p class="note">This page is only a manual backend API testing aid. It is not a production frontend and not part of the product UI scope.</p>
+<div class="grid">
+<div class="card"><h2>Login</h2><select id="role"><option value="admin">admin</option><option value="editor" selected>editor</option><option value="reviewer">reviewer</option></select><input id="secret" type="password" value="Editor123!"><button onclick="login()">Login</button><button onclick="me()">GET /api/auth/me</button></div>
+<div class="card"><h2>Document</h2><input id="title" value="Manual Test Contract"><input id="pdf" type="file" accept="application/pdf"><button onclick="upload()">Upload PDF</button><button onclick="listDocs()">List Documents</button><input id="docId" placeholder="document id"></div>
+<div class="card"><h2>Annotation</h2><textarea id="comment">Manual reviewer note</textarea><button onclick="annotate()">Create Annotation</button><input id="annotationId" placeholder="annotation id"><button onclick="approveAnnotation()">Approve Annotation</button></div>
+<div class="card"><h2>Redaction / Bates</h2><div class="row"><input id="rx" value="10"><input id="ry" value="20"></div><div class="row"><input id="rw" value="100"><input id="rh" value="40"></div><button onclick="stageRedaction()">Stage Redaction</button><input id="redactionId" placeholder="redaction id"><button onclick="confirmRedaction()">Confirm Redaction</button><button onclick="bates()">Create Bates Job</button></div>
+<div class="card"><h2>Workflow</h2><select id="targetStatus"><option>Under Review</option><option>Redaction Pending</option><option>Approved</option><option>Finalized</option></select><button onclick="transitionDoc()">Transition</button><button onclick="finalizeDoc()">Finalize</button></div>
+<div class="card"><h2>Audit / Notify / Backup</h2><button onclick="audit()">Audit Logs</button><button onclick="notifications()">Notifications</button><button onclick="backup()">Backup Job</button><button onclick="swagger()">Swagger YAML</button></div>
+</div>
+<h2>Output</h2><pre id="out"></pre>
+</div>
+<script>
+let token='';
+function rid(){return 'req_'+Date.now()+'_'+Math.random().toString(16).slice(2)}
+function ts(){return new Date().toISOString()}
+function h(json=true){let x={'X-Request-ID':rid(),'X-Request-Timestamp':ts()}; if(token)x.Authorization='Bearer '+token; if(json)x['Content-Type']='application/json'; return x}
+function show(v){out.textContent=typeof v==='string'?v:JSON.stringify(v,null,2)}
+async function call(path,opt={}){let r=await fetch(path,opt); let t=await r.text(); try{let j=JSON.parse(t); show({status:r.status,body:j}); return j}catch(e){show({status:r.status,body:t}); return {}}}
+async function login(){let user=role.value; let body={username:user,password:secret.value}; let j=await call('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json','X-Request-ID':rid()},body:JSON.stringify(body)}); token=j.token||''}
+async function me(){return call('/api/auth/me',{headers:h(false)})}
+async function upload(){let f=pdf.files[0]; if(!f){show('choose a PDF first'); return} let fd=new FormData(); fd.append('title',title.value); fd.append('file',f); let j=await call('/api/documents',{method:'POST',headers:h(false),body:fd}); if(j.data&&j.data.id)docId.value=j.data.id}
+async function listDocs(){return call('/api/documents',{headers:h(false)})}
+async function annotate(){let j=await call('/api/documents/'+docId.value+'/annotations',{method:'POST',headers:h(),body:JSON.stringify({type:'Sticky note',page:1,x:10,y:20,width:100,height:30,comment:comment.value,disposition:'Needs Discussion'})}); if(j.id)annotationId.value=j.id}
+async function approveAnnotation(){return call('/api/annotations/'+annotationId.value+'/disposition',{method:'PATCH',headers:h(),body:JSON.stringify({disposition:'Approved'})})}
+async function stageRedaction(){let j=await call('/api/documents/'+docId.value+'/redactions',{method:'POST',headers:h(),body:JSON.stringify({page:1,x:+rx.value,y:+ry.value,width:+rw.value,height:+rh.value,reason:'manual test'})}); if(j.id)redactionId.value=j.id}
+async function confirmRedaction(){return call('/api/documents/'+docId.value+'/redactions/'+redactionId.value+'/confirm',{method:'POST',headers:h(),body:'{}'})}
+async function bates(){return call('/api/documents/'+docId.value+'/bates',{method:'POST',headers:h(),body:JSON.stringify({prefix:'CASE-',suffix:'-A',zero_padding:6,start:1})})}
+async function transitionDoc(){return call('/api/documents/'+docId.value+'/workflow/transition',{method:'POST',headers:h(),body:JSON.stringify({status:targetStatus.value})})}
+async function finalizeDoc(){return call('/api/documents/'+docId.value+'/finalize',{method:'POST',headers:h(),body:'{}'})}
+async function audit(){return call('/api/audit-logs',{headers:h(false)})}
+async function notifications(){return call('/api/notifications',{headers:h(false)})}
+async function backup(){return call('/api/admin/backup/run',{method:'POST',headers:h(),body:'{}'})}
+async function swagger(){let r=await fetch('/swagger/swagger.yaml'); show(await r.text())}
+</script>
+</body>
+</html>
