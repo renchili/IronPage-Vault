@@ -23,11 +23,15 @@ IronPage Vault is built to satisfy these backend product goals:
 
 The backend is implemented in Go with Echo and sqlx. PostgreSQL is the only persistence layer for metadata, sessions, audit records, workflow records, configuration, notifications, and backup job metadata. PDF files are stored in a local filesystem volume and referenced by database records.
 
-The project includes:
+The backend is being split into explicit packages so API handlers do not own domain policy or infrastructure helpers:
 
 ```text
 cmd/server/          backend application entrypoint
-internal/app/        Echo routes, handlers, database access, auth, document logic
+internal/app/        Echo routes, middleware, request binding, API response mapping
+internal/core/       domain constants, role rules, workflow rules, access policy, validation rules
+internal/service/    use-case orchestration and transaction-level application flows
+internal/store/      database repositories and SQL-facing persistence code
+internal/platform/   filesystem, PDF, digest, crypto, and backup adapters
 migrations/          PostgreSQL schema
 public/              backend test UI only, not formal frontend scope
 testdata/            local PDF and CSV fixtures
@@ -37,6 +41,13 @@ docs/                API, design, RBAC, security, usage, testing, and requiremen
 Dockerfile           Docker builder plus runtime image definition
 docker-compose.yml   one-command local startup
 ```
+
+Current migration status:
+
+- domain validation rules are moving from `internal/app` to `internal/core`
+- object-level access policy is moving from `internal/app` to `internal/core`
+- `internal/app` keeps temporary compatibility wrappers while handlers are migrated in small PRs
+- SQL-heavy code, PDF helpers, crypto, digest, and backup adapters still need follow-up migrations
 
 ## Core Backend Modules
 
@@ -98,94 +109,4 @@ See:
 
 ```text
 docs/docker-builder.md
-docs/usage.md
-scripts/docker_acceptance.sh
 ```
-
-## Backend Test UI
-
-A lightweight browser-based test UI is included only for manual backend verification. It is not a production frontend and not a fullstack requirement.
-
-Source location:
-
-```text
-public/manual-test.html
-```
-
-Runtime route:
-
-```text
-http://localhost:8080/ui/manual-test.html
-```
-
-The test UI exists only to manually exercise backend flows such as login, upload, workflow, annotations, redaction, Bates, audit, notifications, backup metadata, and Swagger YAML retrieval during acceptance.
-
-## Swagger / OpenAPI
-
-The project includes Swaggo dependencies. The intended generation flow is documented in `docs/api-spec.md` and `docs/swagger/README.md`:
-
-```bash
-swag init -g cmd/server/main.go -o docs/swagger
-```
-
-Generated Swagger output should mirror the Markdown API specification. A static YAML copy is also exposed for manual backend testing at:
-
-```text
-/swagger/swagger.yaml
-```
-
-## Test Data
-
-The project includes local acceptance fixtures:
-
-```text
-testdata/pdfs/sample_contract.pdf
-testdata/pdfs/sample_regulatory_filing.pdf
-testdata/csv/batch_import_manifest.csv
-```
-
-These files allow offline backend testing without downloading external documents.
-
-## Testing Position
-
-Acceptance should use Docker, not the local Go environment.
-
-Main test entrypoints:
-
-```text
-run_tests.sh
-scripts/docker_acceptance.sh
-unit_tests/test_rules.sh
-API_tests/test_api_flow.sh
-```
-
-The API test flow is expected to log in with seeded Admin, Editor, and Reviewer users, export the three tokens, and then run role-specific API suites.
-
-No tests were executed during generation.
-
-## Documentation Map
-
-| Document | Purpose |
-|---|---|
-| `AGENT.md` | single source of implementation and acceptance rules |
-| `CLAUDE.md` | pointer to `AGENT.md` to avoid duplicated rules |
-| `PLAN.md` | implementation plan and module breakdown |
-| `metadata.json` | project metadata and full prompt |
-| `docs/api-spec.md` | backend API interface reference and Swaggo notes |
-| `docs/design.md` | backend design rationale and architecture decisions |
-| `docs/requirement-check.md` | prompt-to-implementation completion review |
-| `docs/questions.md` | project Q&A and decision reasoning |
-| `docs/rbac.md` | role and capability matrix |
-| `docs/security.md` | local security model and acceptance checks |
-| `docs/usage.md` | startup, manual backend testing, and operational commands |
-| `docs/testing.md` | backend testing strategy and acceptance flow |
-| `docs/docker-builder.md` | Docker builder workflow and no-local-Go build policy |
-| `docs/backup-recovery.md` | local database and PDF storage recovery guidance |
-| `docs/pitr.md` | point-in-time recovery model |
-| `docs/deployment-offline.md` | standalone offline deployment guidance |
-| `docs/swagger/` | Swaggo/OpenAPI generation notes and initial spec |
-| `docs/test-effectiveness-followup.md` | notes on API test effectiveness improvements |
-
-## Acceptance Position
-
-This repository is a backend API prototype plus backend acceptance documentation, local fixtures, and a small manual testing UI. `docs/requirement-check.md` records which requirements are complete, partial, or planned so reviewers can evaluate implementation status honestly.
