@@ -1,35 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL=${BASE_URL:-http://localhost:8080}
 PASS=0
 FAIL=0
 
-mark_pass() { echo "PASS api: $1"; PASS=$((PASS+1)); }
-mark_fail() { echo "FAIL api: $1"; FAIL=$((FAIL+1)); }
-
-status_of() {
-  local path="$1"
-  curl -s -o /tmp/ironpage_api_response.out -w "%{http_code}" "$BASE_URL$path"
+run_case() {
+  local name="$1"
+  local script="$2"
+  chmod +x "$script"
+  if "$script"; then
+    echo "PASS api-suite: $name"
+    PASS=$((PASS+1))
+  else
+    echo "FAIL api-suite: $name"
+    FAIL=$((FAIL+1))
+  fi
 }
 
-code=$(status_of /healthz)
-if [ "$code" = "200" ]; then mark_pass "health endpoint"; else mark_fail "health endpoint expected 200 got $code"; fi
-
-code=$(status_of /api/documents)
-if [ "$code" = "401" ]; then mark_pass "documents require authentication"; else mark_fail "documents auth gate expected 401 got $code"; fi
-
-cat <<'COVERAGE'
-COVERAGE api: login with Admin, Editor, Reviewer
-COVERAGE api: Admin can access user/config/backup endpoints
-COVERAGE api: Editor can upload PDF and create document versions
-COVERAGE api: Reviewer can create annotations
-COVERAGE api: role denial paths are checked
-COVERAGE api: workflow transition chain is checked
-COVERAGE api: finalized immutability is checked
-COVERAGE api: audit and notification queries are checked
-COVERAGE
+run_case "auth and RBAC" "API_tests/test_auth_rbac.sh"
+run_case "documents and review" "API_tests/test_documents_review.sh"
+run_case "audit notifications backup" "API_tests/test_audit_notify_backup.sh"
 
 TOTAL=$((PASS+FAIL))
-echo "API SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"
+echo "API SUMMARY total_suites=$TOTAL passed_suites=$PASS failed_suites=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
