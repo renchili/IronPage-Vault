@@ -1,7 +1,6 @@
 package app
 
 import (
-    "fmt"
     "io"
     "net/http"
     "os"
@@ -82,5 +81,22 @@ func (a *App) listVersions(c echo.Context) error {
 }
 
 func (a *App) rollbackVersion(c echo.Context) error {
-    return apiErr(c, http.StatusNotImplemented, "NOT_IMPLEMENTED", fmt.Sprintf("rollback endpoint is reserved for document %s", c.Param("id")))
+    p := principal(c)
+    docID := c.Param("id")
+    var req struct{ Version int `json:"version"` }
+    if err := c.Bind(&req); err != nil || req.Version < 1 { return apiErr(c, http.StatusBadRequest, "VERSION_REQUIRED", "version must be a positive integer") }
+    var d Document
+    if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID); err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found") }
+    if d.Status == StatusFinalized { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    var exists int
+    if err := a.db.GetContext(c.Request().Context(), &exists, `SELECT COUNT(*) FROM document_versions WHERE document_id=$1 AND version_number=$2`, docID, req.Version); err != nil { return apiErr(c, http.StatusInternalServerError, "VERSION_QUERY_ERROR", "could not verify version") }
+    if exists == 0 { return apiErr(c, http.StatusBadRequest, "VERSION_NOT_FOUND", "target version does not exist") }
+    tx, err := a.db.BeginTxx(c.Request().Context(), nil)
+    if err != nil { return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction") }
+    defer tx.Rollback()
+    _, err = tx.ExecContext(c.Request().Context(), `UPDATE documents SET current_version=$1,updated_at=NOW() WHERE id=$2`, req.Version, docID)
+    if err != nil { return apiErr(c, http.StatusInternalServerError, "ROLLBACK_ERROR", "rollback failed") }
+    _, _ = tx.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'VERSION_ROLLBACK',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+    if err := tx.Commit(); err != nil { return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit rollback") }
+    return c.JSON(http.StatusOK, map[string]interface{}{"status":"rolled_back","version":req.Version})
 }
