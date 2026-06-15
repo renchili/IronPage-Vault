@@ -22,10 +22,13 @@ type backupSnapshot struct {
     Tables    []backupTableCount `json:"tables"`
 }
 
+func backupSnapshotTables() []string {
+    return []string{"users","documents","document_versions","audit_logs","notifications","backup_jobs"}
+}
+
 func (a *App) collectBackupSnapshot(c echo.Context, id string) (backupSnapshot, error) {
-    tables := []string{"users","documents","document_versions","audit_logs","notifications","backup_jobs"}
     counts := []backupTableCount{}
-    for _, table := range tables {
+    for _, table := range backupSnapshotTables() {
         var n int
         if err := a.db.GetContext(c.Request().Context(), &n, "SELECT COUNT(*) FROM "+table); err != nil { return backupSnapshot{}, err }
         counts = append(counts, backupTableCount{Table:table, Count:n})
