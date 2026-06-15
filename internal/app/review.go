@@ -1,6 +1,7 @@
 package app
 
 import (
+    "database/sql"
     "net/http"
     "strconv"
     "strings"
@@ -10,14 +11,25 @@ import (
 
 func (a *App) ensureMutable(c echo.Context, docID string) (Document, error) {
     var d Document
-    if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID); err != nil { return d, err }
+    if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID); err != nil {
+        if err == sql.ErrNoRows { return d, echo.NewHTTPError(http.StatusNotFound, "document not found") }
+        return d, err
+    }
     if d.Status == StatusFinalized { return d, echo.NewHTTPError(http.StatusConflict, "finalized") }
     return d, nil
 }
 
+func mutableError(c echo.Context, err error) error {
+    if he, ok := err.(*echo.HTTPError); ok {
+        if he.Code == http.StatusNotFound { return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found") }
+        if he.Code == http.StatusConflict { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    }
+    return apiErr(c, http.StatusInternalServerError, "DOCUMENT_STATE_ERROR", "could not verify document state")
+}
+
 func (a *App) proposeRedaction(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
-    if _, err := a.ensureMutable(c, docID); err != nil { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
     var req struct{ Page int `json:"page"`; X float64 `json:"x"`; Y float64 `json:"y"`; Width float64 `json:"width"`; Height float64 `json:"height"`; Reason string `json:"reason"` }
     if err := c.Bind(&req); err != nil || req.Page < 1 || req.Width <= 0 || req.Height <= 0 { return apiErr(c, http.StatusBadRequest, "INVALID_REDACTION_REGION", "page and positive coordinates are required") }
     id := makeIdentifier("red")
@@ -35,13 +47,14 @@ func (a *App) listRedactions(c echo.Context) error {
 
 func (a *App) confirmRedaction(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
-    d, err := a.ensureMutable(c, docID); if err != nil { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    d, err := a.ensureMutable(c, docID); if err != nil { return mutableError(c, err) }
     _, v, err := a.currentVersion(c, docID); if err != nil { return apiErr(c, http.StatusNotFound, "VERSION_NOT_FOUND", "current version not found") }
     if d.CurrentVersion >= a.cfg.MaxVersions { return apiErr(c, http.StatusConflict, "VERSION_LIMIT_REACHED", "document already has 50 versions") }
     newVersion := d.CurrentVersion + 1
     dst := strings.TrimSuffix(v.FilePath, ".pdf") + "_redacted_v" + strconv.Itoa(newVersion) + ".pdf"
     if err := ApplyAppendOnlyPDFTransform(v.FilePath, dst, "redaction burn-in confirmed"); err != nil { return apiErr(c, http.StatusInternalServerError, "REDACTION_BURNIN_ERROR", "could not create redacted binary") }
-    info, _ := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
+    info, err := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
+    if err != nil { return apiErr(c, http.StatusInternalServerError, "REDACTION_VERIFY_ERROR", "could not verify redacted binary") }
     verID := makeIdentifier("ver")
     tx, err := a.db.BeginTxx(c.Request().Context(), nil); if err != nil { return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction") }
     defer tx.Rollback()
@@ -56,7 +69,7 @@ func (a *App) confirmRedaction(c echo.Context) error {
 
 func (a *App) createAnnotation(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
-    if _, err := a.ensureMutable(c, docID); err != nil { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
     var req struct{ Type string `json:"type"`; Page int `json:"page"`; X float64 `json:"x"`; Y float64 `json:"y"`; Width float64 `json:"width"`; Height float64 `json:"height"`; Comment string `json:"comment"`; Disposition string `json:"disposition"` }
     if err := c.Bind(&req); err != nil || req.Page < 1 || len(req.Comment) > 2000 { return apiErr(c, http.StatusBadRequest, "INVALID_ANNOTATION", "valid page and comment up to 2000 characters are required") }
     if req.Disposition == "" { req.Disposition = "Needs Discussion" }
@@ -81,7 +94,7 @@ func (a *App) updateAnnotationDisposition(c echo.Context) error {
     if !allowed[req.Disposition] { return apiErr(c, http.StatusBadRequest, "INVALID_DISPOSITION", "disposition must be Approved, Rejected, or Needs Discussion") }
     var docID string
     if err := a.db.GetContext(c.Request().Context(), &docID, `SELECT document_id FROM annotations WHERE id=$1`, c.Param("id")); err != nil { return apiErr(c, http.StatusNotFound, "ANNOTATION_NOT_FOUND", "annotation not found") }
-    if _, err := a.ensureMutable(c, docID); err != nil { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
     _, err := a.db.ExecContext(c.Request().Context(), `UPDATE annotations SET disposition=$1,updated_at=NOW() WHERE id=$2`, req.Disposition, c.Param("id"))
     if err != nil { return apiErr(c, http.StatusInternalServerError, "ANNOTATION_UPDATE_ERROR", "could not update disposition") }
     _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'ANNOTATION_DISPOSITION',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
@@ -90,7 +103,7 @@ func (a *App) updateAnnotationDisposition(c echo.Context) error {
 
 func (a *App) applyBates(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
-    if _, err := a.ensureMutable(c, docID); err != nil { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
     var req struct{ Prefix string `json:"prefix"`; Suffix string `json:"suffix"`; ZeroPadding int `json:"zero_padding"`; Start int `json:"start"` }
     if err := c.Bind(&req); err != nil { return apiErr(c, http.StatusBadRequest, "INVALID_BATES_REQUEST", "invalid request body") }
     if req.ZeroPadding < 0 || req.ZeroPadding > 10 { return apiErr(c, http.StatusBadRequest, "INVALID_ZERO_PADDING", "zero padding must be between 0 and 10") }
