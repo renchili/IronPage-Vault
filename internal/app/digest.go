@@ -1,13 +1,9 @@
 package app
 
 import (
-    "crypto/sha256"
-    "encoding/hex"
     "io"
+
+    "ironpage-vault/internal/platform"
 )
 
-func fileDigest(r io.Reader) (string, error) {
-    h := sha256.New()
-    if _, err := io.Copy(h, r); err != nil { return "", err }
-    return hex.EncodeToString(h.Sum(nil)), nil
-}
+func fileDigest(r io.Reader) (string, error) { return platform.FileDigest(r) }
