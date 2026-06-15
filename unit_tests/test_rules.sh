@@ -28,6 +28,8 @@ check "workflow in schema" "grep -q 'Finalized' migrations/001_schema.sql && gre
 check "api tests directory" "test -d API_tests"
 check "workflow unit test exists" "test -f internal/app/workflow_test.go"
 check "pdf unit test exists" "test -f internal/app/pdf_test.go"
+check "domain rule unit test exists" "test -f internal/app/rules_test.go"
+check "domain rule helper exists" "test -f internal/app/rules.go"
 check "manual backend test UI exists" "test -f public/manual-test.html"
 check "public swagger yaml exists" "test -f public/swagger.yaml"
 
