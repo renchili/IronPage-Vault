@@ -32,10 +32,14 @@ func InspectPDF(path string, maxBytes int64, maxPages int) (PDFInfo, error) {
     return PDFInfo{PageCount: pages, Size: st.Size(), SHA256: sum}, nil
 }
 
+func appendPDFTransformMarker(raw []byte, marker string) []byte {
+    return append(raw, []byte("\n% IronPage Vault transform: "+marker+"\n")...)
+}
+
 func ApplyAppendOnlyPDFTransform(src, dst, marker string) error {
     raw, err := os.ReadFile(src)
     if err != nil { return err }
     if !strings.HasPrefix(string(raw), "%PDF-") { return fmt.Errorf("source is not pdf") }
-    raw = append(raw, []byte("\n% IronPage Vault transform: "+marker+"\n")...)
+    raw = appendPDFTransformMarker(raw, marker)
     return os.WriteFile(dst, raw, 0640)
 }
