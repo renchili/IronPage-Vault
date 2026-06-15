@@ -1,6 +1,7 @@
 package app
 
 import (
+    "fmt"
     "io"
     "mime/multipart"
     "net/http"
@@ -64,15 +65,21 @@ func (a *App) batchUploadDocuments(c echo.Context) error {
 }
 
 func (a *App) listDocuments(c echo.Context) error {
+    p := principal(c)
     page, size := parsePage(c, a.cfg)
     rows := []Document{}
-    if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT * FROM documents ORDER BY created_at DESC LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil { return apiErr(c, http.StatusInternalServerError, "DOCUMENT_QUERY_ERROR", "could not list documents") }
+    where, args := documentListWhereClause(p)
+    args = append(args, size, (page-1)*size)
+    query := fmt.Sprintf(`SELECT * FROM documents WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args))
+    if err := a.db.SelectContext(c.Request().Context(), &rows, query, args...); err != nil { return apiErr(c, http.StatusInternalServerError, "DOCUMENT_QUERY_ERROR", "could not list documents") }
     return c.JSON(http.StatusOK, map[string]interface{}{"data":rows,"page":page,"page_size":size})
 }
 
 func (a *App) getDocument(c echo.Context) error {
+    p := principal(c)
     var d Document
     if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, c.Param("id")); err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found") }
+    if !canReadDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope") }
     return c.JSON(http.StatusOK, map[string]interface{}{"data":d})
 }
 
@@ -84,11 +91,17 @@ func (a *App) currentVersion(c echo.Context, docID string) (Document, DocumentVe
 }
 
 func (a *App) downloadDocument(c echo.Context) error {
-    _, v, err := a.currentVersion(c, c.Param("id")); if err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_VERSION_NOT_FOUND", "current version not found") }
+    p := principal(c)
+    d, v, err := a.currentVersion(c, c.Param("id")); if err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_VERSION_NOT_FOUND", "current version not found") }
+    if !canReadDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope") }
     return c.File(v.FilePath)
 }
 
 func (a *App) listVersions(c echo.Context) error {
+    p := principal(c)
+    var d Document
+    if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, c.Param("id")); err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found") }
+    if !canReadDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope") }
     rows := []DocumentVersion{}
     if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT * FROM document_versions WHERE document_id=$1 ORDER BY version_number DESC`, c.Param("id")); err != nil { return apiErr(c, http.StatusInternalServerError, "VERSION_QUERY_ERROR", "could not list versions") }
     return c.JSON(http.StatusOK, map[string]interface{}{"data":rows})
