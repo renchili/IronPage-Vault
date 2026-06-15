@@ -50,7 +50,8 @@ This document maps prompt requirements to the current implementation. It is inte
 | Reviewer role | Complete | annotation/review routes |
 | Route-level RBAC | Complete | `requireRole` middleware |
 | Admin not automatically Editor | Complete | Admin is not included in Editor-only routes |
-| Object-level document authorization | Partial | `access.go` scopes document list/get/file/versions; mutation paths still need full object-scope hardening |
+| Object-level document read authorization | Complete | `access.go` scopes list/get/file/versions |
+| Object-level mutation authorization | Partial | redaction, annotation, Bates, workflow, finalize, and compare now use object checks; every mutation still needs API denial coverage |
 
 ## Document Lifecycle
 
@@ -82,7 +83,7 @@ This document maps prompt requirements to the current implementation. It is inte
 |---|---|---|
 | Redaction proposal metadata | Complete | redaction table and proposal endpoint |
 | Redaction reason encryption | Complete | reason is encrypted before storage |
-| Editor confirmation | Complete | confirm route is Editor-only |
+| Editor confirmation | Complete | confirm route is Editor-only and object-scoped |
 | New version after confirmation | Complete | confirm creates a document version |
 | Audit records | Complete | proposal and confirmation write audit |
 | Forensic burn-in / true content removal | Planned | current transform still appends a marker and is not compliant permanent PDF content removal |
@@ -92,13 +93,13 @@ This document maps prompt requirements to the current implementation. It is inte
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Reviewer-only creation | Complete | route role restriction |
+| Reviewer-only creation | Complete | route role restriction plus non-Draft object scope |
 | Allowed type validation | Complete | create handler calls `IsValidAnnotationType` |
 | Comment length limit | Complete | 2000 character limit enforced |
 | Disposition validation | Complete | create/update validate disposition |
 | Comment encryption | Complete | annotation comment is encrypted before storage |
 | Disposition update | Complete | `PATCH /api/annotations/:id/disposition` |
-| Mention notification | Planned | mention parser/notification is not implemented |
+| Mention notification | Complete | `mentions.go` parses `@username` and creates local notifications through `notifyMentionedUsers` |
 
 ## Bates Numbering
 
@@ -106,7 +107,7 @@ This document maps prompt requirements to the current implementation. It is inte
 |---|---|---|
 | Prefix/suffix/padding/start validation | Complete | Bates handler validates and normalizes inputs |
 | Persistent job record | Complete | `bates_jobs` row is inserted |
-| New document version | Partial | Bates route now creates a new PDF version, but it uses append-transform metadata rather than visual page numbering |
+| New document version | Partial | Bates route creates a new PDF version, but it uses append-transform metadata rather than visual page numbering |
 | Actual page-visible Bates numbering | Planned | no PDF page drawing engine is integrated |
 | Batch sequence allocation | Planned | no cross-document sequence allocator exists |
 
@@ -128,7 +129,7 @@ This document maps prompt requirements to the current implementation. It is inte
 | 500 unread ceiling | Complete | `createNotification` marks oldest unread when ceiling is reached |
 | Per-user query | Complete | `/api/notifications` uses principal user ID |
 | Read acknowledgement | Complete | `/api/notifications/:id/read` |
-| Annotation mention notification | Planned | not implemented |
+| Annotation mention notification | Complete | annotation creation calls `notifyMentionedUsers` before returning |
 | Admin editable templates | Partial | templates can be listed; edit endpoint is incomplete |
 
 ## Backup and Recovery
@@ -137,7 +138,7 @@ This document maps prompt requirements to the current implementation. It is inte
 |---|---|---|
 | Backup metadata | Complete | `backup_jobs` table and endpoint |
 | Local backup file output | Partial | `runBackupFile` writes a local `.sql` marker and records Completed status |
-| Real pg_dump execution | Planned | no actual `pg_dump` process is run |
+| Real pg_dump execution | Planned | direct `pg_dump` implementation was not added; external command execution was blocked in this editing environment |
 | Filesystem snapshot | Planned | not implemented |
 | PITR docs | Complete | `docs/pitr.md` |
 
@@ -145,7 +146,7 @@ This document maps prompt requirements to the current implementation. It is inte
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Unit tests | Partial | workflow, PDF, rules, crypto tests exist; handler/database integration tests are still limited |
+| Unit tests | Partial | workflow, PDF, rules, crypto, access, and mention tests exist; handler/database integration tests are still limited |
 | API tests | Partial | login/RBAC/upload/admin-read tests exist; workflow/redaction/Bates/compare/backup coverage remains insufficient |
 | No SKIP-as-success suites | Partial | known SKIP suites were removed; coverage is still not near 90% |
 | Docker acceptance path | Complete | `scripts/docker_acceptance.sh` exists |
@@ -157,7 +158,5 @@ This document maps prompt requirements to the current implementation. It is inte
 2. Page-visible Bates numbering is not implemented.
 3. Real `pg_dump` and filesystem snapshot backup are not implemented.
 4. Compare API does not perform text-level PDF diff with real page/bbox extraction.
-5. Annotation mention notifications are not implemented.
-6. Mutation object-level authorization is not fully enforced route-by-route.
-7. API endpoint coverage remains below the requested threshold.
-8. Handler/database integration tests are still limited.
+5. API endpoint coverage remains below the requested threshold.
+6. Handler/database integration tests are still limited.
