@@ -1,0 +1,57 @@
+openapi: 3.0.3
+info:
+  title: IronPage Vault API
+  version: 0.1.0
+  description: Offline legal PDF lifecycle management backend API.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+  /api/auth/login:
+    post:
+      summary: Local login
+      responses:
+        '200':
+          description: Login succeeded
+  /api/auth/me:
+    get:
+      summary: Current principal
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Principal returned
+  /api/documents:
+    get:
+      summary: List documents
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Document list
+    post:
+      summary: Upload PDF
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Document created
+  /api/audit-logs:
+    get:
+      summary: List audit logs
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Audit records returned
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
