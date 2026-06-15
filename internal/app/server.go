@@ -71,7 +71,7 @@ func Run(cfg Config) error {
     docs.POST("/:id/redactions/:redaction_id/confirm", a.confirmRedaction, requireRole(RoleEditor))
     docs.POST("/:id/annotations", a.createAnnotation, requireRole(RoleReviewer))
     docs.GET("/:id/annotations", a.listAnnotations)
-    docs.POST("/:id/bates", a.applyBates, requireRole(RoleEditor))
+    docs.POST("/:id/bates", a.applyBatesVersion, requireRole(RoleEditor))
 
     api.PATCH("/annotations/:id/disposition", a.updateAnnotationDisposition, requireRole(RoleReviewer))
     api.GET("/audit-logs", a.auditLogsFiltered)
