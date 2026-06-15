@@ -15,10 +15,13 @@ expect_code "editor upload" 201 "$code" || FAIL=$((FAIL+1))
 DOC_ID=$(json_field data.id)
 [ -n "$DOC_ID" ] && echo "$DOC_ID" > "$OUT" || { echo "FAIL api: document id missing"; FAIL=$((FAIL+1)); }
 
-code=$(auth_get "$REVIEWER_TOKEN" /api/documents/$DOC_ID)
-expect_code "reviewer read document" 200 "$code" || FAIL=$((FAIL+1))
+code=$(auth_get "$EDITOR_TOKEN" /api/documents/$DOC_ID)
+expect_code "editor reads owned draft" 200 "$code" || FAIL=$((FAIL+1))
 
-code=$(auth_get "$REVIEWER_TOKEN" /api/documents/$DOC_ID/versions)
-expect_code "reviewer list versions" 200 "$code" || FAIL=$((FAIL+1))
+code=$(auth_get "$REVIEWER_TOKEN" /api/documents/$DOC_ID)
+expect_code "reviewer cannot read draft before review" 403 "$code" || FAIL=$((FAIL+1))
+
+code=$(auth_get "$EDITOR_TOKEN" /api/documents/$DOC_ID/versions)
+expect_code "editor lists owned versions" 200 "$code" || FAIL=$((FAIL+1))
 
 exit "$FAIL"
