@@ -145,3 +145,27 @@ After callers are moved, the app wrappers can be deleted.
 A SQL WHERE clause is not domain policy. It is persistence/query adapter behavior. `internal/core` should not emit SQL fragments or know column names.
 
 For now, `documentListWhereClause` remains in `internal/app` only as a temporary adapter. The correct later home is `internal/store`, alongside repository-style document query functions.
+
+## Q20. Why move crypto and digest helpers into internal/platform?
+
+Crypto and digest helpers are implementation adapters. They provide AES-GCM encryption and SHA-256 digest capabilities, but they do not decide domain policy and they do not map HTTP requests.
+
+Keeping them inside `internal/app` made the API package look like it owned encryption and file hashing. Moving the real implementations to `internal/platform` separates low-level infrastructure capability from API handling.
+
+## Q21. Why keep app crypto/digest wrappers temporarily?
+
+Existing code still calls `encryptString`, `decryptString`, and `fileDigest` from the app package. Rewriting all callers in the same PR would mix infrastructure migration with handler/service changes.
+
+The temporary wrapper strategy is:
+
+```text
+app caller -> internal/app compatibility wrapper -> internal/platform implementation
+```
+
+The follow-up cleanup is:
+
+```text
+app/service caller -> internal/platform implementation
+```
+
+Then the app wrappers can be deleted.
