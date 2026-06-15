@@ -8,6 +8,14 @@ import (
     "github.com/labstack/echo/v4"
 )
 
+func batesVersionPath(currentPath string, newVersion int) string {
+    return strings.TrimSuffix(currentPath, ".pdf") + "_bates_v" + strconv.Itoa(newVersion) + ".pdf"
+}
+
+func batesMarker(prefix, suffix string, zeroPadding int, start int) string {
+    return "Bates applied: prefix=" + prefix + ", suffix=" + suffix + ", zero_padding=" + strconv.Itoa(zeroPadding) + ", start=" + strconv.Itoa(start)
+}
+
 func (a *App) applyBatesVersion(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
     d, err := a.ensureMutable(c, docID); if err != nil { return mutableError(c, err) }
@@ -19,8 +27,8 @@ func (a *App) applyBatesVersion(c echo.Context) error {
     if !IsValidBatesPadding(req.ZeroPadding) { return apiErr(c, http.StatusBadRequest, "INVALID_ZERO_PADDING", "zero padding must be between 0 and 10") }
     req.Start = NormalizeBatesStart(req.Start)
     newVersion := d.CurrentVersion + 1
-    dst := strings.TrimSuffix(v.FilePath, ".pdf") + "_bates_v" + strconv.Itoa(newVersion) + ".pdf"
-    marker := "Bates applied: prefix=" + req.Prefix + ", suffix=" + req.Suffix + ", zero_padding=" + strconv.Itoa(req.ZeroPadding) + ", start=" + strconv.Itoa(req.Start)
+    dst := batesVersionPath(v.FilePath, newVersion)
+    marker := batesMarker(req.Prefix, req.Suffix, req.ZeroPadding, req.Start)
     if err := ApplyAppendOnlyPDFTransform(v.FilePath, dst, marker); err != nil { return apiErr(c, http.StatusInternalServerError, "BATES_APPLY_ERROR", "could not create Bates PDF version") }
     info, err := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
     if err != nil { return apiErr(c, http.StatusInternalServerError, "BATES_VERIFY_ERROR", "could not verify Bates PDF version") }
