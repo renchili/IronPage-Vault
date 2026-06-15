@@ -1,0 +1,28 @@
+services:
+  ironpage:
+    build: .
+    container_name: ironpage-vault
+    ports:
+      - "8080:8080"
+    environment:
+      POSTGRES_USER: ironpage
+      POSTGRES_PASSWORD: ironpage
+      POSTGRES_DB: ironpage
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USER: ironpage
+      DB_PASSWORD: ironpage
+      DB_NAME: ironpage
+      JWT_SECRET: local-compose-jwt-secret-change-me
+      STORAGE_DIR: /var/lib/ironpage/storage
+      BACKUP_DIR: /var/lib/ironpage/backups
+      MIGRATIONS_DIR: /opt/ironpage/migrations
+      HTTP_ADDR: :8080
+    volumes:
+      - ironpage_pgdata:/var/lib/postgresql/data
+      - ironpage_storage:/var/lib/ironpage/storage
+      - ironpage_backups:/var/lib/ironpage/backups
+volumes:
+  ironpage_pgdata:
+  ironpage_storage:
+  ironpage_backups:
