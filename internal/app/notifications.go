@@ -4,13 +4,19 @@ import "github.com/labstack/echo/v4"
 
 const maxUnreadNotifications = 500
 
+func notificationTrimCount(unread int, limit int) int {
+    if limit < 1 { return 0 }
+    if unread < limit { return 0 }
+    return unread - limit + 1
+}
+
 func (a *App) createNotification(c echo.Context, userID, documentID, templateKey, message string) error {
     var unread int
     if err := a.db.GetContext(c.Request().Context(), &unread, `SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND read_at IS NULL`, userID); err != nil {
         return err
     }
-    if unread >= maxUnreadNotifications {
-        _, err := a.db.ExecContext(c.Request().Context(), `UPDATE notifications SET read_at=NOW() WHERE id IN (SELECT id FROM notifications WHERE user_id=$1 AND read_at IS NULL ORDER BY created_at ASC LIMIT $2)`, userID, unread-maxUnreadNotifications+1)
+    if trim := notificationTrimCount(unread, maxUnreadNotifications); trim > 0 {
+        _, err := a.db.ExecContext(c.Request().Context(), `UPDATE notifications SET read_at=NOW() WHERE id IN (SELECT id FROM notifications WHERE user_id=$1 AND read_at IS NULL ORDER BY created_at ASC LIMIT $2)`, userID, trim)
         if err != nil { return err }
     }
     _, err := a.db.ExecContext(c.Request().Context(), `INSERT INTO notifications(id,user_id,document_id,template_key,message,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, makeIdentifier("not"), userID, documentID, templateKey, message)
