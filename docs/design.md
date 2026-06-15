@@ -72,6 +72,15 @@ not:
 service/app caller -> internal/app helper hidden inside API package
 ```
 
+
+## Why PDF helpers are platform code
+
+PDF inspection and append-only PDF transform helpers are infrastructure adapters. They perform filesystem reads and writes, PDF header validation, page-marker counting, and digest calculation.
+
+They do not belong in the API adapter layer. `internal/app` may temporarily expose wrapper functions for compatibility, but the real implementation belongs in `internal/platform`.
+
+The current append-only transform remains a placeholder-style implementation and is not forensic redaction or page-visible Bates rendering.
+
 ## Why request timestamp and request ID are required
 
 The prompt requires anti-replay behavior with timestamp validation. The system uses:

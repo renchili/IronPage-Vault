@@ -169,3 +169,24 @@ app/service caller -> internal/platform implementation
 ```
 
 Then the app wrappers can be deleted.
+
+## Q22. Why move PDF helpers into internal/platform?
+
+PDF inspection and append-only transform helpers are filesystem/PDF adapter code. They read files, validate PDF headers, count page markers, compute file digests, and write transformed PDF artifacts.
+
+That is not API handler responsibility and not domain policy. The real implementation belongs in `internal/platform`.
+
+The temporary compatibility path is:
+
+```text
+app caller -> internal/app PDF wrapper -> internal/platform PDF implementation
+```
+
+The cleanup path is:
+
+```text
+app/service caller -> internal/platform PDF implementation
+```
+
+After callers move, the app wrapper can be deleted.
+
