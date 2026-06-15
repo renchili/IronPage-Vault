@@ -19,6 +19,7 @@ type Config struct {
 	StorageDir        string
 	BackupDir         string
 	MigrationsDir     string
+	PublicDir         string
 	SessionTTL        time.Duration
 	RequestMaxAge     time.Duration
 	MaxUploadBytes    int64
@@ -45,6 +46,7 @@ func LoadConfig() Config {
 		StorageDir:        env("STORAGE_DIR", "/var/lib/ironpage/storage"),
 		BackupDir:         env("BACKUP_DIR", "/var/lib/ironpage/backups"),
 		MigrationsDir:     env("MIGRATIONS_DIR", "migrations"),
+		PublicDir:         env("PUBLIC_DIR", "public"),
 		SessionTTL:        8 * time.Hour,
 		RequestMaxAge:     60 * time.Second,
 		MaxUploadBytes:    int64(envInt("MAX_UPLOAD_BYTES", 200*1024*1024)),
