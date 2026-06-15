@@ -32,8 +32,10 @@ func (a *App) proposeRedaction(c echo.Context) error {
     if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
     var req struct{ Page int `json:"page"`; X float64 `json:"x"`; Y float64 `json:"y"`; Width float64 `json:"width"`; Height float64 `json:"height"`; Reason string `json:"reason"` }
     if err := c.Bind(&req); err != nil || !IsValidRedactionRegion(req.Page, req.Width, req.Height) { return apiErr(c, http.StatusBadRequest, "INVALID_REDACTION_REGION", "page and positive coordinates are required") }
+    reason, err := encryptString(a.cfg.AESKey, req.Reason)
+    if err != nil { return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction reason") }
     id := makeIdentifier("red")
-    _, err := a.db.ExecContext(c.Request().Context(), `INSERT INTO redaction_proposals(id,document_id,page,x,y,width,height,reason,status,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'Staged',$9,NOW())`, id, docID, req.Page, req.X, req.Y, req.Width, req.Height, req.Reason, p.UserID)
+    _, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO redaction_proposals(id,document_id,page,x,y,width,height,reason,status,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'Staged',$9,NOW())`, id, docID, req.Page, req.X, req.Y, req.Width, req.Height, reason, p.UserID)
     if err != nil { return apiErr(c, http.StatusInternalServerError, "REDACTION_CREATE_ERROR", "could not stage redaction") }
     _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'REDACTION_PROPOSE',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
     return c.JSON(http.StatusCreated, map[string]interface{}{"id":id,"status":"Staged"})
@@ -75,8 +77,10 @@ func (a *App) createAnnotation(c echo.Context) error {
     if !IsValidAnnotationType(req.Type) { return apiErr(c, http.StatusBadRequest, "INVALID_ANNOTATION_TYPE", "annotation type is not supported") }
     req.Disposition = DefaultDisposition(req.Disposition)
     if !IsValidDisposition(req.Disposition) { return apiErr(c, http.StatusBadRequest, "INVALID_DISPOSITION", "disposition must be Approved, Rejected, or Needs Discussion") }
+    comment, err := encryptString(a.cfg.AESKey, req.Comment)
+    if err != nil { return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt annotation comment") }
     id := makeIdentifier("ann")
-    _, err := a.db.ExecContext(c.Request().Context(), `INSERT INTO annotations(id,document_id,author_user_id,type,page,x,y,width,height,comment,disposition,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())`, id, docID, p.UserID, req.Type, req.Page, req.X, req.Y, req.Width, req.Height, req.Comment, req.Disposition)
+    _, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO annotations(id,document_id,author_user_id,type,page,x,y,width,height,comment,disposition,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())`, id, docID, p.UserID, req.Type, req.Page, req.X, req.Y, req.Width, req.Height, comment, req.Disposition)
     if err != nil { return apiErr(c, http.StatusInternalServerError, "ANNOTATION_CREATE_ERROR", "could not create annotation") }
     _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'ANNOTATION_CREATE',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
     return c.JSON(http.StatusCreated, map[string]interface{}{"id":id,"disposition":req.Disposition})
