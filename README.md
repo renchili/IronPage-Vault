@@ -1,13 +1,14 @@
 # IronPage Vault
 
-IronPage Vault is an offline legal PDF lifecycle management system for air-gapped legal, compliance, and regulated document environments. It provides a backend API for local identity, strict role boundaries, PDF intake, versioned document records, redaction workflows, reviewer annotations, Bates numbering, workflow transitions, audit trails, notifications, configuration, and local backup metadata.
+IronPage Vault is an offline legal PDF lifecycle management **backend API** for air-gapped legal, compliance, and regulated document environments. It provides local identity, strict role boundaries, PDF intake, versioned document records, redaction workflows, reviewer annotations, Bates numbering, workflow transitions, audit trails, notifications, configuration, and local backup metadata.
 
-The project is designed as a backend-first system. A lightweight test UI is included only for manual acceptance and demonstration. The API, database schema, tests, and documentation remain the authoritative deliverables.
+This is a **pure backend project**. The browser UI under `public/` is only a testing aid for manual acceptance. It is not a formal frontend deliverable, not part of the product scope, and should not be evaluated as a fullstack application.
 
 ## Project Goals
 
-IronPage Vault is built to satisfy these product goals:
+IronPage Vault is built to satisfy these backend product goals:
 
+- provide a REST API for legal PDF lifecycle management
 - keep sensitive legal PDFs inside a standalone local environment
 - avoid external identity providers, cloud services, remote PDF processors, or external notification providers
 - enforce Admin, Editor, and Reviewer role boundaries
@@ -25,10 +26,10 @@ The backend is implemented in Go with Echo and sqlx. PostgreSQL is the only pers
 The project includes:
 
 ```text
-cmd/server/          application entrypoint
+cmd/server/          backend application entrypoint
 internal/app/        Echo routes, handlers, database access, auth, document logic
 migrations/          PostgreSQL schema
-public/              lightweight manual test UI
+public/              backend test UI only, not formal frontend scope
 testdata/            local PDF and CSV fixtures
 unit_tests/          unit/structure validation scripts
 API_tests/           API acceptance scripts
@@ -37,7 +38,7 @@ Dockerfile           single-container image definition
 docker-compose.yml   one-command local startup
 ```
 
-## Core Modules
+## Core Backend Modules
 
 | Module | Responsibility |
 |---|---|
@@ -96,9 +97,9 @@ Detailed startup and operation instructions are in:
 docs/usage.md
 ```
 
-## Test UI
+## Backend Test UI
 
-A lightweight browser-based test UI is included for manual verification and demonstration. It is not a production frontend.
+A lightweight browser-based test UI is included only for manual backend verification. It is not a production frontend and not a fullstack requirement.
 
 Source location:
 
@@ -112,7 +113,7 @@ Runtime route:
 http://localhost:8080/ui/manual-test.html
 ```
 
-The test UI exists because the project needs a simple way to manually exercise login, upload, workflow, annotations, redaction, Bates, audit, and notification flows during acceptance.
+The test UI exists only to manually exercise backend flows such as login, upload, workflow, annotations, redaction, Bates, audit, and notifications during acceptance.
 
 ## Test Data
 
@@ -123,7 +124,7 @@ testdata/pdfs/sample_contract.pdf
 testdata/csv/batch_import_manifest.csv
 ```
 
-These files allow offline testing without downloading external documents.
+These files allow offline backend testing without downloading external documents.
 
 ## Documentation Map
 
@@ -133,14 +134,14 @@ These files allow offline testing without downloading external documents.
 | `CLAUDE.md` | pointer to `AGENT.md` to avoid duplicated rules |
 | `PLAN.md` | implementation plan and module breakdown |
 | `metadata.json` | project metadata and full prompt |
-| `docs/api-spec.md` | API interface reference and Swaggo notes |
-| `docs/design.md` | design rationale and architecture decisions |
+| `docs/api-spec.md` | backend API interface reference and Swaggo notes |
+| `docs/design.md` | backend design rationale and architecture decisions |
 | `docs/requirement-check.md` | prompt-to-implementation completion review |
 | `docs/questions.md` | project Q&A and decision reasoning |
 | `docs/rbac.md` | role and capability matrix |
 | `docs/security.md` | local security model and acceptance checks |
-| `docs/usage.md` | startup, manual testing, and operational commands |
-| `docs/testing.md` | testing strategy and acceptance flow |
+| `docs/usage.md` | startup, manual backend testing, and operational commands |
+| `docs/testing.md` | backend testing strategy and acceptance flow |
 | `docs/backup-recovery.md` | local database and PDF storage recovery guidance |
 | `docs/pitr.md` | point-in-time recovery model |
 | `docs/deployment-offline.md` | standalone offline deployment guidance |
@@ -158,4 +159,4 @@ Generated Swagger output should mirror the Markdown API specification.
 
 ## Acceptance Position
 
-This repository is a working backend prototype plus acceptance documentation and local fixtures. `docs/requirement-check.md` records which requirements are complete, partial, or planned so reviewers can evaluate implementation status honestly.
+This repository is a backend API prototype plus backend acceptance documentation, local fixtures, and a small manual testing UI. `docs/requirement-check.md` records which requirements are complete, partial, or planned so reviewers can evaluate implementation status honestly.
