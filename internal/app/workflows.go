@@ -50,6 +50,12 @@ func (a *App) finalizeDocument(c echo.Context) error {
     return c.JSON(http.StatusOK, map[string]interface{}{"status":StatusFinalized})
 }
 
+func versionComparisonResult(left DocumentVersion, right DocumentVersion, leftRaw []byte, rightRaw []byte) map[string]interface{} {
+    result := map[string]interface{}{"left_version_id": left.ID,"right_version_id": right.ID,"same_sha256": left.FileSHA256 == right.FileSHA256,"same_size": left.SizeBytes == right.SizeBytes,"same_page_count": left.PageCount == right.PageCount,"byte_length_delta": len(rightRaw) - len(leftRaw),"added": []interface{}{},"removed": []interface{}{},"modified": []interface{}{}}
+    if !bytes.Equal(leftRaw, rightRaw) { result["modified"] = []map[string]interface{}{{"page":1,"bbox":map[string]int{"x":0,"y":0,"w":0,"h":0},"text":"binary content differs between supplied versions"}} }
+    return result
+}
+
 func (a *App) compareVersions(c echo.Context) error {
     p := principal(c)
     var req struct{ LeftVersionID string `json:"left_version_id"`; RightVersionID string `json:"right_version_id"` }
@@ -65,7 +71,5 @@ func (a *App) compareVersions(c echo.Context) error {
     if !canReadDocumentObject(p, leftDoc) || !canReadDocumentObject(p, rightDoc) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "version comparison is outside this principal scope") }
     leftRaw, err := os.ReadFile(left.FilePath); if err != nil { return apiErr(c, http.StatusInternalServerError, "LEFT_FILE_READ_ERROR", "could not read left version") }
     rightRaw, err := os.ReadFile(right.FilePath); if err != nil { return apiErr(c, http.StatusInternalServerError, "RIGHT_FILE_READ_ERROR", "could not read right version") }
-    result := map[string]interface{}{"left_version_id": left.ID,"right_version_id": right.ID,"same_sha256": left.FileSHA256 == right.FileSHA256,"same_size": left.SizeBytes == right.SizeBytes,"same_page_count": left.PageCount == right.PageCount,"byte_length_delta": len(rightRaw) - len(leftRaw),"added": []interface{}{},"removed": []interface{}{},"modified": []interface{}{}}
-    if !bytes.Equal(leftRaw, rightRaw) { result["modified"] = []map[string]interface{}{{"page":1,"bbox":map[string]int{"x":0,"y":0,"w":0,"h":0},"text":"binary content differs between supplied versions"}} }
-    return c.JSON(http.StatusOK, map[string]interface{}{"data":result})
+    return c.JSON(http.StatusOK, map[string]interface{}{"data":versionComparisonResult(left, right, leftRaw, rightRaw)})
 }
