@@ -29,7 +29,8 @@ func mutableError(c echo.Context, err error) error {
 
 func (a *App) proposeRedaction(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
-    if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
+    d, err := a.ensureMutable(c, docID); if err != nil { return mutableError(c, err) }
+    if !canEditDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope") }
     var req struct{ Page int `json:"page"`; X float64 `json:"x"`; Y float64 `json:"y"`; Width float64 `json:"width"`; Height float64 `json:"height"`; Reason string `json:"reason"` }
     if err := c.Bind(&req); err != nil || !IsValidRedactionRegion(req.Page, req.Width, req.Height) { return apiErr(c, http.StatusBadRequest, "INVALID_REDACTION_REGION", "page and positive coordinates are required") }
     reason, err := encryptString(a.cfg.AESKey, req.Reason)
@@ -37,11 +38,15 @@ func (a *App) proposeRedaction(c echo.Context) error {
     id := makeIdentifier("red")
     _, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO redaction_proposals(id,document_id,page,x,y,width,height,reason,status,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'Staged',$9,NOW())`, id, docID, req.Page, req.X, req.Y, req.Width, req.Height, reason, p.UserID)
     if err != nil { return apiErr(c, http.StatusInternalServerError, "REDACTION_CREATE_ERROR", "could not stage redaction") }
-    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'REDACTION_PROPOSE',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+    a.audit(c, p.UserID, "REDACTION_PROPOSE", docID, nil)
     return c.JSON(http.StatusCreated, map[string]interface{}{"id":id,"status":"Staged"})
 }
 
 func (a *App) listRedactions(c echo.Context) error {
+    p := principal(c)
+    var d Document
+    if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, c.Param("id")); err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found") }
+    if !canReadDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope") }
     rows := []map[string]interface{}{}
     if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,page,x,y,width,height,reason,status,created_by,created_at FROM redaction_proposals WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil { return apiErr(c, http.StatusInternalServerError, "REDACTION_QUERY_ERROR", "could not list redactions") }
     return c.JSON(http.StatusOK, map[string]interface{}{"data":rows})
@@ -50,6 +55,7 @@ func (a *App) listRedactions(c echo.Context) error {
 func (a *App) confirmRedaction(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
     d, err := a.ensureMutable(c, docID); if err != nil { return mutableError(c, err) }
+    if !canEditDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope") }
     _, v, err := a.currentVersion(c, docID); if err != nil { return apiErr(c, http.StatusNotFound, "VERSION_NOT_FOUND", "current version not found") }
     if d.CurrentVersion >= a.cfg.MaxVersions { return apiErr(c, http.StatusConflict, "VERSION_LIMIT_REACHED", "document already has 50 versions") }
     newVersion := d.CurrentVersion + 1
@@ -71,22 +77,29 @@ func (a *App) confirmRedaction(c echo.Context) error {
 
 func (a *App) createAnnotation(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
-    if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
+    d, err := a.ensureMutable(c, docID); if err != nil { return mutableError(c, err) }
+    if !canReviewDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this reviewer scope") }
     var req struct{ Type string `json:"type"`; Page int `json:"page"`; X float64 `json:"x"`; Y float64 `json:"y"`; Width float64 `json:"width"`; Height float64 `json:"height"`; Comment string `json:"comment"`; Disposition string `json:"disposition"` }
     if err := c.Bind(&req); err != nil || req.Page < 1 || !IsValidAnnotationComment(req.Comment) { return apiErr(c, http.StatusBadRequest, "INVALID_ANNOTATION", "valid page and comment up to 2000 characters are required") }
     if !IsValidAnnotationType(req.Type) { return apiErr(c, http.StatusBadRequest, "INVALID_ANNOTATION_TYPE", "annotation type is not supported") }
     req.Disposition = DefaultDisposition(req.Disposition)
     if !IsValidDisposition(req.Disposition) { return apiErr(c, http.StatusBadRequest, "INVALID_DISPOSITION", "disposition must be Approved, Rejected, or Needs Discussion") }
+    plainComment := req.Comment
     comment, err := encryptString(a.cfg.AESKey, req.Comment)
     if err != nil { return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt annotation comment") }
     id := makeIdentifier("ann")
     _, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO annotations(id,document_id,author_user_id,type,page,x,y,width,height,comment,disposition,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())`, id, docID, p.UserID, req.Type, req.Page, req.X, req.Y, req.Width, req.Height, comment, req.Disposition)
     if err != nil { return apiErr(c, http.StatusInternalServerError, "ANNOTATION_CREATE_ERROR", "could not create annotation") }
-    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'ANNOTATION_CREATE',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+    a.audit(c, p.UserID, "ANNOTATION_CREATE", docID, nil)
+    a.notifyMentionedUsers(c, plainComment, docID, p.UserID)
     return c.JSON(http.StatusCreated, map[string]interface{}{"id":id,"disposition":req.Disposition})
 }
 
 func (a *App) listAnnotations(c echo.Context) error {
+    p := principal(c)
+    var d Document
+    if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, c.Param("id")); err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found") }
+    if !canReadDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope") }
     rows := []map[string]interface{}{}
     if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,author_user_id,type,page,x,y,width,height,comment,disposition,created_at FROM annotations WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil { return apiErr(c, http.StatusInternalServerError, "ANNOTATION_QUERY_ERROR", "could not list annotations") }
     return c.JSON(http.StatusOK, map[string]interface{}{"data":rows})
@@ -99,23 +112,14 @@ func (a *App) updateAnnotationDisposition(c echo.Context) error {
     if !IsValidDisposition(req.Disposition) { return apiErr(c, http.StatusBadRequest, "INVALID_DISPOSITION", "disposition must be Approved, Rejected, or Needs Discussion") }
     var docID string
     if err := a.db.GetContext(c.Request().Context(), &docID, `SELECT document_id FROM annotations WHERE id=$1`, c.Param("id")); err != nil { return apiErr(c, http.StatusNotFound, "ANNOTATION_NOT_FOUND", "annotation not found") }
-    if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
-    _, err := a.db.ExecContext(c.Request().Context(), `UPDATE annotations SET disposition=$1,updated_at=NOW() WHERE id=$2`, req.Disposition, c.Param("id"))
+    d, err := a.ensureMutable(c, docID); if err != nil { return mutableError(c, err) }
+    if !canReviewDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this reviewer scope") }
+    _, err = a.db.ExecContext(c.Request().Context(), `UPDATE annotations SET disposition=$1,updated_at=NOW() WHERE id=$2`, req.Disposition, c.Param("id"))
     if err != nil { return apiErr(c, http.StatusInternalServerError, "ANNOTATION_UPDATE_ERROR", "could not update disposition") }
-    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'ANNOTATION_DISPOSITION',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+    a.audit(c, p.UserID, "ANNOTATION_DISPOSITION", docID, nil)
     return c.JSON(http.StatusOK, map[string]interface{}{"status":"updated","disposition":req.Disposition})
 }
 
 func (a *App) applyBates(c echo.Context) error {
-    p := principal(c); docID := c.Param("id")
-    if _, err := a.ensureMutable(c, docID); err != nil { return mutableError(c, err) }
-    var req struct{ Prefix string `json:"prefix"`; Suffix string `json:"suffix"`; ZeroPadding int `json:"zero_padding"`; Start int `json:"start"` }
-    if err := c.Bind(&req); err != nil { return apiErr(c, http.StatusBadRequest, "INVALID_BATES_REQUEST", "invalid request body") }
-    if !IsValidBatesPadding(req.ZeroPadding) { return apiErr(c, http.StatusBadRequest, "INVALID_ZERO_PADDING", "zero padding must be between 0 and 10") }
-    req.Start = NormalizeBatesStart(req.Start)
-    id := makeIdentifier("bts")
-    _, err := a.db.ExecContext(c.Request().Context(), `INSERT INTO bates_jobs(id,document_id,prefix,suffix,zero_padding,start_number,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,NOW())`, id, docID, req.Prefix, req.Suffix, req.ZeroPadding, req.Start, p.UserID)
-    if err != nil { return apiErr(c, http.StatusInternalServerError, "BATES_CREATE_ERROR", "could not create Bates job") }
-    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'BATES_APPLY',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
-    return c.JSON(http.StatusCreated, map[string]interface{}{"id":id,"status":"created"})
+    return a.applyBatesVersion(c)
 }
