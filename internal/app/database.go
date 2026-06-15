@@ -61,7 +61,7 @@ func EnsureSeedUsers(ctx context.Context, db *sqlx.DB, cfg Config) error {
         if count > 0 {
             continue
         }
-        id := newID("usr")
+        id := makeIdentifier("usr")
         hash, err := bcrypt.GenerateFromPassword([]byte(s.Password), bcrypt.DefaultCost)
         if err != nil {
             return err
