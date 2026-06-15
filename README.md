@@ -100,10 +100,16 @@ docs/usage.md
 
 A lightweight browser-based test UI is included for manual verification and demonstration. It is not a production frontend.
 
-Location:
+Source location:
 
 ```text
 public/manual-test.html
+```
+
+Runtime route:
+
+```text
+http://localhost:8080/ui/manual-test.html
 ```
 
 The test UI exists because the project needs a simple way to manually exercise login, upload, workflow, annotations, redaction, Bates, audit, and notification flows during acceptance.
@@ -135,10 +141,14 @@ These files allow offline testing without downloading external documents.
 | `docs/security.md` | local security model and acceptance checks |
 | `docs/usage.md` | startup, manual testing, and operational commands |
 | `docs/testing.md` | testing strategy and acceptance flow |
+| `docs/backup-recovery.md` | local database and PDF storage recovery guidance |
+| `docs/pitr.md` | point-in-time recovery model |
+| `docs/deployment-offline.md` | standalone offline deployment guidance |
+| `docs/swagger/` | Swaggo/OpenAPI generation notes and initial spec |
 
 ## Swaggo / OpenAPI
 
-The project includes Swaggo dependencies. The intended generation flow is documented in `docs/api-spec.md`:
+The project includes Swaggo dependencies. The intended generation flow is documented in `docs/api-spec.md` and `docs/swagger/README.md`:
 
 ```bash
 swag init -g cmd/server/main.go -o docs/swagger
