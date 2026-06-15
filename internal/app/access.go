@@ -1,25 +1,29 @@
 package app
 
+import "ironpage-vault/internal/core"
+
+func corePrincipal(p Principal) core.Principal {
+    return core.Principal{UserID:p.UserID, Role:p.Role}
+}
+
+func coreDocumentAccess(d Document) core.DocumentAccess {
+    return core.DocumentAccess{OwnerID:d.OwnerID, Status:d.Status}
+}
+
 func canReadDocumentObject(p Principal, d Document) bool {
-    if p.Role == RoleAdmin { return true }
-    if d.OwnerID == p.UserID { return true }
-    if p.Role == RoleReviewer { return d.Status != StatusDraft }
-    return false
+    return core.CanReadDocumentObject(corePrincipal(p), coreDocumentAccess(d))
 }
 
 func canEditDocumentObject(p Principal, d Document) bool {
-    return p.Role == RoleEditor && d.OwnerID == p.UserID && d.Status != StatusFinalized
+    return core.CanEditDocumentObject(corePrincipal(p), coreDocumentAccess(d))
 }
 
 func canReviewDocumentObject(p Principal, d Document) bool {
-    return p.Role == RoleReviewer && d.Status != StatusDraft && d.Status != StatusFinalized
+    return core.CanReviewDocumentObject(corePrincipal(p), coreDocumentAccess(d))
 }
 
 func canTransitionDocumentObject(p Principal, d Document) bool {
-    if d.Status == StatusFinalized { return false }
-    if p.Role == RoleEditor && d.OwnerID == p.UserID { return true }
-    if p.Role == RoleReviewer && d.Status != StatusDraft { return true }
-    return false
+    return core.CanTransitionDocumentObject(corePrincipal(p), coreDocumentAccess(d))
 }
 
 func documentListWhereClause(p Principal) (string, []interface{}) {

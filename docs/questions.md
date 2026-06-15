@@ -115,3 +115,33 @@ A fair label is:
 ```text
 Partial backend implementation with improved persistence, access control, audit, notifications, and tests, but still missing compliance-grade PDF processing and sufficient E2E coverage.
 ```
+
+## Q17. Why move rules and access policy out of internal/app?
+
+`internal/app` is the API adapter layer. It should own Echo routes, middleware, request binding, and response mapping. It should not own the domain policy that decides whether a role may mutate a document, whether a workflow state is final, or whether a particular principal can access a particular document.
+
+Moving pure rules and object-access policy into `internal/core` makes those decisions deterministic, framework-free, and testable without Echo or a database.
+
+## Q18. Why keep app wrapper functions temporarily?
+
+The migration is intentionally incremental. Existing handlers already call functions such as `canReadDocumentObject` and `IsValidBatesPadding` from the app package. Rewriting every handler in the same PR would create a large risky diff.
+
+The temporary wrapper strategy is:
+
+```text
+handler -> internal/app compatibility wrapper -> internal/core policy
+```
+
+The next cleanup step is:
+
+```text
+handler/service -> internal/core policy
+```
+
+After callers are moved, the app wrappers can be deleted.
+
+## Q19. Why does documentListWhereClause stay outside core?
+
+A SQL WHERE clause is not domain policy. It is persistence/query adapter behavior. `internal/core` should not emit SQL fragments or know column names.
+
+For now, `documentListWhereClause` remains in `internal/app` only as a temporary adapter. The correct later home is `internal/store`, alongside repository-style document query functions.

@@ -61,6 +61,25 @@ Route middleware provides a first permission boundary, but sensitive rules must 
 
 This prevents accidental bypass when a handler is reused or a new route is added later.
 
+The implementation is being refactored so pure domain rules live in `internal/core`, not in the API package. `internal/app` should translate HTTP requests into application calls and API responses; it should not own role rules, workflow rules, object-access policy, PDF helpers, crypto helpers, or SQL repositories.
+
+## Why object access policy is a core rule
+
+Object access decides whether a principal can read, edit, review, or transition a specific document. That decision is domain policy, not HTTP behavior.
+
+The policy depends only on small inputs:
+
+- principal user ID
+- principal role
+- document owner ID
+- document status
+
+It does not need Echo, sqlx, PostgreSQL, request headers, or response formatting. For that reason the access policy belongs in `internal/core`.
+
+`internal/app` may still adapt API-owned structs into core policy inputs while the migration is in progress. This compatibility wrapper is temporary. It prevents a large risky rewrite while still moving the real policy implementation out of the API layer.
+
+The SQL list filter remains outside `internal/core`. A WHERE clause is persistence/query-adapter logic, not domain policy. It should eventually move to `internal/store`, not to `internal/core`.
+
 ## Why request timestamp and request ID are required
 
 The prompt requires anti-replay behavior with timestamp validation. The system uses:
@@ -78,83 +97,3 @@ A pure stateless JWT cannot enforce inactivity expiration or immediate logout re
 - token `jti`
 - user ID
 - last seen timestamp
-- expiry timestamp
-- revoked timestamp
-
-Each authenticated request updates session activity. Logout records the token in the blacklist and revokes the session.
-
-## Why the workflow is a fixed chain first
-
-The prompt defines a mandatory status chain:
-
-```text
-Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
-```
-
-The implementation starts with this fixed chain because it is the safest and most testable interpretation. Admin-managed workflow definitions are stored in the database so future work can allow configured transitions without changing code.
-
-## Why Finalized is immutable
-
-Finalized means the legal record is closed. The design rejects all mutation attempts after Finalized, including:
-
-- rollback
-- redaction proposal
-- redaction confirmation
-- annotation creation
-- annotation disposition update
-- Bates numbering
-- workflow transition
-- metadata mutation
-
-This is a central legal/compliance requirement, not a UI preference.
-
-## Why redaction is two-phase
-
-The prompt distinguishes staged redaction metadata from burn-in confirmation. The design therefore separates:
-
-1. Proposed region metadata.
-2. Editor confirmation that creates a new document version.
-
-A visual overlay alone is not treated as final redaction. The prototype records the burn-in as a new PDF version and audit event. A production-grade PDF engine can later replace the local PDF transformation implementation while keeping the same service contract.
-
-## Why audit logs are stored in PostgreSQL
-
-Audit logs need indefinite retention, filtering, and correlation with users, documents, and request IDs. PostgreSQL provides reliable local persistence and query support without requiring external logging systems.
-
-Every mutating business flow should create an audit row with:
-
-- actor
-- document when applicable
-- action type
-- request ID
-- source IP
-- timestamp
-- structured metadata
-
-## Why notifications are in-app only
-
-The prompt requires compliance-grade notification delivery in an air-gapped environment. External email, SMS, Slack, or SaaS delivery would violate the offline constraint.
-
-Therefore the design uses PostgreSQL-backed in-app notification rows. Users query their own notifications and explicitly acknowledge reads.
-
-## Why there is a test UI
-
-The user clarified that this is a pure backend project and the UI is only for testing.
-
-The test UI stays under `public/` and is served from `/ui/manual-test.html` only to help acceptance testers manually call and observe backend flows. It must not introduce a frontend framework, build step, routing layer, or product UI scope.
-
-API tests and backend behavior remain the source of truth.
-
-## Why test data is local
-
-Acceptance must work offline. Sample PDFs and CSV manifests live in `testdata/` so tests can run without downloading files.
-
-## Why Swaggo is supported
-
-The user requested `api-spec.md` and Swaggo support. The project includes Swaggo dependencies and documents the generation command:
-
-```bash
-swag init -g cmd/server/main.go -o docs/swagger
-```
-
-The Markdown API spec remains the human-readable acceptance document. Generated OpenAPI files should mirror it.
