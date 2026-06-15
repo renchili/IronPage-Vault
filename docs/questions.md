@@ -333,3 +333,159 @@ Why this matters:
 - The document becomes a decision record rather than a bug log.
 - It records reasoning and tradeoffs from the conversation.
 - It avoids sounding like the project is only a list of corrections.
+
+## 28. Why did API tests need seeded login bootstrap?
+
+Answer:
+
+The original API tests were not effective because they did not authenticate as real Admin, Editor, and Reviewer users before exercising protected routes. The user manually added seeded login bootstrap to `API_tests/test_api_flow.sh`.
+
+Why this matters:
+
+- RBAC cannot be validated without real tokens.
+- Object-level authorization cannot be tested with anonymous requests.
+- API coverage must start with a real authenticated flow.
+
+## 29. Why remove SKIP-as-success behavior from API suites?
+
+Answer:
+
+A suite that prints SKIP and exits successfully can make incomplete coverage appear to pass. The admin and document review suites were changed to avoid silent success.
+
+Why this matters:
+
+- Acceptance output should not hide missing coverage.
+- A missing test should fail or be explicitly documented as incomplete.
+- This makes coverage gaps visible to reviewers.
+
+## 30. Why add object-level authorization?
+
+Answer:
+
+Route-level RBAC is not enough for legal documents. A Reviewer or Editor should not automatically see every document just because they have a valid role.
+
+Why this matters:
+
+- Draft documents should remain restricted to their owner/editor.
+- Reviewer access should start after the document leaves Draft.
+- Legal document isolation requires per-object checks, not only role checks.
+
+## 31. Why can Reviewer no longer read Draft documents?
+
+Answer:
+
+Draft documents are not yet ready for review. The updated object access rule allows Reviewers to read non-Draft documents only.
+
+Why this matters:
+
+- It preserves the workflow boundary between authoring and review.
+- It prevents premature disclosure of draft legal material.
+- It gives API tests a meaningful object-level authorization case.
+
+## 32. Why does Bates now create a new document version?
+
+Answer:
+
+A Bates operation changes the legal artifact. Recording only job metadata is insufficient, so the Bates route now produces a new document version and updates `current_version`.
+
+Why this matters:
+
+- Bates output becomes traceable as a versioned artifact.
+- The job can be audited against a resulting document version.
+- Acceptance can verify version count changes after Bates.
+
+## 33. Why is Bates still marked Partial?
+
+Answer:
+
+The current implementation creates a new PDF version using an append-style transform marker. It does not yet draw visible Bates numbers onto each PDF page or allocate cross-document batch sequences.
+
+Why this matters:
+
+- It is better than metadata-only but not full Bates numbering.
+- The requirement expects page-visible numbering.
+- The document must not claim a stronger implementation than exists.
+
+## 34. Why was backup changed to create a local file?
+
+Answer:
+
+A backup endpoint that only inserts queued metadata cannot prove that a backup artifact exists. The enhanced handler writes a local backup marker file and records a Completed job.
+
+Why this matters:
+
+- The endpoint now has a filesystem side effect.
+- Reviewers can inspect `target_path`.
+- It is still not a real `pg_dump` or filesystem snapshot, so it remains Partial.
+
+## 35. Why add audit query filters?
+
+Answer:
+
+The prompt requires audit logs to be queryable by meaningful fields. The enhanced audit route supports actor, document, action, request ID, source IP, and date range filters.
+
+Why this matters:
+
+- Legal audits need targeted searches.
+- Reviewers can validate individual workflows without scanning all logs.
+- It aligns audit output with request IDs and action types.
+
+## 36. Why add annotation mention notification?
+
+Answer:
+
+The prompt requires notification behavior beyond workflow transitions. Annotation comments can contain `@username`; the mention helper resolves local users and creates in-app notifications.
+
+Why this matters:
+
+- It gives annotations a collaborative review signal.
+- It remains offline and local.
+- The notification path reuses the same unread-ceiling helper.
+
+## 37. Why is redaction still not marked Complete?
+
+Answer:
+
+The current redaction transform still appends a marker to a PDF-like file. It does not permanently remove underlying content from the original PDF object streams.
+
+Why this matters:
+
+- A visual or append-only change is not forensic redaction.
+- Legal redaction must make the hidden content unrecoverable.
+- Without a proper PDF content removal engine, the project must honestly mark this as incomplete.
+
+## 38. Why is compare still marked Partial?
+
+Answer:
+
+The compare endpoint now reads real version files and reports hash, size, page-count, and binary differences. It does not extract PDF text or return true page/bbox text segments.
+
+Why this matters:
+
+- It is no longer a fixed placeholder.
+- It still does not satisfy full legal PDF comparison requirements.
+- The requirement expects structured text-level added, removed, and modified segments.
+
+## 39. Why update `requirement-check.md` after implementation changes?
+
+Answer:
+
+The static reviews found that code and documentation could drift. `requirement-check.md` must reflect actual implementation status rather than optimistic claims.
+
+Why this matters:
+
+- Reviewers depend on the document for acceptance status.
+- Partial features should stay marked Partial or Planned.
+- It prevents a mismatch between code behavior and written claims.
+
+## 40. Why are more API tests still required?
+
+Answer:
+
+The current API tests cover login, some RBAC, document upload, object read checks, admin read endpoints, audit list, and backup job reads. They still do not cover the full mutating flow.
+
+Why this matters:
+
+- Workflow, finalize, redaction, annotation, Bates, compare, batch, notification read, backup run, logout, replay, and timestamp expiry need API assertions.
+- Endpoint coverage is still below the requested threshold.
+- Final acceptance depends on exercised behavior, not only implemented handlers.
