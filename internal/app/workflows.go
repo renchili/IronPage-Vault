@@ -1,7 +1,9 @@
 package app
 
 import (
+    "bytes"
     "net/http"
+    "os"
     "strings"
     "time"
 
@@ -30,7 +32,7 @@ func (a *App) transitionDocument(c echo.Context) error {
     if err != nil { return apiErr(c, http.StatusInternalServerError, "WORKFLOW_UPDATE_ERROR", "workflow transition failed") }
     _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO document_status_history(id,document_id,from_status,to_status,changed_by,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, makeIdentifier("wfh"), d.ID, d.Status, req.Status, p.UserID)
     _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'WORKFLOW_TRANSITION',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, d.ID, currentRequestID(c), c.RealIP())
-    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO notifications(id,user_id,document_id,template_key,message,created_at) VALUES($1,$2,$3,'workflow.transition',$4,NOW())`, makeIdentifier("not"), d.OwnerID, d.ID, "Document moved to "+req.Status)
+    a.notifyUser(c, d.OwnerID, "workflow.transition", "Document moved to "+req.Status, d.ID)
     return c.JSON(http.StatusOK, map[string]interface{}{"status":req.Status,"changed_at":time.Now().UTC()})
 }
 
@@ -49,5 +51,25 @@ func (a *App) finalizeDocument(c echo.Context) error {
 func (a *App) compareVersions(c echo.Context) error {
     var req struct{ LeftVersionID string `json:"left_version_id"`; RightVersionID string `json:"right_version_id"` }
     if err := c.Bind(&req); err != nil || req.LeftVersionID == "" || req.RightVersionID == "" { return apiErr(c, http.StatusBadRequest, "VERSION_IDS_REQUIRED", "left_version_id and right_version_id are required") }
-    return c.JSON(http.StatusOK, map[string]interface{}{"data":map[string]interface{}{"added":[]interface{}{},"removed":[]interface{}{},"modified":[]map[string]interface{}{{"page":1,"bbox":map[string]int{"x":0,"y":0,"w":0,"h":0},"text":"comparison executed for supplied versions"}}}})
+    var left DocumentVersion
+    var right DocumentVersion
+    if err := a.db.GetContext(c.Request().Context(), &left, `SELECT * FROM document_versions WHERE id=$1`, req.LeftVersionID); err != nil { return apiErr(c, http.StatusNotFound, "LEFT_VERSION_NOT_FOUND", "left version not found") }
+    if err := a.db.GetContext(c.Request().Context(), &right, `SELECT * FROM document_versions WHERE id=$1`, req.RightVersionID); err != nil { return apiErr(c, http.StatusNotFound, "RIGHT_VERSION_NOT_FOUND", "right version not found") }
+    leftRaw, err := os.ReadFile(left.FilePath); if err != nil { return apiErr(c, http.StatusInternalServerError, "LEFT_FILE_READ_ERROR", "could not read left version") }
+    rightRaw, err := os.ReadFile(right.FilePath); if err != nil { return apiErr(c, http.StatusInternalServerError, "RIGHT_FILE_READ_ERROR", "could not read right version") }
+    result := map[string]interface{}{
+        "left_version_id": left.ID,
+        "right_version_id": right.ID,
+        "same_sha256": left.FileSHA256 == right.FileSHA256,
+        "same_size": left.SizeBytes == right.SizeBytes,
+        "same_page_count": left.PageCount == right.PageCount,
+        "byte_length_delta": len(rightRaw) - len(leftRaw),
+        "added": []interface{}{},
+        "removed": []interface{}{},
+        "modified": []interface{}{},
+    }
+    if !bytes.Equal(leftRaw, rightRaw) {
+        result["modified"] = []map[string]interface{}{{"page":1,"bbox":map[string]int{"x":0,"y":0,"w":0,"h":0},"text":"binary content differs between supplied versions"}}
+    }
+    return c.JSON(http.StatusOK, map[string]interface{}{"data":result})
 }
