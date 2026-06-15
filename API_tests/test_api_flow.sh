@@ -4,6 +4,31 @@ set -euo pipefail
 PASS=0
 FAIL=0
 
+. API_tests/lib.sh
+
+login_and_store() {
+  local user="$1"
+  local secret="$2"
+  local out="$3"
+
+  code=$(curl -s -o "$BODY" -w "%{http_code}" "$BASE_URL/api/auth/login" \
+    -H 'Content-Type: application/json' \
+    -H "X-Request-ID: $(reqid)" \
+    -d "{\"username\":\"$user\",\"password\":\"$secret\"}")
+
+  expect_code "login $user" 200 "$code" || exit 1
+  json_field token > "$out"
+}
+
+login_and_store admin 'Admin123!' /tmp/ironpage_admin_token.out
+login_and_store editor 'Editor123!' /tmp/ironpage_editor_token.out
+login_and_store reviewer 'Reviewer123!' /tmp/ironpage_reviewer_token.out
+
+export ADMIN_TOKEN="$(cat /tmp/ironpage_admin_token.out)"
+export EDITOR_TOKEN="$(cat /tmp/ironpage_editor_token.out)"
+export REVIEWER_TOKEN="$(cat /tmp/ironpage_reviewer_token.out)"
+
+
 run_case() {
   local name="$1"
   local script="$2"
