@@ -11,6 +11,7 @@ import (
 func (a *App) applyBatesVersion(c echo.Context) error {
     p := principal(c); docID := c.Param("id")
     d, err := a.ensureMutable(c, docID); if err != nil { return mutableError(c, err) }
+    if !canEditDocumentObject(p, d) { return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope") }
     _, v, err := a.currentVersion(c, docID); if err != nil { return apiErr(c, http.StatusNotFound, "VERSION_NOT_FOUND", "current version not found") }
     if d.CurrentVersion >= a.cfg.MaxVersions { return apiErr(c, http.StatusConflict, "VERSION_LIMIT_REACHED", "document already has 50 versions") }
     var req struct{ Prefix string `json:"prefix"`; Suffix string `json:"suffix"`; ZeroPadding int `json:"zero_padding"`; Start int `json:"start"` }
