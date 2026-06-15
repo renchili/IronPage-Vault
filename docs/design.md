@@ -20,20 +20,7 @@ This is not the usual production recommendation for large distributed deployment
 
 ## Why PostgreSQL stores metadata but not PDF binaries
 
-PostgreSQL stores:
-
-- users
-- sessions
-- replay guard records
-- document metadata
-- version metadata
-- audit logs
-- redaction metadata
-- annotations
-- Bates jobs
-- notifications
-- configuration entries
-- backup jobs
+PostgreSQL stores users, sessions, replay guard records, document metadata, version metadata, audit logs, redaction metadata, annotations, Bates jobs, notifications, configuration entries, and backup jobs.
 
 PDF binaries are stored on the local filesystem because the prompt explicitly separates binary assets from database metadata. The database stores file pointers, hashes, size, page count, and version numbers.
 
@@ -49,11 +36,7 @@ The prompt defines three roles only:
 
 The design does not make Admin a super-editor by default. Admin manages the system. Editor manipulates documents. Reviewer reviews and annotates documents.
 
-This prevents accidental privilege expansion. It also makes role-based tests clearer:
-
-- Editor cannot manage users.
-- Reviewer cannot upload documents.
-- Admin does not automatically bypass document workflow.
+This prevents accidental privilege expansion.
 
 ## Why business rules live outside route declarations
 
@@ -67,18 +50,27 @@ The implementation is being refactored so pure domain rules live in `internal/co
 
 Object access decides whether a principal can read, edit, review, or transition a specific document. That decision is domain policy, not HTTP behavior.
 
-The policy depends only on small inputs:
-
-- principal user ID
-- principal role
-- document owner ID
-- document status
-
-It does not need Echo, sqlx, PostgreSQL, request headers, or response formatting. For that reason the access policy belongs in `internal/core`.
-
-`internal/app` may still adapt API-owned structs into core policy inputs while the migration is in progress. This compatibility wrapper is temporary. It prevents a large risky rewrite while still moving the real policy implementation out of the API layer.
+The policy depends only on principal user ID, principal role, document owner ID, and document status. It does not need Echo, sqlx, PostgreSQL, request headers, or response formatting. For that reason the access policy belongs in `internal/core`.
 
 The SQL list filter remains outside `internal/core`. A WHERE clause is persistence/query-adapter logic, not domain policy. It should eventually move to `internal/store`, not to `internal/core`.
+
+## Why crypto and digest helpers are platform code
+
+Encryption and digesting are implementation adapters. They do not decide whether a user may perform an action and they do not map HTTP requests. They provide low-level capabilities used by higher-level workflows.
+
+For that reason AES-GCM string encryption and SHA-256 reader digesting belong in `internal/platform` instead of `internal/app`.
+
+The migration keeps temporary app wrappers so existing handlers can continue calling the old helper names while follow-up PRs move callers directly to `internal/platform`. The target direction is:
+
+```text
+service/app caller -> internal/platform crypto/digest adapter
+```
+
+not:
+
+```text
+service/app caller -> internal/app helper hidden inside API package
+```
 
 ## Why request timestamp and request ID are required
 
