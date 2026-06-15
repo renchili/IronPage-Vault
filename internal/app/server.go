@@ -52,7 +52,7 @@ func Run(cfg Config) error {
     admin.PATCH("/config/:key", a.patchConfig)
     admin.GET("/workflow-statuses", a.workflowStatuses)
     admin.GET("/notification-templates", a.notificationTemplates)
-    admin.POST("/backup/run", a.runBackup)
+    admin.POST("/backup/run", a.runBackupFile)
     admin.GET("/backup/jobs", a.backupJobs)
 
     docs := api.Group("/documents")
@@ -74,7 +74,7 @@ func Run(cfg Config) error {
     docs.POST("/:id/bates", a.applyBates, requireRole(RoleEditor))
 
     api.PATCH("/annotations/:id/disposition", a.updateAnnotationDisposition, requireRole(RoleReviewer))
-    api.GET("/audit-logs", a.auditLogs)
+    api.GET("/audit-logs", a.auditLogsFiltered)
     api.GET("/notifications", a.notifications)
     api.POST("/notifications/:id/read", a.readNotification)
     return e.Start(cfg.HTTPAddr)
