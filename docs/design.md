@@ -1,14 +1,16 @@
 # Design Document
 
-## Why IronPage Vault is backend-first
+## Why IronPage Vault is a pure backend project
 
-The prompt describes IronPage Vault as the backbone API for legal professionals, paralegals, and compliance teams. The system is therefore designed as a backend-first service. A non-production manual HTML page may exist for acceptance testing, but the system boundary is the API, not a formal web application.
+The prompt describes IronPage Vault as the backbone API for legal professionals, paralegals, and compliance teams. The system boundary is therefore the backend API, not a formal web application.
 
-This design avoids making the frontend a hidden dependency and keeps the project aligned with the required stack: Go, Echo, sqlx, PostgreSQL, and local filesystem storage.
+The repository may include a small browser page for manual testing, but that page is only a backend test aid. It is not a production frontend, not a fullstack requirement, and not part of the product deliverable.
+
+This design keeps the project aligned with the required stack: Go, Echo, sqlx, PostgreSQL, and local filesystem storage.
 
 ## Why the system is single-container
 
-The prompt requires standalone deployment on an air-gapped machine. The design packages PostgreSQL and the Go API into one container so an evaluator can start the system with one command and without any external services.
+The prompt requires standalone deployment on an air-gapped machine. The design packages PostgreSQL and the Go API into one container so an evaluator can start the backend system with one command and without any external services.
 
 This is not the usual production recommendation for large distributed deployments, but it fits the stated air-gapped standalone requirement. Persistent data is kept in Docker volumes:
 
@@ -135,11 +137,13 @@ The prompt requires compliance-grade notification delivery in an air-gapped envi
 
 Therefore the design uses PostgreSQL-backed in-app notification rows. Users query their own notifications and explicitly acknowledge reads.
 
-## Why there is an informal frontend
+## Why there is a test UI
 
-The user later requested a non-formal frontend for testing. The design keeps this as a manual acceptance helper under `public/` and does not make it part of the formal product scope.
+The user clarified that this is a pure backend project and the UI is only for testing.
 
-This provides a simple human testing surface while keeping API tests and backend behavior as the source of truth.
+The test UI stays under `public/` and is served from `/ui/manual-test.html` only to help acceptance testers manually call and observe backend flows. It must not introduce a frontend framework, build step, routing layer, or product UI scope.
+
+API tests and backend behavior remain the source of truth.
 
 ## Why test data is local
 
