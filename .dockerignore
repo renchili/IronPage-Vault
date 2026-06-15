@@ -1,0 +1,7 @@
+.git
+.gitignore
+README.local.md
+.tmp
+*.log
+coverage.out
+node_modules
