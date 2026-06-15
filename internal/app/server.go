@@ -25,28 +25,19 @@ func MustRun(cfg Config) {
 }
 
 func Run(cfg Config) error {
-    if err := os.MkdirAll(cfg.StorageDir, 0750); err != nil {
-        return err
-    }
-    if err := os.MkdirAll(cfg.BackupDir, 0750); err != nil {
-        return err
-    }
+    if err := os.MkdirAll(cfg.StorageDir, 0750); err != nil { return err }
+    if err := os.MkdirAll(cfg.BackupDir, 0750); err != nil { return err }
     db, err := OpenDatabase(cfg)
-    if err != nil {
-        return err
-    }
-    if err := RunMigrations(db, cfg.MigrationsDir); err != nil {
-        return err
-    }
-    if err := EnsureSeedUsers(context.Background(), db, cfg); err != nil {
-        return err
-    }
+    if err != nil { return err }
+    if err := RunMigrations(db, cfg.MigrationsDir); err != nil { return err }
+    if err := EnsureSeedUsers(context.Background(), db, cfg); err != nil { return err }
     a := &App{cfg: cfg, db: db}
     e := echo.New()
     e.HideBanner = true
     e.Use(middleware.Recover())
     e.Use(a.requestIDMiddleware)
     e.GET("/healthz", a.health)
+    e.Static("/ui", cfg.PublicDir)
     e.POST("/api/auth/login", a.login)
 
     api := e.Group("/api", a.authMiddleware)
@@ -98,9 +89,7 @@ func (a *App) health(c echo.Context) error {
 func (a *App) requestIDMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
     return func(c echo.Context) error {
         id := c.Request().Header.Get("X-Request-ID")
-        if id == "" {
-            id = makeIdentifier("req")
-        }
+        if id == "" { id = makeIdentifier("req") }
         c.Set("request_id", id)
         c.Response().Header().Set("X-Request-ID", id)
         return next(c)
@@ -109,9 +98,7 @@ func (a *App) requestIDMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 
 func requireRole(roles ...string) echo.MiddlewareFunc {
     allowed := map[string]bool{}
-    for _, r := range roles {
-        allowed[r] = true
-    }
+    for _, r := range roles { allowed[r] = true }
     return func(next echo.HandlerFunc) echo.HandlerFunc {
         return func(c echo.Context) error {
             p, ok := c.Get("principal").(Principal)
