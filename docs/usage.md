@@ -1,8 +1,10 @@
 # Usage and Acceptance Guide
 
-This document contains startup, operation, manual testing, and acceptance commands. The README focuses on project purpose and implementation.
+This document contains startup, operation, manual backend testing, and acceptance commands. The README focuses on project purpose and implementation.
 
-## Start the System
+IronPage Vault is a pure backend API project. The UI mentioned here is only a manual backend testing aid.
+
+## Start the Backend System
 
 ```bash
 docker compose up --build
@@ -30,17 +32,23 @@ The application creates local acceptance users on startup if they do not already
 | Editor | editor | Editor123! |
 | Reviewer | reviewer | Reviewer123! |
 
-## Manual Test UI
+## Backend Test UI
 
-The repository includes a lightweight test UI at:
+The repository includes a lightweight backend test page at:
 
 ```text
 public/manual-test.html
 ```
 
-It is for manual acceptance only. It is not the production frontend.
+Runtime route:
 
-The page documents the main manual flow:
+```text
+http://localhost:8080/ui/manual-test.html
+```
+
+This page is only for manual acceptance of backend APIs. It is not a production frontend, not a formal UI requirement, and not a separate fullstack deliverable.
+
+The page documents the main manual backend flow:
 
 1. log in as Editor
 2. upload a sample PDF
