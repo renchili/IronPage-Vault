@@ -2,6 +2,7 @@ package app
 
 import (
     "io"
+    "mime/multipart"
     "net/http"
     "os"
     "path/filepath"
@@ -9,44 +10,57 @@ import (
     "github.com/labstack/echo/v4"
 )
 
+func (a *App) persistPDFUpload(c echo.Context, fh *multipart.FileHeader, title string, p Principal) (Document, error) {
+    src, err := fh.Open(); if err != nil { return Document{}, err }
+    defer src.Close()
+    docID := makeIdentifier("doc")
+    versionID := makeIdentifier("ver")
+    dir := filepath.Join(a.cfg.StorageDir, docID)
+    if err := os.MkdirAll(dir, 0750); err != nil { return Document{}, err }
+    path := filepath.Join(dir, "v1.pdf")
+    dst, err := os.Create(path); if err != nil { return Document{}, err }
+    if _, err := io.Copy(dst, src); err != nil { dst.Close(); return Document{}, err }
+    dst.Close()
+    info, err := InspectPDF(path, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
+    if err != nil { os.RemoveAll(dir); return Document{}, err }
+    if title == "" { title = fh.Filename }
+    tx, err := a.db.BeginTxx(c.Request().Context(), nil); if err != nil { return Document{}, err }
+    defer tx.Rollback()
+    _, err = tx.ExecContext(c.Request().Context(), `INSERT INTO documents(id,title,status,owner_id,current_version,created_at,updated_at) VALUES($1,$2,$3,$4,1,NOW(),NOW())`, docID, title, StatusDraft, p.UserID)
+    if err != nil { return Document{}, err }
+    _, err = tx.ExecContext(c.Request().Context(), `INSERT INTO document_versions(id,document_id,version_number,file_path,file_sha256,size_bytes,page_count,created_by,created_at) VALUES($1,$2,1,$3,$4,$5,$6,$7,NOW())`, versionID, docID, path, info.SHA256, info.Size, info.PageCount, p.UserID)
+    if err != nil { return Document{}, err }
+    _, _ = tx.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'DOCUMENT_UPLOAD',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+    if err := tx.Commit(); err != nil { return Document{}, err }
+    var d Document
+    err = a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID)
+    return d, err
+}
+
 func (a *App) uploadDocument(c echo.Context) error {
     p := principal(c)
     fh, err := c.FormFile("file")
     if err != nil { return apiErr(c, http.StatusBadRequest, "PDF_REQUIRED", "multipart file field file is required") }
     if fh.Size > a.cfg.MaxUploadBytes { return apiErr(c, http.StatusBadRequest, "PDF_TOO_LARGE", "document exceeds 200 MB") }
-    src, err := fh.Open(); if err != nil { return apiErr(c, http.StatusBadRequest, "PDF_OPEN_ERROR", "could not open upload") }
-    defer src.Close()
-    docID := makeIdentifier("doc")
-    versionID := makeIdentifier("ver")
-    dir := filepath.Join(a.cfg.StorageDir, docID)
-    if err := os.MkdirAll(dir, 0750); err != nil { return apiErr(c, http.StatusInternalServerError, "STORAGE_ERROR", "could not create storage directory") }
-    path := filepath.Join(dir, "v1.pdf")
-    dst, err := os.Create(path); if err != nil { return apiErr(c, http.StatusInternalServerError, "STORAGE_ERROR", "could not store file") }
-    if _, err := io.Copy(dst, src); err != nil { dst.Close(); return apiErr(c, http.StatusInternalServerError, "STORAGE_ERROR", "could not write file") }
-    dst.Close()
-    info, err := InspectPDF(path, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
-    if err != nil { os.RemoveAll(dir); return apiErr(c, http.StatusBadRequest, "PDF_VALIDATION_FAILED", err.Error()) }
-    title := c.FormValue("title"); if title == "" { title = fh.Filename }
-    tx, err := a.db.BeginTxx(c.Request().Context(), nil); if err != nil { return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction") }
-    defer tx.Rollback()
-    _, err = tx.ExecContext(c.Request().Context(), `INSERT INTO documents(id,title,status,owner_id,current_version,created_at,updated_at) VALUES($1,$2,$3,$4,1,NOW(),NOW())`, docID, title, StatusDraft, p.UserID)
-    if err != nil { return apiErr(c, http.StatusInternalServerError, "DOCUMENT_CREATE_ERROR", "could not create document") }
-    _, err = tx.ExecContext(c.Request().Context(), `INSERT INTO document_versions(id,document_id,version_number,file_path,file_sha256,size_bytes,page_count,created_by,created_at) VALUES($1,$2,1,$3,$4,$5,$6,$7,NOW())`, versionID, docID, path, info.SHA256, info.Size, info.PageCount, p.UserID)
-    if err != nil { return apiErr(c, http.StatusInternalServerError, "VERSION_CREATE_ERROR", "could not create version") }
-    _, _ = tx.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'DOCUMENT_UPLOAD',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
-    if err := tx.Commit(); err != nil { return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit upload") }
-    var d Document
-    _ = a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID)
+    d, err := a.persistPDFUpload(c, fh, c.FormValue("title"), p)
+    if err != nil { return apiErr(c, http.StatusBadRequest, "PDF_UPLOAD_REJECTED", err.Error()) }
     return c.JSON(http.StatusCreated, map[string]interface{}{"data":d})
 }
 
 func (a *App) batchUploadDocuments(c echo.Context) error {
+    p := principal(c)
     form, err := c.MultipartForm(); if err != nil { return apiErr(c, http.StatusBadRequest, "INVALID_MULTIPART", "multipart form is required") }
     files := form.File["files"]
     if len(files) == 0 { files = form.File["file"] }
-    if len(files) == 0 { return apiErr(c, http.StatusBadRequest, "FILES_REQUIRED", "files are required") }
-    if len(files) > a.cfg.MaxBatchFiles { return apiErr(c, http.StatusBadRequest, "BATCH_LIMIT_EXCEEDED", "batch import supports up to 250 files") }
-    return c.JSON(http.StatusCreated, map[string]interface{}{"accepted_files":len(files),"note":"submit files individually or extend this endpoint for streaming batch persistence"})
+    if !IsValidBatchSize(len(files), a.cfg.MaxBatchFiles) { return apiErr(c, http.StatusBadRequest, "BATCH_LIMIT_INVALID", "batch import requires 1 to 250 files") }
+    created := []Document{}
+    for _, fh := range files {
+        if fh.Size > a.cfg.MaxUploadBytes { return apiErr(c, http.StatusBadRequest, "PDF_TOO_LARGE", fh.Filename+" exceeds max size") }
+        d, err := a.persistPDFUpload(c, fh, fh.Filename, p)
+        if err != nil { return apiErr(c, http.StatusBadRequest, "BATCH_FILE_REJECTED", fh.Filename+": "+err.Error()) }
+        created = append(created, d)
+    }
+    return c.JSON(http.StatusCreated, map[string]interface{}{"data":created,"count":len(created)})
 }
 
 func (a *App) listDocuments(c echo.Context) error {
