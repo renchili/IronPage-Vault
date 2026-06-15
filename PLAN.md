@@ -36,8 +36,9 @@ internal/platform   PDF, filesystem, digest, crypto, and backup adapters
 5. Move handlers and services to call `internal/core` and `internal/platform` directly.
 6. Delete app wrapper functions once no callers remain.
 7. Move SQL query ownership to `internal/store`.
-8. Move PDF and backup implementation to `internal/platform`.
-9. Introduce service-level orchestration for upload, workflow, redaction, annotation, compare, Bates, and backup flows.
+8. Move PDF helper implementation to `internal/platform`.
+9. Move backup implementation to `internal/platform`.
+10. Introduce service-level orchestration for upload, workflow, redaction, annotation, compare, Bates, and backup flows.
 
 ### 3.2 Current access-policy migration decision
 
@@ -47,7 +48,7 @@ The list-query SQL filter is different. A WHERE clause knows database columns an
 
 ### 3.3 Current platform migration decision
 
-Crypto and digest helpers provide low-level infrastructure capabilities. They do not belong in `internal/app` because the API layer should not own AES-GCM encryption or SHA-256 hashing.
+Crypto, digest, and PDF helpers provide low-level infrastructure capabilities. They do not belong in `internal/app` because the API layer should not own AES-GCM encryption, SHA-256 hashing, PDF inspection, or filesystem PDF transforms.
 
 The real implementations now belong in `internal/platform`. Temporary app wrappers preserve compatibility until callers are moved directly to platform or service-layer abstractions.
 
