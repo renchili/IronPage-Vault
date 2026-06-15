@@ -26,6 +26,10 @@ check "pdf header valid" "head -c 5 testdata/pdfs/sample_contract.pdf | grep -q 
 check "roles in schema" "grep -q 'Admin' migrations/001_schema.sql && grep -q 'Editor' migrations/001_schema.sql && grep -q 'Reviewer' migrations/001_schema.sql"
 check "workflow in schema" "grep -q 'Finalized' migrations/001_schema.sql && grep -q 'Under Review' migrations/001_schema.sql"
 check "api tests directory" "test -d API_tests"
+check "workflow unit test exists" "test -f internal/app/workflow_test.go"
+check "pdf unit test exists" "test -f internal/app/pdf_test.go"
+check "manual backend test UI exists" "test -f public/manual-test.html"
+check "public swagger yaml exists" "test -f public/swagger.yaml"
 
 TOTAL=$((PASS+FAIL))
 echo "UNIT SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"
