@@ -31,18 +31,25 @@ internal/platform   PDF, filesystem, digest, crypto, and backup adapters
 
 1. Move pure domain validation rules from `internal/app/rules.go` to `internal/core`.
 2. Move object-level document access policy from `internal/app/access.go` to `internal/core`.
-3. Keep temporary app wrapper functions only to avoid a large handler rewrite in the same PR.
-4. Move handlers and services to call `internal/core` directly.
-5. Delete app wrapper functions once no callers remain.
-6. Move SQL query ownership to `internal/store`.
-7. Move PDF, digest, crypto, and backup implementation to `internal/platform`.
-8. Introduce service-level orchestration for upload, workflow, redaction, annotation, compare, Bates, and backup flows.
+3. Move crypto and digest helpers from `internal/app` to `internal/platform`.
+4. Keep temporary app wrapper functions only to avoid a large handler rewrite in the same PR.
+5. Move handlers and services to call `internal/core` and `internal/platform` directly.
+6. Delete app wrapper functions once no callers remain.
+7. Move SQL query ownership to `internal/store`.
+8. Move PDF and backup implementation to `internal/platform`.
+9. Introduce service-level orchestration for upload, workflow, redaction, annotation, compare, Bates, and backup flows.
 
 ### 3.2 Current access-policy migration decision
 
 Object access depends on principal role/user ID and document owner/status. It does not require Echo, SQL, or HTTP responses, so the real implementation belongs in `internal/core`.
 
 The list-query SQL filter is different. A WHERE clause knows database columns and should not be put in `internal/core`. It remains an adapter concern and should later move to `internal/store`.
+
+### 3.3 Current platform migration decision
+
+Crypto and digest helpers provide low-level infrastructure capabilities. They do not belong in `internal/app` because the API layer should not own AES-GCM encryption or SHA-256 hashing.
+
+The real implementations now belong in `internal/platform`. Temporary app wrappers preserve compatibility until callers are moved directly to platform or service-layer abstractions.
 
 ## 4. Core Domain Modules
 
@@ -105,16 +112,7 @@ Rules:
 
 ### 4.6 Annotation Workflow
 
-Reviewers may:
-
-- Retrieve documents.
-- Create sticky notes.
-- Create highlights.
-- Create strikethroughs.
-- Create freeform text stamps.
-- Add optional comments up to 2,000 characters.
-- Mark annotation disposition as Approved, Rejected, or Needs Discussion.
-- Advance documents through the review workflow where permitted.
+Reviewers may retrieve documents, create supported annotations, add comments up to 2,000 characters, set dispositions, and advance documents through permitted review workflow states.
 
 Each annotation must store author, timestamp, page, coordinates, type, optional comment, and disposition.
 
