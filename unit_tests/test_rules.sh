@@ -30,6 +30,8 @@ check "workflow unit test exists" "test -f internal/app/workflow_test.go"
 check "pdf unit test exists" "test -f internal/app/pdf_test.go"
 check "domain rule unit test exists" "test -f internal/app/rules_test.go"
 check "domain rule helper exists" "test -f internal/app/rules.go"
+check "crypto helper exists" "test -f internal/app/crypto.go"
+check "crypto unit test exists" "test -f internal/app/crypto_test.go"
 check "manual backend test UI exists" "test -f public/manual-test.html"
 check "public swagger yaml exists" "test -f public/swagger.yaml"
 
