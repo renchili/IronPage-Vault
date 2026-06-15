@@ -9,12 +9,14 @@ This document maps the prompt requirements to the current project implementation
 | Complete | Implemented in code and documented |
 | Partial | Implemented or documented, but needs more depth |
 | Planned | Documented as required, not yet complete |
+| Manual Patch | Requires a user-side edit because automated writes were blocked |
 | Not applicable | Outside current requested scope |
 
 ## Stack and Deployment
 
 | Requirement | Status | Evidence |
 |---|---|---|
+| Pure backend project | Complete | README and design docs state UI is only a backend test aid |
 | Backend in Go | Complete | `go.mod`, `cmd/server/main.go`, `internal/app/` |
 | Echo framework | Complete | Echo server and routes in `internal/app/server.go` |
 | sqlx database access | Complete | `internal/app/database.go` and handlers use sqlx |
@@ -22,8 +24,9 @@ This document maps the prompt requirements to the current project implementation
 | PDF binaries on local filesystem | Complete | upload handler stores files under `STORAGE_DIR` |
 | No external runtime services | Complete | Docker Compose uses one service only |
 | Single-container standalone deployment | Complete | `Dockerfile`, `docker-compose.yml`, `scripts/entrypoint.sh` |
-| Swaggo support | Partial | Swaggo dependencies added and generation command documented; route wiring and generated docs can be added next |
-| Informal test frontend | Partial | `public/manual-test.html` added as guidance page; interactive console can be expanded |
+| Docker builder instead of local build | Complete | Dockerfile uses a Go builder stage and no local build artifacts are required |
+| Swaggo/OpenAPI support | Partial | Swaggo dependencies, `docs/swagger/swagger.yaml`, and `public/swagger.yaml` exist; generated Swaggo files are not produced because no commands were run |
+| Backend test UI | Complete | `public/manual-test.html` is an API test tool, not a frontend deliverable |
 
 ## Authentication and Session Security
 
@@ -61,9 +64,9 @@ This document maps the prompt requirements to the current project implementation
 | 500 page limit | Complete | local page count check |
 | Metadata in PostgreSQL | Complete | `documents`, `document_versions` |
 | Local filesystem pointer | Complete | `document_versions.file_path` |
-| Batch import up to 250 | Partial | endpoint validates the limit; persistence flow can be expanded from single-file path |
-| 50 revision ceiling | Partial | redaction confirmation checks max versions; rollback and other version creation paths need full coverage |
-| Version rollback | Planned | route exists; complete service logic still needs final implementation |
+| Batch import up to 250 | Partial | endpoint validates the limit; full persistence still needs expansion |
+| 50 revision ceiling | Partial | redaction confirmation checks max versions; all version paths need full test coverage |
+| Version rollback | Complete | rollback validates version, rejects Finalized, updates current version, and writes audit log |
 | Document comparison | Partial | endpoint returns structured shape; deeper PDF text extraction can be improved |
 
 ## Workflow
@@ -76,7 +79,7 @@ This document maps the prompt requirements to the current project implementation
 | Approved status | Complete | schema and transition chain |
 | Finalized status | Complete | schema and transition chain |
 | Mandatory status chain | Complete | `nextWorkflowStatus` |
-| Finalized immutable | Partial | enforced in redaction, annotation, transition, finalize; extend to every future mutation |
+| Finalized immutable | Complete | enforced in redaction, annotation, Bates, rollback, transition, and finalize paths |
 | Workflow audit record | Complete | transition handler writes audit log |
 | Workflow notification | Complete | transition handler creates notification |
 
@@ -91,6 +94,7 @@ This document maps the prompt requirements to the current project implementation
 | Audit for confirmation | Complete | confirmation endpoint writes audit log |
 | Permanent PDF content removal | Partial | prototype creates transformed version; production-grade content stripping engine can replace transform function |
 | Coordinate encryption | Planned | schema stores coordinates; AES integration remains next step |
+| Missing document handling | Complete | mutable-state helper now separates not-found from Finalized |
 
 ## Annotation
 
@@ -152,32 +156,35 @@ This document maps the prompt requirements to the current project implementation
 | Workflow status definitions | Complete | `workflow_status_definitions` table and endpoint |
 | Notification templates | Complete | `notification_templates` table and endpoint |
 | Backup job metadata | Complete | `backup_jobs` table and admin endpoint |
-| Logical dump execution | Planned | metadata endpoint exists; actual dump command should be added carefully for local-only use |
+| Logical dump execution | Planned | metadata endpoint exists; actual local dump command can be added later |
 | Filesystem snapshot | Planned | backup volume documented; snapshot implementation can be added next |
-| PITR docs | Planned | required docs need expansion |
+| PITR docs | Complete | `docs/pitr.md` |
+| Backup/recovery docs | Complete | `docs/backup-recovery.md` |
 
 ## Testing and Acceptance
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| README startup docs | Complete | `README.md` |
+| README project overview | Complete | `README.md` focuses on project and implementation |
+| Usage document | Complete | `docs/usage.md` contains commands and operation flow |
 | `unit_tests/` | Complete | `unit_tests/test_rules.sh` |
-| `API_tests/` | Partial | directory planned; script creation may need retry if connector blocks content |
-| `run_tests.sh` | Planned | should call unit and API scripts |
+| `API_tests/` | Partial | helper, RBAC, upload scripts exist; full E2E login bootstrap is a manual patch |
+| `run_tests.sh` | Complete | root script calls unit and API suites |
 | Real sample PDF | Complete | `testdata/pdfs/sample_contract.pdf` |
 | CSV sample data | Complete | `testdata/csv/batch_import_manifest.csv` |
-| Multi-role coverage | Partial | README matrix and API plan; API script should be expanded |
+| Multi-role coverage | Partial | implemented in scripts where tokens are supplied; hardcoded seeded token bootstrap left for user patch |
+| Test UI | Complete | `public/manual-test.html` directly calls backend APIs |
 
 ## Overall Completion Summary
 
-The project now has the main backend skeleton, database schema, Docker startup files, core handlers, seed data, sample PDF, CSV manifest, README, and design/API/requirement documentation.
+The project now has a pure-backend API structure, database schema, Docker builder setup, core handlers, seed data, sample PDF, CSV manifest, test UI, README, and design/API/requirement documentation.
 
 Remaining high-value work before strict final acceptance:
 
-1. Complete `run_tests.sh` and API test scripts.
-2. Wire Swagger UI route and generate `docs/swagger` output.
+1. Apply the manual seeded login bootstrap patch in `API_tests/test_api_flow.sh`.
+2. Expand API tests for annotation, redaction, Bates, workflow, finalization, audit, notification, and backup assertions.
 3. Replace prototype PDF transform with a stronger local PDF redaction implementation.
-4. Add full AES-256 encryption integration for sensitive columns.
+4. Add AES-256 encryption integration for sensitive columns.
 5. Expand object-level authorization and audit filters.
-6. Complete rollback service logic and batch import persistence.
-7. Expand informal test frontend into an interactive console if desired.
+6. Expand batch import from limit validation to full persisted batch import.
+7. Generate official Swaggo files with Docker builder during acceptance if desired.
