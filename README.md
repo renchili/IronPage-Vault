@@ -1,165 +1,151 @@
 # IronPage Vault
 
-IronPage Vault is an offline legal PDF lifecycle management backend for document upload, review, annotation, redaction workflow, Bates numbering, workflow transitions, audit logs, notifications, configuration, and local backup metadata.
+IronPage Vault is an offline legal PDF lifecycle management system for air-gapped legal, compliance, and regulated document environments. It provides a backend API for local identity, strict role boundaries, PDF intake, versioned document records, redaction workflows, reviewer annotations, Bates numbering, workflow transitions, audit trails, notifications, configuration, and local backup metadata.
 
-`AGENT.md` is the authoritative project rule file. `CLAUDE.md` only references it so the project has one source of implementation rules.
+The project is designed as a backend-first system. A lightweight test UI is included only for manual acceptance and demonstration. The API, database schema, tests, and documentation remain the authoritative deliverables.
 
-## Stack
+## Project Goals
 
-- Go
-- Echo
-- sqlx
-- PostgreSQL
-- local filesystem PDF storage
-- Docker Compose startup
-- informal manual test page only; no formal frontend requirement
+IronPage Vault is built to satisfy these product goals:
 
-## Start
+- keep sensitive legal PDFs inside a standalone local environment
+- avoid external identity providers, cloud services, remote PDF processors, or external notification providers
+- enforce Admin, Editor, and Reviewer role boundaries
+- preserve a complete document lifecycle from Draft to Finalized
+- make Finalized documents immutable
+- keep PDF binaries on the local filesystem while storing metadata in PostgreSQL
+- record important mutating actions in audit logs
+- provide local notification records for workflow and review activity
+- support acceptance with real local PDF and CSV test fixtures
 
-```bash
-docker compose up --build
-```
+## Implementation Summary
 
-API base URL:
+The backend is implemented in Go with Echo and sqlx. PostgreSQL is the only persistence layer for metadata, sessions, audit records, workflow records, configuration, notifications, and backup job metadata. PDF files are stored in a local filesystem volume and referenced by database records.
 
-```text
-http://localhost:8080
-```
-
-Health check:
-
-```bash
-curl http://localhost:8080/healthz
-```
-
-## Seed Users
-
-The application seeds three local accounts for acceptance testing:
-
-| Role | Username | Password |
-|---|---|---|
-| Admin | admin | Admin123! |
-| Editor | editor | Editor123! |
-| Reviewer | reviewer | Reviewer123! |
-
-## Required Auth Headers
-
-Authenticated endpoints require:
+The project includes:
 
 ```text
-Authorization: Bearer <token>
-X-Request-ID: unique request id
-X-Request-Timestamp: RFC3339 UTC timestamp
+cmd/server/          application entrypoint
+internal/app/        Echo routes, handlers, database access, auth, document logic
+migrations/          PostgreSQL schema
+public/              lightweight manual test UI
+testdata/            local PDF and CSV fixtures
+unit_tests/          unit/structure validation scripts
+API_tests/           API acceptance scripts
+docs/                API, design, RBAC, security, usage, testing, and requirement docs
+Dockerfile           single-container image definition
+docker-compose.yml   one-command local startup
 ```
 
-## Login
+## Core Modules
 
-```bash
-curl -s http://localhost:8080/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -H "X-Request-ID: req_login_$(date +%s)" \
-  -d '{"username":"editor","password":"Editor123!"}'
-```
+| Module | Responsibility |
+|---|---|
+| Authentication | local username/password login, bcrypt hashes, JWT issuance, sessions |
+| RBAC | Admin, Editor, Reviewer capability boundaries |
+| Documents | PDF upload, metadata, local storage, current version tracking |
+| Versions | document version metadata and revision ceiling support |
+| Workflow | Draft, Under Review, Redaction Pending, Approved, Finalized |
+| Redaction | staged redaction regions and Editor confirmation flow |
+| Annotations | Reviewer notes, highlights, strikethroughs, text stamps, dispositions |
+| Bates | Bates job metadata with prefix, suffix, padding, and start number |
+| Audit | structured records for mutating operations |
+| Notifications | local in-app notification records |
+| Configuration | Admin-managed system entries and workflow definitions |
+| Backup | local backup job metadata and recovery documentation |
 
-## Upload a PDF
+## Roles
 
-Use the editor token and a local sample PDF:
+IronPage Vault supports only three roles:
 
-```bash
-curl -s http://localhost:8080/api/documents \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Request-ID: req_upload_$(date +%s%N)" \
-  -H "X-Request-Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  -F "title=Sample Contract" \
-  -F "file=@testdata/pdfs/sample_contract.pdf"
-```
+| Role | Responsibility |
+|---|---|
+| Admin | user management, configuration, workflow definitions, templates, backup metadata |
+| Editor | PDF upload, version actions, redaction confirmation, Bates numbering, finalization |
+| Reviewer | document retrieval, annotations, annotation dispositions, review workflow movement |
 
-## Main API Areas
+Admin is intentionally not treated as a document editor. This keeps system administration separate from legal document manipulation.
 
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `POST /api/admin/users`
-- `GET /api/admin/users`
-- `GET /api/admin/config`
-- `PATCH /api/admin/config/:key`
-- `POST /api/admin/backup/run`
-- `POST /api/documents`
-- `POST /api/documents/batch`
-- `GET /api/documents`
-- `GET /api/documents/:id`
-- `GET /api/documents/:id/versions`
-- `POST /api/documents/:id/workflow/transition`
-- `POST /api/documents/:id/finalize`
-- `POST /api/documents/:id/redactions`
-- `POST /api/documents/:id/redactions/:redaction_id/confirm`
-- `POST /api/documents/:id/annotations`
-- `PATCH /api/annotations/:id/disposition`
-- `POST /api/documents/:id/bates`
-- `GET /api/audit-logs`
-- `GET /api/notifications`
-- `POST /api/notifications/:id/read`
+## Document Lifecycle
 
-## Role Matrix
-
-| Feature | Admin | Editor | Reviewer |
-|---|---:|---:|---:|
-| Users and config | yes | no | no |
-| Backup job metadata | yes | no | no |
-| PDF upload | no | yes | no |
-| Redaction and Bates | no | yes | no |
-| Annotation | no | no | yes |
-| Workflow movement | no | yes | yes |
-| Finalization | no | yes | no |
-| Read documents | yes | yes | yes |
-
-## Workflow
+Documents follow this required chain:
 
 ```text
 Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
 ```
 
-Finalized documents are immutable. Mutation APIs must reject changes after finalization.
+Finalized documents are treated as closed legal records. Mutation APIs should reject changes after Finalized status.
 
-## Test Data
+## Storage Model
 
-Test resources are kept under:
+IronPage Vault separates binary and relational data:
+
+- PostgreSQL stores users, sessions, documents, versions, audit logs, notifications, workflow history, redaction metadata, annotations, Bates jobs, config, and backup records.
+- The local filesystem stores PDF binaries.
+- Database version rows point to PDF files by path and include file hash, size, page count, and version number.
+
+This design keeps large binary assets out of ordinary relational queries while preserving traceability.
+
+## Offline Deployment Model
+
+The project is packaged for local standalone execution. The Compose setup uses one application container that includes PostgreSQL and the Go API process. Persistent data is stored through Docker volumes.
+
+Detailed startup and operation instructions are in:
 
 ```text
-testdata/pdfs/
-testdata/csv/
+docs/usage.md
 ```
 
-The repository includes small local files so acceptance can run without internet access.
+## Test UI
 
-## Test Runner
+A lightweight browser-based test UI is included for manual verification and demonstration. It is not a production frontend.
 
-Acceptance tests are organized as:
-
-```text
-unit_tests/
-API_tests/
-run_tests.sh
-```
-
-Run all tests with:
-
-```bash
-./run_tests.sh
-```
-
-The script should print a clear summary with total, passed, and failed counts.
-
-## Informal Test Frontend
-
-A non-production manual test page is provided at:
+Location:
 
 ```text
 public/manual-test.html
 ```
 
-It is only for manual verification. The backend API and test scripts remain the acceptance source.
+The test UI exists because the project needs a simple way to manually exercise login, upload, workflow, annotations, redaction, Bates, audit, and notification flows during acceptance.
 
-## Documentation
+## Test Data
 
-Detailed documentation should be kept in `docs/` and must stay consistent with implementation.
+The project includes local acceptance fixtures:
+
+```text
+testdata/pdfs/sample_contract.pdf
+testdata/csv/batch_import_manifest.csv
+```
+
+These files allow offline testing without downloading external documents.
+
+## Documentation Map
+
+| Document | Purpose |
+|---|---|
+| `AGENT.md` | single source of implementation and acceptance rules |
+| `CLAUDE.md` | pointer to `AGENT.md` to avoid duplicated rules |
+| `PLAN.md` | implementation plan and module breakdown |
+| `metadata.json` | project metadata and full prompt |
+| `docs/api-spec.md` | API interface reference and Swaggo notes |
+| `docs/design.md` | design rationale and architecture decisions |
+| `docs/requirement-check.md` | prompt-to-implementation completion review |
+| `docs/questions.md` | project Q&A and decision reasoning |
+| `docs/rbac.md` | role and capability matrix |
+| `docs/security.md` | local security model and acceptance checks |
+| `docs/usage.md` | startup, manual testing, and operational commands |
+| `docs/testing.md` | testing strategy and acceptance flow |
+
+## Swaggo / OpenAPI
+
+The project includes Swaggo dependencies. The intended generation flow is documented in `docs/api-spec.md`:
+
+```bash
+swag init -g cmd/server/main.go -o docs/swagger
+```
+
+Generated Swagger output should mirror the Markdown API specification.
+
+## Acceptance Position
+
+This repository is a working backend prototype plus acceptance documentation and local fixtures. `docs/requirement-check.md` records which requirements are complete, partial, or planned so reviewers can evaluate implementation status honestly.
