@@ -59,8 +59,8 @@ func (a *App) confirmRedaction(c echo.Context) error {
     _, v, err := a.currentVersion(c, docID); if err != nil { return apiErr(c, http.StatusNotFound, "VERSION_NOT_FOUND", "current version not found") }
     if d.CurrentVersion >= a.cfg.MaxVersions { return apiErr(c, http.StatusConflict, "VERSION_LIMIT_REACHED", "document already has 50 versions") }
     newVersion := d.CurrentVersion + 1
-    dst := strings.TrimSuffix(v.FilePath, ".pdf") + "_redacted_v" + strconv.Itoa(newVersion) + ".pdf"
-    if err := ApplyAppendOnlyPDFTransform(v.FilePath, dst, "redaction burn-in confirmed"); err != nil { return apiErr(c, http.StatusInternalServerError, "REDACTION_BURNIN_ERROR", "could not create redacted binary") }
+    dst := redactedVersionPath(v.FilePath, newVersion)
+    if err := ApplyAppendOnlyPDFTransform(v.FilePath, dst, redactionTransformMarker()); err != nil { return apiErr(c, http.StatusInternalServerError, "REDACTION_BURNIN_ERROR", "could not create redacted binary") }
     info, err := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
     if err != nil { return apiErr(c, http.StatusInternalServerError, "REDACTION_VERIFY_ERROR", "could not verify redacted binary") }
     verID := makeIdentifier("ver")
