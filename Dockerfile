@@ -22,6 +22,7 @@ ENV DB_NAME=ironpage
 ENV STORAGE_DIR=/var/lib/ironpage/storage
 ENV BACKUP_DIR=/var/lib/ironpage/backups
 ENV MIGRATIONS_DIR=/opt/ironpage/migrations
+ENV PUBLIC_DIR=/opt/ironpage/public
 ENV HTTP_ADDR=:8080
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/ironpage-entrypoint.sh"]
