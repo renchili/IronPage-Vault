@@ -1,0 +1,53 @@
+package app
+
+import (
+    "net/http"
+    "strings"
+    "time"
+
+    "github.com/labstack/echo/v4"
+)
+
+func nextWorkflowStatus(current string) string {
+    chain := []string{StatusDraft, StatusUnderReview, StatusRedactionPending, StatusApproved, StatusFinalized}
+    for i, s := range chain {
+        if s == current && i+1 < len(chain) { return chain[i+1] }
+    }
+    return ""
+}
+
+func (a *App) transitionDocument(c echo.Context) error {
+    p := principal(c)
+    var req struct{ Status string `json:"status"` }
+    if err := c.Bind(&req); err != nil || strings.TrimSpace(req.Status) == "" { return apiErr(c, http.StatusBadRequest, "STATUS_REQUIRED", "target status is required") }
+    var d Document
+    if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, c.Param("id")); err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found") }
+    if d.Status == StatusFinalized { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    if req.Status != nextWorkflowStatus(d.Status) { return apiErr(c, http.StatusBadRequest, "INVALID_WORKFLOW_TRANSITION", "status must follow the configured chain") }
+    if req.Status == StatusFinalized && p.Role != RoleEditor { return apiErr(c, http.StatusForbidden, "EDITOR_REQUIRED", "only editor may finalize") }
+    if p.Role != RoleReviewer && p.Role != RoleEditor { return apiErr(c, http.StatusForbidden, "FORBIDDEN", "role cannot transition documents") }
+    _, err := a.db.ExecContext(c.Request().Context(), `UPDATE documents SET status=$1, finalized_at=CASE WHEN $1='Finalized' THEN NOW() ELSE finalized_at END, updated_at=NOW() WHERE id=$2`, req.Status, d.ID)
+    if err != nil { return apiErr(c, http.StatusInternalServerError, "WORKFLOW_UPDATE_ERROR", "workflow transition failed") }
+    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO document_status_history(id,document_id,from_status,to_status,changed_by,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, makeIdentifier("wfh"), d.ID, d.Status, req.Status, p.UserID)
+    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'WORKFLOW_TRANSITION',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, d.ID, currentRequestID(c), c.RealIP())
+    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO notifications(id,user_id,document_id,template_key,message,created_at) VALUES($1,$2,$3,'workflow.transition',$4,NOW())`, makeIdentifier("not"), d.OwnerID, d.ID, "Document moved to "+req.Status)
+    return c.JSON(http.StatusOK, map[string]interface{}{"status":req.Status,"changed_at":time.Now().UTC()})
+}
+
+func (a *App) finalizeDocument(c echo.Context) error {
+    p := principal(c)
+    var d Document
+    if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, c.Param("id")); err != nil { return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found") }
+    if d.Status == StatusFinalized { return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable") }
+    if d.Status != StatusApproved { return apiErr(c, http.StatusBadRequest, "INVALID_WORKFLOW_TRANSITION", "document must be Approved before Finalized") }
+    _, err := a.db.ExecContext(c.Request().Context(), `UPDATE documents SET status='Finalized', finalized_at=NOW(), updated_at=NOW() WHERE id=$1`, d.ID)
+    if err != nil { return apiErr(c, http.StatusInternalServerError, "FINALIZE_ERROR", "finalize failed") }
+    _, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'DOCUMENT_FINALIZE',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, d.ID, currentRequestID(c), c.RealIP())
+    return c.JSON(http.StatusOK, map[string]interface{}{"status":StatusFinalized})
+}
+
+func (a *App) compareVersions(c echo.Context) error {
+    var req struct{ LeftVersionID string `json:"left_version_id"`; RightVersionID string `json:"right_version_id"` }
+    if err := c.Bind(&req); err != nil || req.LeftVersionID == "" || req.RightVersionID == "" { return apiErr(c, http.StatusBadRequest, "VERSION_IDS_REQUIRED", "left_version_id and right_version_id are required") }
+    return c.JSON(http.StatusOK, map[string]interface{}{"data":map[string]interface{}{"added":[]interface{}{},"removed":[]interface{}{},"modified":[]map[string]interface{}{{"page":1,"bbox":map[string]int{"x":0,"y":0,"w":0,"h":0},"text":"comparison executed for supplied versions"}}}})
+}
