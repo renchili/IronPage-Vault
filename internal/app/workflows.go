@@ -10,7 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"ironpage-vault/internal/core"
-	"ironpage-vault/internal/platform"
+	"ironpage-vault/internal/service"
 )
 
 func nextWorkflowStatus(current string) string {
@@ -86,6 +86,16 @@ func versionComparisonResult(left DocumentVersion, right DocumentVersion, leftRa
 }
 
 func versionTextComparisonResult(left DocumentVersion, right DocumentVersion, leftRaw []byte, rightRaw []byte) map[string]interface{} {
+	return service.CompareVersionFiles(
+		service.VersionFile{ID: left.ID, FilePath: left.FilePath, SHA256: left.FileSHA256, SizeBytes: left.SizeBytes, PageCount: left.PageCount},
+		service.VersionFile{ID: right.ID, FilePath: right.FilePath, SHA256: right.FileSHA256, SizeBytes: right.SizeBytes, PageCount: right.PageCount},
+	)
+} {
+	return service.CompareVersionFiles(
+		service.VersionFile{ID: left.ID, FilePath: left.FilePath, SHA256: left.FileSHA256, SizeBytes: left.SizeBytes, PageCount: left.PageCount},
+		service.VersionFile{ID: right.ID, FilePath: right.FilePath, SHA256: right.FileSHA256, SizeBytes: right.SizeBytes, PageCount: right.PageCount},
+	)
+} {
 	result := versionComparisonResult(left, right, leftRaw, rightRaw)
 	result["comparison_kind"] = "text_bbox"
 	result["text_diff_supported"] = true

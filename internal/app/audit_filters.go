@@ -5,7 +5,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"ironpage-vault/internal/store"
+	"ironpage-vault/internal/repository"
 )
 
 func (a *App) auditLogsFiltered(c echo.Context) error {
@@ -13,7 +13,7 @@ func (a *App) auditLogsFiltered(c echo.Context) error {
 		return apiErr(c, http.StatusForbidden, "AUDIT_ADMIN_REQUIRED", "only admin may list audit logs")
 	}
 	page, size := parsePage(c, a.cfg)
-	filters := store.AuditLogFilters{
+	filters := repository.AuditLogFilters{
 		ActorUserID: c.QueryParam("actor_user_id"),
 		DocumentID:  c.QueryParam("document_id"),
 		ActionType:  c.QueryParam("action_type"),
@@ -22,10 +22,8 @@ func (a *App) auditLogsFiltered(c echo.Context) error {
 		CreatedFrom: c.QueryParam("created_from"),
 		CreatedTo:   c.QueryParam("created_to"),
 	}
-	query, args := store.BuildAuditLogListQuery(filters, size, (page-1)*size)
-
-	rows := []map[string]interface{}{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, query, args...); err != nil {
+	rows, err := repository.New(a.db).ListAuditLogs(c.Request().Context(), filters, size, (page-1)*size)
+	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "AUDIT_QUERY_ERROR", "could not list audit logs")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
