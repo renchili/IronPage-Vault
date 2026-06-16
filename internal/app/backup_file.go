@@ -31,7 +31,7 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 	}
 	target := filepath.Join(a.cfg.BackupDir, id+".json")
 	snapshot, err := a.collectBackupSnapshot(c, id)
-	artifacts, artifactErr := platform.RunBackupArtifacts(id, a.cfg.DatabaseURL, a.cfg.StorageDir, a.cfg.BackupDir)
+	artifacts, artifactErr := platform.RunBackupArtifacts(id, a.cfg.DSN(), a.cfg.StorageDir, a.cfg.BackupDir)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_SNAPSHOT_ERROR", "could not collect backup metadata snapshot")
 	}
