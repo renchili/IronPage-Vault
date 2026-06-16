@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"ironpage-vault/internal/core"
+	"ironpage-vault/internal/platform"
 )
 
 func nextWorkflowStatus(current string) string {
@@ -84,6 +85,24 @@ func versionComparisonResult(left DocumentVersion, right DocumentVersion, leftRa
 	return result
 }
 
+func versionTextComparisonResult(left DocumentVersion, right DocumentVersion, leftRaw []byte, rightRaw []byte) map[string]interface{} {
+	result := versionTextComparisonResult(left, right, leftRaw, rightRaw)
+	result["comparison_kind"] = "text_and_binary"
+	result["text_diff_supported"] = true
+	leftText, leftMode, leftErr := platform.ExtractPDFText(left.FilePath)
+	rightText, rightMode, rightErr := platform.ExtractPDFText(right.FilePath)
+	result["text_extract_left_mode"] = leftMode
+	result["text_extract_right_mode"] = rightMode
+	if leftErr != nil || rightErr != nil {
+		result["text_diff_supported"] = false
+		return result
+	}
+	if leftText != rightText {
+		result["modified"] = []map[string]interface{}{{"page": 1, "bbox": map[string]int{"x": 0, "y": 0, "w": 0, "h": 0}, "text": "extracted text differs between supplied versions"}}
+	}
+	return result
+}
+
 func (a *App) compareVersions(c echo.Context) error {
 	p := principal(c)
 	var req struct {
@@ -120,5 +139,5 @@ func (a *App) compareVersions(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "RIGHT_FILE_READ_ERROR", "could not read right version")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": versionComparisonResult(left, right, leftRaw, rightRaw)})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": versionTextComparisonResult(left, right, leftRaw, rightRaw)})
 }

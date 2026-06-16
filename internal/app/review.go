@@ -37,9 +37,9 @@ func mutableError(c echo.Context, err error) error {
 
 func (a *App) proposeRedaction(c echo.Context) error {
 	p := principal(c)
-    docID := c.Param("id")
+	docID := c.Param("id")
 	d, err := a.ensureMutable(c, docID)
-    if err != nil {
+	if err != nil {
 		return mutableError(c, err)
 	}
 	if !canEditDocumentObject(p, d) {
@@ -47,11 +47,11 @@ func (a *App) proposeRedaction(c echo.Context) error {
 	}
 	var req struct {
 		Page   int     `json:"page"`
-        X      float64 `json:"x"`
-        Y      float64 `json:"y"`
-        Width  float64 `json:"width"`
-        Height float64 `json:"height"`
-        Reason string  `json:"reason"`
+		X      float64 `json:"x"`
+		Y      float64 `json:"y"`
+		Width  float64 `json:"width"`
+		Height float64 `json:"height"`
+		Reason string  `json:"reason"`
 	}
 	if err := c.Bind(&req); err != nil || !IsValidRedactionRegion(req.Page, req.Width, req.Height) {
 		return apiErr(c, http.StatusBadRequest, "INVALID_REDACTION_REGION", "page and positive coordinates are required")
@@ -87,16 +87,16 @@ func (a *App) listRedactions(c echo.Context) error {
 
 func (a *App) confirmRedaction(c echo.Context) error {
 	p := principal(c)
-    docID := c.Param("id")
+	docID := c.Param("id")
 	d, err := a.ensureMutable(c, docID)
-    if err != nil {
+	if err != nil {
 		return mutableError(c, err)
 	}
 	if !canEditDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope")
 	}
 	_, v, err := a.currentVersion(c, docID)
-    if err != nil {
+	if err != nil {
 		return apiErr(c, http.StatusNotFound, "VERSION_NOT_FOUND", "current version not found")
 	}
 	if d.CurrentVersion >= a.cfg.MaxVersions {
@@ -113,7 +113,7 @@ func (a *App) confirmRedaction(c echo.Context) error {
 	}
 	verID := makeIdentifier("ver")
 	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
-    if err != nil {
+	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
@@ -132,9 +132,9 @@ func (a *App) confirmRedaction(c echo.Context) error {
 
 func (a *App) createAnnotation(c echo.Context) error {
 	p := principal(c)
-    docID := c.Param("id")
+	docID := c.Param("id")
 	d, err := a.ensureMutable(c, docID)
-    if err != nil {
+	if err != nil {
 		return mutableError(c, err)
 	}
 	if !canReviewDocumentObject(p, d) {
@@ -142,13 +142,13 @@ func (a *App) createAnnotation(c echo.Context) error {
 	}
 	var req struct {
 		Type        string  `json:"type"`
-        Page        int     `json:"page"`
-        X           float64 `json:"x"`
-        Y           float64 `json:"y"`
-        Width       float64 `json:"width"`
-        Height      float64 `json:"height"`
-        Comment     string  `json:"comment"`
-        Disposition string  `json:"disposition"`
+		Page        int     `json:"page"`
+		X           float64 `json:"x"`
+		Y           float64 `json:"y"`
+		Width       float64 `json:"width"`
+		Height      float64 `json:"height"`
+		Comment     string  `json:"comment"`
+		Disposition string  `json:"disposition"`
 	}
 	if err := c.Bind(&req); err != nil || req.Page < 1 || !IsValidAnnotationComment(req.Comment) {
 		return apiErr(c, http.StatusBadRequest, "INVALID_ANNOTATION", "valid page and comment up to 2000 characters are required")
@@ -207,7 +207,7 @@ func (a *App) updateAnnotationDisposition(c echo.Context) error {
 		return apiErr(c, http.StatusNotFound, "ANNOTATION_NOT_FOUND", "annotation not found")
 	}
 	d, err := a.ensureMutable(c, docID)
-    if err != nil {
+	if err != nil {
 		return mutableError(c, err)
 	}
 	if !canReviewDocumentObject(p, d) {

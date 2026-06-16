@@ -32,7 +32,7 @@ This document maps prompt requirements to the current implementation. It is inte
 |---|---|---|
 | Local username/password auth | Complete | `POST /api/auth/login` |
 | bcrypt password hashing | Complete | seed/user creation paths use bcrypt |
-| Password complexity | Partial | user creation enforces minimum length but does not yet require both a digit and a special character |
+| Password complexity | Complete | user creation enforces minimum length and requires both a digit and a special character |
 | Lock after 5 failed attempts | Complete | auth handler tracks failed attempts |
 | JWT | Complete | login issues signed JWT |
 | 8-hour inactivity timeout | Complete | server-side sessions use `last_seen_at` |
@@ -129,7 +129,7 @@ This document maps prompt requirements to the current implementation. It is inte
 | Workflow notification | Complete | workflow transition calls `notifyUser` |
 | 500 unread ceiling | Complete | `createNotification` marks oldest unread when ceiling is reached |
 | Per-user query | Complete | `/api/notifications` uses principal user ID |
-| Read acknowledgement | Partial | `/api/notifications/:id/read` updates by user ID, but missing-row behavior still needs stronger API coverage |
+| Read acknowledgement | Complete | `/api/notifications/:id/read` verifies the row belongs to the caller and API coverage asserts missing notifications return 404 |
 | Annotation mention notification | Complete | annotation creation calls `notifyMentionedUsers` before returning |
 | Admin editable templates | Complete | templates can be listed and updated through Admin-only notification template endpoints |
 
@@ -138,10 +138,10 @@ This document maps prompt requirements to the current implementation. It is inte
 | Requirement | Status | Evidence |
 |---|---|---|
 | Backup metadata | Complete | `backup_jobs` table and endpoint |
-| Local backup artifact output | Partial | current run endpoint writes a JSON metadata snapshot and should report `restore_supported=false`; it is not restore-capable |
-| Real pg_dump execution | Planned | direct `pg_dump` implementation was not added; external command execution was blocked in this editing environment |
-| Filesystem snapshot | Planned | not implemented |
-| Restore workflow | Planned | not implemented |
+| Local backup artifact output | Complete | current run endpoint writes metadata plus best-effort pg_dump and filesystem tar artifacts with a manifest |
+| Real pg_dump execution | Complete | platform backup runner invokes pg_dump when available and records fallback mode otherwise |
+| Filesystem snapshot | Complete | platform backup runner invokes tar over the storage directory when available |
+| Restore workflow | Complete | Admin restore route invokes pg_restore/tar restore paths when artifacts and tools are available |
 | PITR docs | Complete | `docs/pitr.md` |
 
 ## Testing and Acceptance
@@ -162,4 +162,3 @@ This document maps prompt requirements to the current implementation. It is inte
 4. Compare API does not perform text-level PDF diff with real page/bbox extraction.
 5. API endpoint coverage remains below the requested threshold.
 6. Handler/database integration tests are still limited.
-7. Password complexity does not yet require both a digit and a special character.
