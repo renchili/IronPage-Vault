@@ -54,6 +54,12 @@ The policy depends only on principal user ID, principal role, document owner ID,
 
 The SQL list filter remains outside `internal/core`. A WHERE clause is persistence/query-adapter logic, not domain policy. It should eventually move to `internal/store`, not to `internal/core`.
 
+## Why workflow chain rules are core rules
+
+The workflow status chain is domain policy. It decides the valid next legal document status and does not require Echo, SQL, filesystem access, or response formatting.
+
+For that reason `NextWorkflowStatus` and `WorkflowStatusChain` belong in `internal/core`. `internal/app` may temporarily keep a wrapper for handler compatibility, but the real rule should not live in the API adapter layer.
+
 ## Why crypto and digest helpers are platform code
 
 Encryption and digesting are implementation adapters. They do not decide whether a user may perform an action and they do not map HTTP requests. They provide low-level capabilities used by higher-level workflows.

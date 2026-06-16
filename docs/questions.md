@@ -190,3 +190,26 @@ app/service caller -> internal/platform PDF implementation
 
 After callers move, the app wrapper can be deleted.
 
+
+
+## Q23. Why move workflow chain rules into internal/core?
+
+The workflow chain is pure domain policy:
+
+```text
+Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
+```
+
+It does not need Echo, SQL, filesystem access, or request/response mapping. Moving `NextWorkflowStatus` and `WorkflowStatusChain` into `internal/core` makes the lifecycle rule testable without API handlers.
+
+The temporary wrapper strategy is:
+
+```text
+handler -> internal/app compatibility wrapper -> internal/core workflow rule
+```
+
+The follow-up cleanup is:
+
+```text
+handler/service -> internal/core workflow rule
+```

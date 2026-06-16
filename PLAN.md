@@ -30,7 +30,8 @@ internal/platform   PDF, filesystem, digest, crypto, and backup adapters
 ### 3.1 Migration sequence
 
 1. Move pure domain validation rules from `internal/app/rules.go` to `internal/core`.
-2. Move object-level document access policy from `internal/app/access.go` to `internal/core`.
+2. Move workflow chain rules from `internal/app/workflows.go` to `internal/core`.
+3. Move object-level document access policy from `internal/app/access.go` to `internal/core`.
 3. Move crypto and digest helpers from `internal/app` to `internal/platform`.
 4. Keep temporary app wrapper functions only to avoid a large handler rewrite in the same PR.
 5. Move handlers and services to call `internal/core` and `internal/platform` directly.
@@ -51,6 +52,10 @@ The list-query SQL filter is different. A WHERE clause knows database columns an
 Crypto, digest, and PDF helpers provide low-level infrastructure capabilities. They do not belong in `internal/app` because the API layer should not own AES-GCM encryption, SHA-256 hashing, PDF inspection, or filesystem PDF transforms.
 
 The real implementations now belong in `internal/platform`. Temporary app wrappers preserve compatibility until callers are moved directly to platform or service-layer abstractions.
+
+### 3.4 Current workflow migration decision
+
+The workflow chain is a domain rule and belongs in `internal/core`. The API layer keeps a temporary wrapper until handlers or service-layer use cases call core directly.
 
 ## 4. Core Domain Modules
 

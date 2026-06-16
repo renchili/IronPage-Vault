@@ -45,6 +45,7 @@ docker-compose.yml   one-command local startup
 Current migration status:
 
 - domain validation rules have moved from `internal/app` to `internal/core`
+- workflow chain rules have moved from `internal/app` to `internal/core`
 - object-level access policy has moved from `internal/app` to `internal/core`
 - crypto, digest, and PDF helper implementations have moved from `internal/app` to `internal/platform`
 - `internal/app` keeps temporary compatibility wrappers while handlers are migrated in small PRs
