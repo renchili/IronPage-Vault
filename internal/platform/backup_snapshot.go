@@ -18,10 +18,6 @@ type BackupMetadataSnapshot struct {
 	Tables    []BackupTableCount `json:"tables"`
 }
 
-func BackupSnapshotTables() []string {
-	return []string{"users", "documents", "document_versions", "audit_logs", "notifications", "backup_jobs"}
-}
-
 func NewBackupMetadataSnapshot(id string, database string, tables []BackupTableCount, createdAt time.Time) BackupMetadataSnapshot {
 	return BackupMetadataSnapshot{BackupID: id, CreatedAt: createdAt, Database: database, Tables: tables}
 }
