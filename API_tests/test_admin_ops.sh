@@ -61,6 +61,13 @@ fi
 
 code=$(auth_get "$ADMIN_TOKEN" /api/admin/backup/jobs)
 expect_code "admin backup jobs" 200 "$code" || FAIL=$((FAIL+1))
+if ! grep -q "full_backup" "$BODY"; then
+  echo "FAIL api: backup jobs response does not include full_backup"
+  cat "$BODY"
+  FAIL=$((FAIL+1))
+else
+  echo "PASS api: backup jobs include full_backup"
+fi
 code=$(auth_get "$ADMIN_TOKEN" /api/notifications)
 expect_code "admin notifications" 200 "$code" || FAIL=$((FAIL+1))
 

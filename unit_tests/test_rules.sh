@@ -47,6 +47,11 @@ check "redaction list hides coordinate plaintext" "! grep -q 'SELECT id,document
 check "restore strict failure path exists" "grep -q 'RunRestoreArtifactsStrict' internal/app/restore.go"
 check "self-contained compare test exists" "test -f API_tests/test_compare_self_contained.sh"
 
+check "structure rules suite exists" "test -x unit_tests/test_structure_rules.sh"
+check "strict dependency failure API test exists" "test -x API_tests/test_strict_dependency_failures.sh"
+check "bates sequence multi doc API test exists" "test -x API_tests/test_bates_sequence_multi_doc.sh"
+check "platform strict tests exist" "test -f internal/platform/pdf_strict_test.go && test -f internal/platform/backup_strict_test.go"
+
 TOTAL=$((PASS+FAIL))
 echo "UNIT SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi

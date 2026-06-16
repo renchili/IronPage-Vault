@@ -38,3 +38,13 @@ The latest static recheck reject items are addressed by `API_tests/test_admin_op
 - Backup validation checks strict modes and artifact file existence.
 - Audit filter validation checks returned rows match the requested action.
 - Mention validation checks annotation mention notification side effects.
+
+## Complete static recheck closure
+
+The remaining static recheck gaps are covered by the following additional checks:
+
+- Strict dependency failure behavior is guarded by `API_tests/test_strict_dependency_failures.sh` and platform strict unit tests.
+- Bates sequence allocation across multiple documents is covered by `API_tests/test_bates_sequence_multi_doc.sh`.
+- Backup job and artifact evidence is strengthened in `API_tests/test_admin_ops.sh`.
+- Reject-condition regressions are guarded by `unit_tests/test_structure_rules.sh`.
+- `run_tests.sh` invokes the new structure, strict dependency, and Bates sequence coverage.
