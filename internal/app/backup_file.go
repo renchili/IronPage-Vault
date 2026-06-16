@@ -31,6 +31,7 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 	}
 	target := filepath.Join(a.cfg.BackupDir, id+".json")
 	snapshot, err := a.collectBackupSnapshot(c, id)
+	artifacts, artifactErr := platform.RunBackupArtifacts(id, a.cfg.DatabaseURL, a.cfg.StorageDir, a.cfg.BackupDir)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_SNAPSHOT_ERROR", "could not collect backup metadata snapshot")
 	}
@@ -42,7 +43,7 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_CREATE_ERROR", "could not record backup metadata snapshot job")
 	}
 	a.audit(c, p.UserID, "BACKUP_CREATE", "", nil)
-	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "status": "Completed", "target_path": target, "kind": "metadata_snapshot", "created_at": snapshot.CreatedAt, "restore_supported": false})
+	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "status": "Completed", "target_path": target, "kind": "metadata_snapshot", "created_at": snapshot.CreatedAt, "restore_supported": artifactErr == nil && artifacts.RestoreSupported, "artifacts": artifacts})
 }
 
 func (a *App) runBackupFile(c echo.Context) error {
