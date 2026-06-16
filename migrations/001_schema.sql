@@ -72,6 +72,10 @@ CREATE TABLE IF NOT EXISTS redaction_proposals (
   y DOUBLE PRECISION NOT NULL,
   width DOUBLE PRECISION NOT NULL,
   height DOUBLE PRECISION NOT NULL,
+  x_ciphertext TEXT NOT NULL DEFAULT '',
+  y_ciphertext TEXT NOT NULL DEFAULT '',
+  width_ciphertext TEXT NOT NULL DEFAULT '',
+  height_ciphertext TEXT NOT NULL DEFAULT '',
   reason TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'Staged',
   created_by TEXT NOT NULL REFERENCES users(id),
@@ -105,6 +109,12 @@ CREATE TABLE IF NOT EXISTS bates_jobs (
   start_number INTEGER NOT NULL DEFAULT 1,
   created_by TEXT NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS bates_sequences (
+  scope TEXT PRIMARY KEY,
+  next_number INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (

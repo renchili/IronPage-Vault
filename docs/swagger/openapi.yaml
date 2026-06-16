@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info:
+  title: IronPage Vault API
+  version: 1.0.0
+paths:
+  /api/auth/login:
+    post:
+      summary: Login
+      responses:
+        "200": { description: OK }
+  /api/documents:
+    get:
+      summary: List documents
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Upload document
+      responses:
+        "201": { description: Created }
+  /api/documents/{id}/redactions:
+    post:
+      summary: Propose redaction
+      responses:
+        "201": { description: Created }
+  /api/documents/{id}/redactions/{redaction_id}/confirm:
+    post:
+      summary: Confirm redaction
+      responses:
+        "200": { description: OK }
+  /api/documents/{id}/bates:
+    post:
+      summary: Apply Bates numbering
+      responses:
+        "201": { description: Created }
+  /api/documents/compare:
+    post:
+      summary: Compare document versions
+      responses:
+        "200": { description: OK }
+  /api/audit-logs:
+    get:
+      summary: List audit logs
+      responses:
+        "200": { description: OK }
+  /api/admin/backup/run:
+    post:
+      summary: Run backup
+      responses:
+        "201": { description: Created }
+  /api/admin/backup/restore:
+    post:
+      summary: Restore backup
+      responses:
+        "202": { description: Accepted }
