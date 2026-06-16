@@ -26,6 +26,26 @@ expect_code() {
   return 1
 }
 
+expect_json_field() {
+  local name="$1" field="$2" expected="$3"
+  local actual
+  actual="$(json_field "$field")"
+  if [ "$actual" = "$expected" ]; then echo "PASS api: $name"; return 0; fi
+  echo "FAIL api: $name field=$field expected=$expected actual=$actual"
+  [ -f "$BODY" ] && cat "$BODY" && echo
+  return 1
+}
+
+expect_json_nonempty() {
+  local name="$1" field="$2"
+  local actual
+  actual="$(json_field "$field")"
+  if [ -n "$actual" ]; then echo "PASS api: $name"; return 0; fi
+  echo "FAIL api: $name field=$field empty"
+  [ -f "$BODY" ] && cat "$BODY" && echo
+  return 1
+}
+
 login_as() {
   local user="$1" password="$2"
   curl -s -o "$BODY" -w "%{http_code}" "$BASE_URL/api/auth/login" \

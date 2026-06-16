@@ -26,3 +26,7 @@ fi
 if [ -x API_tests/test_finalized_immutability.sh ]; then
   API_tests/test_finalized_immutability.sh
 fi
+
+if [ -x API_tests/test_compare_self_contained.sh ]; then
+  API_tests/test_compare_self_contained.sh
+fi
