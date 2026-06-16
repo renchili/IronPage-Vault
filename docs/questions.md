@@ -66,6 +66,8 @@ It does not perform text extraction, real added/removed segment detection, page-
 
 Audit writes are no longer only direct per-handler inserts. A shared audit helper exists, and the audit list route has a filtered implementation for actor, document, action, request, source, and time-range review.
 
+The audit list route must remain Admin-only. Non-Admin users should receive 403 when calling `/api/audit-logs`.
+
 The feature still needs API tests that create known events and then verify the filters return the expected records.
 
 ## Q11. What changed in notifications?
