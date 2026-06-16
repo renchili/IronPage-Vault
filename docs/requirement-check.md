@@ -32,6 +32,7 @@ This document maps prompt requirements to the current implementation. It is inte
 |---|---|---|
 | Local username/password auth | Complete | `POST /api/auth/login` |
 | bcrypt password hashing | Complete | seed/user creation paths use bcrypt |
+| Password complexity | Partial | user creation enforces minimum length but does not yet require both a digit and a special character |
 | Lock after 5 failed attempts | Complete | auth handler tracks failed attempts |
 | JWT | Complete | login issues signed JWT |
 | 8-hour inactivity timeout | Complete | server-side sessions use `last_seen_at` |
@@ -161,3 +162,4 @@ This document maps prompt requirements to the current implementation. It is inte
 4. Compare API does not perform text-level PDF diff with real page/bbox extraction.
 5. API endpoint coverage remains below the requested threshold.
 6. Handler/database integration tests are still limited.
+7. Password complexity does not yet require both a digit and a special character.
