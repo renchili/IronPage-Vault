@@ -90,30 +90,6 @@ func versionTextComparisonResult(left DocumentVersion, right DocumentVersion, le
 		service.VersionFile{ID: left.ID, FilePath: left.FilePath, SHA256: left.FileSHA256, SizeBytes: left.SizeBytes, PageCount: left.PageCount},
 		service.VersionFile{ID: right.ID, FilePath: right.FilePath, SHA256: right.FileSHA256, SizeBytes: right.SizeBytes, PageCount: right.PageCount},
 	)
-} {
-	return service.CompareVersionFiles(
-		service.VersionFile{ID: left.ID, FilePath: left.FilePath, SHA256: left.FileSHA256, SizeBytes: left.SizeBytes, PageCount: left.PageCount},
-		service.VersionFile{ID: right.ID, FilePath: right.FilePath, SHA256: right.FileSHA256, SizeBytes: right.SizeBytes, PageCount: right.PageCount},
-	)
-} {
-	result := versionComparisonResult(left, right, leftRaw, rightRaw)
-	result["comparison_kind"] = "text_bbox"
-	result["text_diff_supported"] = true
-	result["bbox_supported"] = true
-	leftBlocks, leftMode, leftErr := platform.ExtractPDFTextBlocks(left.FilePath)
-	rightBlocks, rightMode, rightErr := platform.ExtractPDFTextBlocks(right.FilePath)
-	result["text_extract_left_mode"] = leftMode
-	result["text_extract_right_mode"] = rightMode
-	if leftErr != nil || rightErr != nil {
-		result["text_diff_supported"] = false
-		result["bbox_supported"] = false
-		return result
-	}
-	added, removed, modified := platform.DiffTextBlocks(leftBlocks, rightBlocks)
-	result["added"] = added
-	result["removed"] = removed
-	result["modified"] = modified
-	return result
 }
 
 func (a *App) compareVersions(c echo.Context) error {
