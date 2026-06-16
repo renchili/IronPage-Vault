@@ -60,6 +60,12 @@ The workflow status chain is domain policy. It decides the valid next legal docu
 
 For that reason `NextWorkflowStatus` and `WorkflowStatusChain` belong in `internal/core`. `internal/app` may temporarily keep a wrapper for handler compatibility, but the real rule should not live in the API adapter layer.
 
+## Why notification cap policy is a core rule
+
+The unread notification cap decides how many old unread records must be marked read before inserting a new notification. The calculation itself is deterministic domain policy and does not require Echo or SQL.
+
+For that reason `NotificationTrimCount` and `MaxUnreadNotifications` belong in `internal/core`. The SQL update that marks old rows as read remains outside core because it is persistence adapter behavior.
+
 ## Why crypto and digest helpers are platform code
 
 Encryption and digesting are implementation adapters. They do not decide whether a user may perform an action and they do not map HTTP requests. They provide low-level capabilities used by higher-level workflows.

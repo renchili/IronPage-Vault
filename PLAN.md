@@ -31,7 +31,8 @@ internal/platform   PDF, filesystem, digest, crypto, and backup adapters
 
 1. Move pure domain validation rules from `internal/app/rules.go` to `internal/core`.
 2. Move workflow chain rules from `internal/app/workflows.go` to `internal/core`.
-3. Move object-level document access policy from `internal/app/access.go` to `internal/core`.
+3. Move notification unread-cap policy from `internal/app/notifications.go` to `internal/core`.
+4. Move object-level document access policy from `internal/app/access.go` to `internal/core`.
 3. Move crypto and digest helpers from `internal/app` to `internal/platform`.
 4. Keep temporary app wrapper functions only to avoid a large handler rewrite in the same PR.
 5. Move handlers and services to call `internal/core` and `internal/platform` directly.
@@ -56,6 +57,10 @@ The real implementations now belong in `internal/platform`. Temporary app wrappe
 ### 3.4 Current workflow migration decision
 
 The workflow chain is a domain rule and belongs in `internal/core`. The API layer keeps a temporary wrapper until handlers or service-layer use cases call core directly.
+
+### 3.5 Current notification migration decision
+
+The unread-cap calculation is domain policy and belongs in `internal/core`. The SQL update and insert remain outside core because persistence behavior should later move to `internal/store`.
 
 ## 4. Core Domain Modules
 
