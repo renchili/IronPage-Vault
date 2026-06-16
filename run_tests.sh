@@ -30,3 +30,7 @@ fi
 if [ -x API_tests/test_compare_self_contained.sh ]; then
   API_tests/test_compare_self_contained.sh
 fi
+
+if [ -x API_tests/test_redaction_coordinate_ciphertext.sh ]; then
+  API_tests/test_redaction_coordinate_ciphertext.sh
+fi

@@ -78,7 +78,7 @@ func (a *App) proposeRedaction(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction coordinate")
 	}
 	id := makeIdentifier("red")
-	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO redaction_proposals(id,document_id,page,x,y,width,height,x_ciphertext,y_ciphertext,width_ciphertext,height_ciphertext,reason,status,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Staged',$13,NOW())`, id, docID, req.Page, req.X, req.Y, req.Width, req.Height, xCipher, yCipher, widthCipher, heightCipher, reason, p.UserID)
+	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO redaction_proposals(id,document_id,page,x,y,width,height,x_ciphertext,y_ciphertext,width_ciphertext,height_ciphertext,reason,status,created_by,created_at) VALUES($1,$2,$3,0,0,0,0,$4,$5,$6,$7,$8,'Staged',$9,NOW())`, id, docID, req.Page, xCipher, yCipher, widthCipher, heightCipher, reason, p.UserID)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_CREATE_ERROR", "could not stage redaction")
 	}
@@ -96,7 +96,7 @@ func (a *App) listRedactions(c echo.Context) error {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope")
 	}
 	rows := []map[string]interface{}{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,page,x,y,width,height,reason,status,created_by,created_at FROM redaction_proposals WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,page,status,created_by,created_at FROM redaction_proposals WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_QUERY_ERROR", "could not list redactions")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
