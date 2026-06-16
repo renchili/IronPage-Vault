@@ -80,9 +80,9 @@ The remaining work is API validation of mention creation and read acknowledgemen
 
 ## Q12. What does backup currently do?
 
-The backup endpoint now creates a local backup artifact marker and records a completed backup job. This is better than only inserting queued metadata.
+The backup run endpoint currently creates a metadata snapshot JSON file and records a completed backup job with `kind=metadata_snapshot`.
 
-It is still not a full backup implementation. Final acceptance requires a real database dump, a filesystem artifact or snapshot for stored PDFs, and a restore-oriented verification path.
+This metadata snapshot is not a restore-capable backup. The response explicitly reports `restore_supported=false`. Final acceptance still requires a real database dump, a filesystem artifact or snapshot for stored PDFs, and a restore-oriented verification path.
 
 ## Q13. What API coverage is still missing?
 
@@ -98,7 +98,7 @@ Current honest statuses include:
 
 - Redaction: incomplete for forensic removal.
 - Bates: partial because version creation exists but visible page numbering does not.
-- Backup: partial because a local artifact exists but full dump and snapshot do not.
+- Backup: partial because a metadata snapshot exists but no full dump, filesystem snapshot, or restore path exists.
 - Compare: partial because it is not text and bounding-box aware.
 - API coverage: partial because many mutating routes are not fully exercised.
 
