@@ -213,3 +213,16 @@ The follow-up cleanup is:
 ```text
 handler/service -> internal/core workflow rule
 ```
+
+
+## Q24. Why move notification unread-cap policy into internal/core?
+
+The rule that decides how many unread notifications must be trimmed is deterministic domain policy:
+
+```text
+trim = unread - limit + 1 when unread >= limit
+```
+
+It does not need Echo, SQL, or HTTP response formatting. It belongs in `internal/core`.
+
+The database update that marks rows as read remains outside core because SQL and persistence side effects belong in the app/store migration path.
