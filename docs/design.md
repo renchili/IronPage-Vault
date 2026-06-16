@@ -52,7 +52,13 @@ Object access decides whether a principal can read, edit, review, or transition 
 
 The policy depends only on principal user ID, principal role, document owner ID, and document status. It does not need Echo, sqlx, PostgreSQL, request headers, or response formatting. For that reason the access policy belongs in `internal/core`.
 
-The SQL list filter remains outside `internal/core`. A WHERE clause is persistence/query-adapter logic, not domain policy. It should eventually move to `internal/store`, not to `internal/core`.
+## Why document list filters are store logic
+
+The document list filter turns a principal into a SQL WHERE clause and query arguments. That output contains database column names and placeholder syntax, so it is persistence adapter logic.
+
+It does not belong in `internal/core`, because core must not emit SQL fragments or know storage schema details. It also should not remain owned by `internal/app`, because HTTP handlers should not own query construction.
+
+The current migration places `DocumentListWhereClause` in `internal/store`. `internal/app` keeps a small wrapper only to preserve current handler calls while larger repository methods are extracted later.
 
 ## Why workflow chain rules are core rules
 
@@ -78,18 +84,7 @@ Encryption and digesting are implementation adapters. They do not decide whether
 
 For that reason AES-GCM string encryption and SHA-256 reader digesting belong in `internal/platform` instead of `internal/app`.
 
-The migration keeps temporary app wrappers so existing handlers can continue calling the old helper names while follow-up PRs move callers directly to `internal/platform`. The target direction is:
-
-```text
-service/app caller -> internal/platform crypto/digest adapter
-```
-
-not:
-
-```text
-service/app caller -> internal/app helper hidden inside API package
-```
-
+The migration keeps temporary app wrappers so existing handlers can continue calling the old helper names while follow-up PRs move callers directly to `internal/platform`.
 
 ## Why PDF helpers are platform code
 
