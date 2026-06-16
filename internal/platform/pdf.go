@@ -69,7 +69,7 @@ func InspectPDF(path string, maxBytes int64, maxPages int) (PDFInfo, error) {
 }
 
 func AppendPDFMetadataMarker(raw []byte, marker string) []byte {
-	return append(raw, []byte("\n% IronPage Vault metadata marker: "+marker+"\n")...)
+	return append(raw, []byte("\n% IronPage Vault transform: "+marker+"\n")...)
 }
 
 func AppendPDFTransformMarker(raw []byte, marker string) []byte {
