@@ -77,7 +77,7 @@ func Run(cfg Config) error {
     api.PATCH("/annotations/:id/disposition", a.updateAnnotationDisposition, requireRole(RoleReviewer))
     api.GET("/audit-logs", a.auditLogsFiltered, requireRole(RoleAdmin))
     api.GET("/notifications", a.notifications)
-    api.POST("/notifications/:id/read", a.readNotification)
+    api.POST("/notifications/:id/read", a.readNotificationChecked)
     return e.Start(cfg.HTTPAddr)
 }
 
