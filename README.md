@@ -72,6 +72,18 @@ Current migration status:
 | Backup | local backup job metadata and recovery documentation |
 | Testing | Docker-based acceptance, API scripts, unit checks, local PDF/CSV fixtures |
 
+## Testing Entry Point
+
+`run_tests.sh` is the unified local verification entry point. It runs:
+
+```text
+unit_tests/test_rules.sh
+go test ./...
+API_tests/test_api_flow.sh
+```
+
+The Go test suite is intentionally included directly so helper-level tests under `internal/core`, `internal/store`, `internal/platform`, and `internal/app` are not hidden behind structure-only shell checks.
+
 ## Roles
 
 IronPage Vault supports only three roles:
