@@ -12,7 +12,7 @@ RUN apt-get update \
         python3 \
         python3-pip \
         tar \
-    && python3 -m pip install --break-system-packages --no-cache-dir pypdf reportlab \
+    && python3 -m pip install --break-system-packages --no-cache-dir pypdf reportlab pillow \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /out/ironpage /usr/local/bin/ironpage
 COPY migrations /opt/ironpage/migrations

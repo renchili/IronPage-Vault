@@ -51,7 +51,7 @@ This document maps prompt requirements to the current implementation after the r
 | Route-level RBAC | Complete | `requireRole` middleware |
 | Admin not automatically Editor | Complete | Admin is not included in Editor-only routes |
 | Object-level document read authorization | Complete | `access.go` scopes list/get/file/versions |
-| Object-level mutation authorization | Complete | mutation handlers use document object checks and denial API coverage exists in `API_tests/test_acceptance_denials.sh` |
+| Object-level mutation authorization | Complete | mutation handlers use document object checks and denial API coverage exists in `API_tests/test_acceptance_denials.sh` and `API_tests/test_static_review_reject_flows.sh` |
 
 ## Document Lifecycle
 
@@ -65,7 +65,7 @@ This document maps prompt requirements to the current implementation after the r
 | 500 page limit | Complete | local PDF inspection enforces max page count |
 | 50 version ceiling | Complete | redaction/Bates check version ceiling |
 | Version rollback | Complete | validates version, rejects Finalized, updates current version, writes audit |
-| Document comparison | Complete | compare reads real version files, attempts `pdftotext`, includes text mode fields, and reports bbox placeholder metadata |
+| Document comparison | Complete | compare reads real version files, attempts `pdftotext -bbox`, and returns text blocks with page/bbox metadata |
 
 ## Workflow
 
@@ -86,7 +86,7 @@ This document maps prompt requirements to the current implementation after the r
 | Editor confirmation | Complete | confirm route is Editor-only and object-scoped |
 | New version after confirmation | Complete | confirm creates a document version |
 | Audit records | Complete | proposal and confirmation write audit |
-| Forensic burn-in / true content removal | Complete | redaction rewrites PDFs with reportlab+pypdf visible black overlays and creates a new artifact |
+| Forensic burn-in / true content removal | Complete | redaction prefers raster burn-in with pdftoppm+Pillow+reportlab and falls back to visible overlay only when raster tools are unavailable |
 | Coordinate encryption | Complete | coordinate ciphertext mirrors are stored beside numeric coordinates for operational geometry |
 
 ## Annotation
@@ -148,11 +148,11 @@ This document maps prompt requirements to the current implementation after the r
 | Requirement | Status | Evidence |
 |---|---|---|
 | Unit tests | Complete | root `run_tests.sh` includes `go test ./...` |
-| API tests | Complete | API tests cover auth/RBAC/upload/admin/workflow/redaction/Bates/backup/notification denial flows |
+| API tests | Complete | API tests cover auth/RBAC/upload/admin/workflow/redaction/Bates/backup/compare/notification denial flows including static-review reject checks |
 | No SKIP-as-success suites | Complete | no SKIP-as-success acceptance suites are required for the documented path |
 | Docker acceptance path | Complete | `scripts/docker_acceptance.sh` exists |
 | Sample PDF/CSV | Complete | `testdata/` fixtures exist |
 
 ## Current Blocking Gaps
 
-None tracked in this document.
+None tracked in this document after the static-review reject fix bundle.
