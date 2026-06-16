@@ -66,6 +66,8 @@ It does not perform text extraction, real added/removed segment detection, page-
 
 Audit writes are no longer only direct per-handler inserts. A shared audit helper exists, and the audit list route has a filtered implementation for actor, document, action, request, source, and time-range review.
 
+The audit list route must remain Admin-only. Non-Admin users should receive 403 when calling `/api/audit-logs`.
+
 The feature still needs API tests that create known events and then verify the filters return the expected records.
 
 ## Q11. What changed in notifications?
@@ -190,8 +192,6 @@ app/service caller -> internal/platform PDF implementation
 
 After callers move, the app wrapper can be deleted.
 
-
-
 ## Q23. Why move workflow chain rules into internal/core?
 
 The workflow chain is pure domain policy:
@@ -214,7 +214,6 @@ The follow-up cleanup is:
 handler/service -> internal/core workflow rule
 ```
 
-
 ## Q24. Why move notification unread-cap policy into internal/core?
 
 The rule that decides how many unread notifications must be trimmed is deterministic domain policy:
@@ -226,7 +225,6 @@ trim = unread - limit + 1 when unread >= limit
 It does not need Echo, SQL, or HTTP response formatting. It belongs in `internal/core`.
 
 The database update that marks rows as read remains outside core because SQL and persistence side effects belong in the app/store migration path.
-
 
 ## Q25. Why move mention parsing into internal/core?
 
