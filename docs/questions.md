@@ -140,11 +140,13 @@ handler/service -> internal/core policy
 
 After callers are moved, the app wrappers can be deleted.
 
-## Q19. Why does documentListWhereClause stay outside core?
+## Q19. Why does documentListWhereClause move to internal/store?
 
-A SQL WHERE clause is not domain policy. It is persistence/query adapter behavior. `internal/core` should not emit SQL fragments or know column names.
+A SQL WHERE clause is not domain policy. It is persistence/query adapter behavior. It includes database column names and SQL placeholder syntax, so `internal/core` should not emit it.
 
-For now, `documentListWhereClause` remains in `internal/app` only as a temporary adapter. The correct later home is `internal/store`, alongside repository-style document query functions.
+It also should not remain owned by `internal/app`, because API handlers should not own query construction. The real implementation now belongs in `internal/store` as `DocumentListWhereClause`.
+
+The app package keeps a temporary wrapper only to preserve existing handler calls while larger repository functions are extracted later.
 
 ## Q20. Why move crypto and digest helpers into internal/platform?
 
@@ -190,8 +192,6 @@ app/service caller -> internal/platform PDF implementation
 
 After callers move, the app wrapper can be deleted.
 
-
-
 ## Q23. Why move workflow chain rules into internal/core?
 
 The workflow chain is pure domain policy:
@@ -214,7 +214,6 @@ The follow-up cleanup is:
 handler/service -> internal/core workflow rule
 ```
 
-
 ## Q24. Why move notification unread-cap policy into internal/core?
 
 The rule that decides how many unread notifications must be trimmed is deterministic domain policy:
@@ -226,7 +225,6 @@ trim = unread - limit + 1 when unread >= limit
 It does not need Echo, SQL, or HTTP response formatting. It belongs in `internal/core`.
 
 The database update that marks rows as read remains outside core because SQL and persistence side effects belong in the app/store migration path.
-
 
 ## Q25. Why move mention parsing into internal/core?
 
