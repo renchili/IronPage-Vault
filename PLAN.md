@@ -34,36 +34,38 @@ internal/platform   PDF, filesystem, digest, crypto, and backup adapters
 3. Move notification unread-cap policy from `internal/app/notifications.go` to `internal/core`.
 4. Move text token and mention parsing policy from `internal/app/mentions.go` to `internal/core`.
 5. Move object-level document access policy from `internal/app/access.go` to `internal/core`.
-3. Move crypto and digest helpers from `internal/app` to `internal/platform`.
-4. Keep temporary app wrapper functions only to avoid a large handler rewrite in the same PR.
-5. Move handlers and services to call `internal/core` and `internal/platform` directly.
-6. Delete app wrapper functions once no callers remain.
-7. Move SQL query ownership to `internal/store`.
-8. Move PDF helper implementation to `internal/platform`.
-9. Move backup implementation to `internal/platform`.
-10. Introduce service-level orchestration for upload, workflow, redaction, annotation, compare, Bates, and backup flows.
+6. Move document list SQL filter construction from `internal/app/access.go` to `internal/store`.
+7. Move crypto and digest helpers from `internal/app` to `internal/platform`.
+8. Keep temporary app wrapper functions only to avoid a large handler rewrite in the same PR.
+9. Move handlers and services to call `internal/core`, `internal/store`, and `internal/platform` directly.
+10. Delete app wrapper functions once no callers remain.
+11. Move remaining SQL query ownership to `internal/store`.
+12. Move backup implementation to `internal/platform`.
+13. Introduce service-level orchestration for upload, workflow, redaction, annotation, compare, Bates, and backup flows.
 
 ### 3.2 Current access-policy migration decision
 
 Object access depends on principal role/user ID and document owner/status. It does not require Echo, SQL, or HTTP responses, so the real implementation belongs in `internal/core`.
 
-The list-query SQL filter is different. A WHERE clause knows database columns and should not be put in `internal/core`. It remains an adapter concern and should later move to `internal/store`.
+### 3.3 Current store migration decision
 
-### 3.3 Current platform migration decision
+The document list filter returns SQL text and query arguments. That is not domain policy; it is persistence adapter behavior. It belongs in `internal/store` and remains wrapped by `internal/app` only for incremental compatibility.
+
+### 3.4 Current platform migration decision
 
 Crypto, digest, and PDF helpers provide low-level infrastructure capabilities. They do not belong in `internal/app` because the API layer should not own AES-GCM encryption, SHA-256 hashing, PDF inspection, or filesystem PDF transforms.
 
 The real implementations now belong in `internal/platform`. Temporary app wrappers preserve compatibility until callers are moved directly to platform or service-layer abstractions.
 
-### 3.4 Current workflow migration decision
+### 3.5 Current workflow migration decision
 
 The workflow chain is a domain rule and belongs in `internal/core`. The API layer keeps a temporary wrapper until handlers or service-layer use cases call core directly.
 
-### 3.5 Current notification migration decision
+### 3.6 Current notification migration decision
 
 The unread-cap calculation is domain policy and belongs in `internal/core`. The SQL update and insert remain outside core because persistence behavior should later move to `internal/store`.
 
-### 3.6 Current text token migration decision
+### 3.7 Current text token migration decision
 
 Mention parsing is deterministic text policy and belongs in `internal/core`. User lookup and notification creation remain outside core because they are persistence side effects.
 
