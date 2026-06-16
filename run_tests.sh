@@ -34,3 +34,11 @@ fi
 if [ -x API_tests/test_redaction_coordinate_ciphertext.sh ]; then
   API_tests/test_redaction_coordinate_ciphertext.sh
 fi
+
+if [ -x API_tests/test_pdf_content_acceptance.sh ]; then
+  API_tests/test_pdf_content_acceptance.sh
+fi
+
+if [ -x API_tests/test_notification_mention_side_effect.sh ]; then
+  API_tests/test_notification_mention_side_effect.sh
+fi

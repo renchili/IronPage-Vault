@@ -25,3 +25,16 @@ None tracked in this document after the final hardening pass.
 ## Notes
 
 The application keeps the original API shape and database schema compatibility where needed. For redaction geometry, existing numeric columns remain in the schema for compatibility, but the application writes zero placeholders and uses encrypted columns as the source of truth.
+
+## Latest static recheck closure
+
+The latest static recheck reject items are addressed by `API_tests/test_admin_ops.sh`, `API_tests/test_compare_acceptance.sh`, `API_tests/test_finalized_immutability.sh`, `API_tests/test_pdf_content_acceptance.sh`, and `API_tests/test_notification_mention_side_effect.sh`.
+
+- Strict restore empty-body expectation is aligned to HTTP 400.
+- Compare acceptance no longer depends on external version ID environment variables.
+- Finalized immutability test now creates its own document and walks the full workflow chain before finalization.
+- Redaction content validation checks that target text is not extractable from the output PDF.
+- Bates content validation checks that the expected label is extractable from the output PDF.
+- Backup validation checks strict modes and artifact file existence.
+- Audit filter validation checks returned rows match the requested action.
+- Mention validation checks annotation mention notification side effects.
