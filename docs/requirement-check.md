@@ -1,6 +1,6 @@
 # Requirement Check
 
-This document maps prompt requirements to the current implementation after the remaining acceptance-gap bundle.
+This document maps prompt requirements to the current strict acceptance implementation after compile and fallback-semantics fixes.
 
 ## Legend
 
@@ -86,7 +86,7 @@ This document maps prompt requirements to the current implementation after the r
 | Editor confirmation | Complete | confirm route is Editor-only and object-scoped |
 | New version after confirmation | Complete | confirm creates a document version |
 | Audit records | Complete | proposal and confirmation write audit |
-| Forensic burn-in / true content removal | Complete | redaction prefers raster burn-in with pdftoppm+Pillow+reportlab and falls back to visible overlay only when raster tools are unavailable |
+| Forensic burn-in / true content removal | Complete | service path requires raster burn-in with `pdftoppm` + Pillow + reportlab; missing dependencies or raster failure returns an error |
 | Coordinate encryption | Complete | coordinate ciphertext mirrors are stored beside numeric coordinates for operational geometry |
 
 ## Annotation
@@ -107,8 +107,8 @@ This document maps prompt requirements to the current implementation after the r
 |---|---|---|
 | Prefix/suffix/padding/start validation | Complete | Bates handler validates and normalizes inputs |
 | Persistent job record | Complete | `bates_jobs` row is inserted |
-| New document version | Complete | Bates route creates a new PDF version with visible overlay processing |
-| Actual page-visible Bates numbering | Complete | Docker runtime includes reportlab+pypdf and Bates processing draws visible page labels |
+| New document version | Complete | Bates route creates a new PDF version only after visible overlay processing succeeds |
+| Actual page-visible Bates numbering | Complete | service path requires reportlab+pypdf visible page labels; missing dependencies or overlay failure returns an error |
 | Batch sequence allocation | Complete | `bates_sequences` allocates a global sequence when no explicit start is supplied |
 
 ## Audit
@@ -137,10 +137,10 @@ This document maps prompt requirements to the current implementation after the r
 | Requirement | Status | Evidence |
 |---|---|---|
 | Backup metadata | Complete | `backup_jobs` table and endpoint |
-| Local backup artifact output | Complete | backup writes metadata plus best-effort pg_dump and filesystem tar artifacts with a manifest |
-| Real pg_dump execution | Complete | platform backup runner invokes pg_dump when available and records fallback mode otherwise |
-| Filesystem snapshot | Complete | platform backup runner invokes tar over the storage directory when available |
-| Restore workflow | Complete | Admin restore route invokes pg_restore/tar restore paths when artifacts and tools are available |
+| Local backup artifact output | Complete | backup writes metadata plus strict `pg_dump` and filesystem `tar` artifacts; missing artifacts return an error |
+| Real pg_dump execution | Complete | API success requires `pg_dump_custom` mode |
+| Filesystem snapshot | Complete | API success requires `tar` snapshot mode |
+| Restore workflow | Complete | Admin restore route requires artifact paths and returns success only after `pg_restore` and `tar` succeed |
 | PITR docs | Complete | `docs/pitr.md` |
 
 ## Testing and Acceptance
@@ -148,11 +148,11 @@ This document maps prompt requirements to the current implementation after the r
 | Requirement | Status | Evidence |
 |---|---|---|
 | Unit tests | Complete | root `run_tests.sh` directly invokes `go test ./...` |
-| API tests | Complete | API tests cover auth/RBAC/upload/admin/workflow/redaction/Bates/backup/compare/notification denial flows including static-review reject checks |
+| API tests | Complete | API tests cover auth/RBAC/upload/admin/workflow/redaction/Bates/backup/compare/notification denial flows and validate strict backup/restore response semantics |
 | No SKIP-as-success suites | Complete | no SKIP-as-success acceptance suites are required for the documented path |
 | Docker acceptance path | Complete | `scripts/docker_acceptance.sh` exists |
 | Sample PDF/CSV | Complete | `testdata/` fixtures exist |
 
 ## Current Blocking Gaps
 
-None tracked in this document after the static-review reject fix bundle.
+None tracked in this document after strict fallback semantics and compile fixes.
