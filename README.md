@@ -49,9 +49,10 @@ Current migration status:
 - notification unread-cap policy has moved from `internal/app` to `internal/core`
 - text token and mention parsing policy has moved from `internal/app` to `internal/core`
 - object-level access policy has moved from `internal/app` to `internal/core`
+- document list SQL filter construction has moved from `internal/app` to `internal/store`
 - crypto, digest, and PDF helper implementations have moved from `internal/app` to `internal/platform`
 - `internal/app` keeps temporary compatibility wrappers while handlers are migrated in small PRs
-- SQL-heavy code and backup adapters still need follow-up migrations
+- remaining SQL-heavy code and backup adapters still need follow-up migrations
 
 ## Core Backend Modules
 
