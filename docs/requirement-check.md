@@ -87,7 +87,7 @@ This document maps prompt requirements to the current implementation. It is inte
 | Editor confirmation | Complete | confirm route is Editor-only and object-scoped |
 | New version after confirmation | Complete | confirm creates a document version |
 | Audit records | Complete | proposal and confirmation write audit |
-| Forensic burn-in / true content removal | Planned | current PDF marker helper only appends marker bytes and is not compliant permanent PDF content removal |
+| Forensic burn-in / true content removal | Partial | redaction now rewrites PDFs with visible black overlays when reportlab+pypdf are available; production validation on representative PDFs is still required |
 | Coordinate encryption | Planned | x/y/width/height remain numeric plaintext |
 
 ## Annotation
@@ -109,7 +109,7 @@ This document maps prompt requirements to the current implementation. It is inte
 | Prefix/suffix/padding/start validation | Complete | Bates handler validates and normalizes inputs |
 | Persistent job record | Complete | `bates_jobs` row is inserted |
 | New document version | Partial | Bates route creates a new PDF version, but current processing only appends marker bytes and does not draw visible page numbering |
-| Actual page-visible Bates numbering | Planned | no PDF page drawing engine is integrated |
+| Actual page-visible Bates numbering | Complete | Docker runtime includes reportlab+pypdf and Bates processing draws visible page labels |
 | Batch sequence allocation | Planned | no cross-document sequence allocator exists |
 
 ## Audit
@@ -156,8 +156,6 @@ This document maps prompt requirements to the current implementation. It is inte
 
 ## Current Blocking Gaps
 
-1. True forensic PDF redaction burn-in is not implemented.
-2. Page-visible Bates numbering is not implemented.
 3. Real `pg_dump`, filesystem snapshot backup, and restore workflow are not implemented.
 4. Compare API does not perform text-level PDF diff with real page/bbox extraction.
 5. API endpoint coverage remains below the requested threshold.

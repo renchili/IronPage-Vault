@@ -1,12 +1,19 @@
 # Runtime Tools
 
-IronPage Vault uses external command-line tools for the full acceptance flows added in the implementation bundle.
+The Docker image includes the runtime tools required by the full acceptance flows:
 
-The Docker image installs:
+- `pg_dump` / `pg_restore` from the PostgreSQL base image for database backup and restore.
+- `tar` for filesystem storage snapshot and restore.
+- `pdftotext` from `poppler-utils` for best-effort text extraction in compare.
+- `python3`, `pypdf`, and `reportlab` for PDF object rewriting plus visible Bates/redaction overlays.
 
-- `pg_dump` and `pg_restore` from the PostgreSQL base image for database backup and restore.
-- `tar` for filesystem storage snapshots and restore.
-- `pdftotext` from `poppler-utils` for best-effort PDF text extraction during compare.
-- `python3` and `pypdf` for best-effort PDF object-graph rewrite paths used by Bates/redaction processing.
+PDF behavior:
 
-If any optional runtime tool is unavailable in a custom deployment, the application records a fallback mode in the API response or generated manifest instead of silently claiming the stronger processing mode.
+- Bates processing draws visible labels near the bottom-right of each page when `python3+pypdf+reportlab` are available.
+- Redaction processing draws filled black rectangles on the specified page regions when `python3+pypdf+reportlab` are available.
+- If optional PDF drawing dependencies are missing in a custom runtime, the application returns a fallback mode and still writes a deterministic processed artifact with a manifest.
+
+Backup behavior:
+
+- Backup attempts `pg_dump --format=custom` and a `tar` snapshot of the storage directory.
+- Restore attempts `pg_restore` and `tar` extraction when artifacts and tools are available.

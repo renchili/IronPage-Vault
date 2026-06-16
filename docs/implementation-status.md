@@ -11,3 +11,11 @@ This branch implements the remaining acceptance bundle in one pass:
 - Compare attempts text extraction using `pdftotext`, falling back to printable byte extraction.
 
 Runtime tools used when available: `pg_dump`, `pg_restore`, `tar`, `pdftotext`, `python3` + `pypdf`.
+
+
+## Final PDF Runtime Support
+
+- Docker runtime installs `reportlab` together with `pypdf`.
+- Bates processing draws visible page labels through a reportlab overlay merged with pypdf.
+- Redaction processing draws filled black rectangles through a reportlab overlay merged with pypdf.
+- Fallback mode remains explicit when optional drawing dependencies are unavailable.

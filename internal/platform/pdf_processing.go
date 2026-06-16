@@ -36,9 +36,9 @@ func RewritePDFWithRedactions(input string, output string, regions []RedactionRe
 	if err := os.MkdirAll(filepath.Dir(output), 0750); err != nil {
 		return PDFProcessResult{}, err
 	}
-	if pythonHasPyPDF() {
-		if err := runPythonPDFRewrite(input, output, "redaction", map[string]interface{}{"regions": regions}); err == nil {
-			return PDFProcessResult{Mode: "pypdf_rewrite", Details: "PDF object graph rewritten with redaction metadata"}, nil
+	if pythonHasPDFDrawingDeps() {
+		if err := runPythonRedactionOverlay(input, output, regions); err == nil {
+			return PDFProcessResult{Mode: "visible_redaction_overlay", Details: "redaction rectangles were drawn onto rewritten PDF pages"}, nil
 		}
 	}
 	return copyWithProcessManifest(input, output, "redaction_fallback", map[string]interface{}{"regions": regions})
@@ -48,9 +48,9 @@ func RewritePDFWithBates(input string, output string, opts BatesOptions) (PDFPro
 	if err := os.MkdirAll(filepath.Dir(output), 0750); err != nil {
 		return PDFProcessResult{}, err
 	}
-	if pythonHasPyPDF() {
-		if err := runPythonPDFRewrite(input, output, "bates", map[string]interface{}{"bates": opts}); err == nil {
-			return PDFProcessResult{Mode: "pypdf_rewrite", Details: "PDF object graph rewritten with Bates metadata"}, nil
+	if pythonHasPDFDrawingDeps() {
+		if err := runPythonBatesOverlay(input, output, opts); err == nil {
+			return PDFProcessResult{Mode: "visible_bates_overlay", Details: "Bates labels were drawn onto rewritten PDF pages"}, nil
 		}
 	}
 	return copyWithProcessManifest(input, output, "bates_fallback", map[string]interface{}{"bates": opts})
@@ -85,25 +85,82 @@ func FormatBatesLabel(opts BatesOptions, pageIndex int) string {
 	return strings.TrimSpace(opts.Prefix + body + opts.Suffix)
 }
 
-func pythonHasPyPDF() bool {
-	return exec.Command("python3", "-c", "import pypdf").Run() == nil
+func pythonHasPDFDrawingDeps() bool {
+	return exec.Command("python3", "-c", "import pypdf, reportlab").Run() == nil
 }
 
-func runPythonPDFRewrite(input string, output string, mode string, payload map[string]interface{}) error {
-	raw, _ := json.Marshal(payload)
+func runPythonRedactionOverlay(input string, output string, regions []RedactionRegion) error {
+	raw, _ := json.Marshal(regions)
 	code := `
-import json, sys
+import io, json, sys
 from pypdf import PdfReader, PdfWriter
-inp, outp, mode, raw = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+from reportlab.pdfgen import canvas
+from reportlab.lib.colors import black
+inp, outp, raw = sys.argv[1], sys.argv[2], sys.argv[3]
+regions = json.loads(raw)
 reader = PdfReader(inp)
 writer = PdfWriter()
-for page in reader.pages:
+for idx, page in enumerate(reader.pages, start=1):
+    width = float(page.mediabox.width)
+    height = float(page.mediabox.height)
+    packet = io.BytesIO()
+    c = canvas.Canvas(packet, pagesize=(width, height))
+    c.setFillColor(black)
+    for r in regions:
+        if int(r.get("page", 0)) == idx:
+            x = float(r.get("x", 0)); y = float(r.get("y", 0))
+            w = float(r.get("width", 0)); h = float(r.get("height", 0))
+            c.rect(x, height - y - h, w, h, stroke=0, fill=1)
+    c.save()
+    packet.seek(0)
+    overlay = PdfReader(packet)
+    if overlay.pages:
+        page.merge_page(overlay.pages[0])
     writer.add_page(page)
-writer.add_metadata({"/IronPageProcessMode": mode, "/IronPageProcessPayload": raw[:1000]})
+writer.add_metadata({"/IronPageProcessMode":"visible_redaction_overlay"})
 with open(outp, "wb") as f:
     writer.write(f)
 `
-	return exec.Command("python3", "-c", code, input, output, mode, string(raw)).Run()
+	return exec.Command("python3", "-c", code, input, output, string(raw)).Run()
+}
+
+func runPythonBatesOverlay(input string, output string, opts BatesOptions) error {
+	raw, _ := json.Marshal(opts)
+	code := `
+import io, json, sys
+from pypdf import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.lib.colors import black
+inp, outp, raw = sys.argv[1], sys.argv[2], sys.argv[3]
+opts = json.loads(raw)
+reader = PdfReader(inp)
+writer = PdfWriter()
+prefix = opts.get("prefix", "")
+suffix = opts.get("suffix", "")
+pad = int(opts.get("zero_padding", 0) or 0)
+start = int(opts.get("start_number", 1) or 1)
+for idx, page in enumerate(reader.pages):
+    width = float(page.mediabox.width)
+    height = float(page.mediabox.height)
+    number = start + idx
+    body = str(number).zfill(pad) if pad > 0 else str(number)
+    label = f"{prefix}{body}{suffix}"
+    packet = io.BytesIO()
+    c = canvas.Canvas(packet, pagesize=(width, height))
+    c.setFillColor(black)
+    c.setFont("Helvetica", 9)
+    c.drawRightString(width - 36, 24, label)
+    c.save()
+    packet.seek(0)
+    overlay = PdfReader(packet)
+    if overlay.pages:
+        page.merge_page(overlay.pages[0])
+    writer.add_page(page)
+writer.add_metadata({"/IronPageProcessMode":"visible_bates_overlay"})
+with open(outp, "wb") as f:
+    writer.write(f)
+`
+	return exec.Command("python3", "-c", code, input, output, string(raw)).Run()
 }
 
 func copyWithProcessManifest(input string, output string, mode string, payload map[string]interface{}) (PDFProcessResult, error) {
