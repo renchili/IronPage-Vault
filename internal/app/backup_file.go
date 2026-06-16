@@ -28,19 +28,22 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 	}
 	target := filepath.Join(a.cfg.BackupDir, id+".json")
 	snapshot, err := a.collectBackupSnapshot(c, id)
-	artifacts, artifactErr := platform.RunBackupArtifacts(id, a.cfg.DSN(), a.cfg.StorageDir, a.cfg.BackupDir)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_SNAPSHOT_ERROR", "could not collect backup metadata snapshot")
+	}
+	artifacts, err := platform.RunBackupArtifactsStrict(id, a.cfg.DSN(), a.cfg.StorageDir, a.cfg.BackupDir)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "BACKUP_ARTIFACT_ERROR", "strict backup artifacts were not completed")
 	}
 	if err := platform.WriteBackupMetadataSnapshot(target, snapshot); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_WRITE_ERROR", "could not write backup metadata snapshot file")
 	}
 	err = repository.New(a.db).InsertBackupJob(c.Request().Context(), id, target, p.UserID)
 	if err != nil {
-		return apiErr(c, http.StatusInternalServerError, "BACKUP_CREATE_ERROR", "could not record backup metadata snapshot job")
+		return apiErr(c, http.StatusInternalServerError, "BACKUP_CREATE_ERROR", "could not record backup job")
 	}
-	a.audit(c, p.UserID, "BACKUP_CREATE", "", nil)
-	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "status": "Completed", "target_path": target, "kind": "metadata_snapshot", "created_at": snapshot.CreatedAt, "restore_supported": artifactErr == nil && artifacts.RestoreSupported, "artifacts": artifacts})
+	a.audit(c, p.UserID, "BACKUP_CREATE", "", map[string]interface{}{"database_dump_mode": artifacts.DatabaseDumpMode, "file_snapshot_mode": artifacts.FileSnapshotMode})
+	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "status": "Completed", "target_path": target, "kind": "full_backup", "created_at": snapshot.CreatedAt, "restore_supported": artifacts.RestoreSupported, "artifacts": artifacts})
 }
 
 func (a *App) runBackupFile(c echo.Context) error {
