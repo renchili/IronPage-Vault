@@ -51,27 +51,27 @@ This document maps prompt requirements to the current implementation. It is inte
 | Route-level RBAC | Complete | `requireRole` middleware |
 | Admin not automatically Editor | Complete | Admin is not included in Editor-only routes |
 | Object-level document read authorization | Complete | `access.go` scopes list/get/file/versions |
-| Object-level mutation authorization | Partial | redaction, annotation, Bates, workflow, finalize, and compare now use object checks; every mutation still needs API denial coverage |
+| Object-level mutation authorization | Partial | redaction, annotation, Bates, workflow, finalize, and compare use object checks; every mutation still needs API denial coverage |
 
 ## Document Lifecycle
 
 | Requirement | Status | Evidence |
 |---|---|---|
 | Single PDF upload | Complete | `POST /api/documents` |
-| Batch import up to 250 | Complete | `batchUploadDocuments` now persists each file through the shared upload path |
+| Batch import up to 250 | Complete | `batchUploadDocuments` persists each file through the shared upload path |
 | Metadata in PostgreSQL | Complete | `documents`, `document_versions` |
 | Local file pointer | Complete | `document_versions.file_path` |
 | 200 MB limit | Complete | upload/inspection enforce max bytes |
 | 500 page limit | Complete | local PDF inspection enforces max page count |
 | 50 version ceiling | Partial | redaction/Bates check version ceiling; all version-producing paths still need tests |
 | Version rollback | Complete | validates version, rejects Finalized, updates current version, writes audit |
-| Document comparison | Partial | compares real version files and metadata; still lacks text diff, real page segments, and bbox extraction |
+| Document comparison | Partial | compares real version files and binary metadata; response declares `comparison_kind=binary_metadata`, `text_diff_supported=false`, and `bbox_supported=false` |
 
 ## Workflow
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Draft -> Under Review -> Redaction Pending -> Approved -> Finalized | Complete | `nextWorkflowStatus`, transition handler |
+| Draft -> Under Review -> Redaction Pending -> Approved -> Finalized | Complete | `NextWorkflowStatus`, transition handler |
 | Invalid transition rejection | Complete | transition handler enforces next status |
 | Finalized immutable | Partial | major mutation paths reject Finalized; full route-by-route tests still needed |
 | Workflow audit | Complete | transition writes audit |
@@ -86,7 +86,7 @@ This document maps prompt requirements to the current implementation. It is inte
 | Editor confirmation | Complete | confirm route is Editor-only and object-scoped |
 | New version after confirmation | Complete | confirm creates a document version |
 | Audit records | Complete | proposal and confirmation write audit |
-| Forensic burn-in / true content removal | Planned | current transform still appends a marker and is not compliant permanent PDF content removal |
+| Forensic burn-in / true content removal | Planned | current PDF marker helper only appends marker bytes and is not compliant permanent PDF content removal |
 | Coordinate encryption | Planned | x/y/width/height remain numeric plaintext |
 
 ## Annotation
@@ -107,7 +107,7 @@ This document maps prompt requirements to the current implementation. It is inte
 |---|---|---|
 | Prefix/suffix/padding/start validation | Complete | Bates handler validates and normalizes inputs |
 | Persistent job record | Complete | `bates_jobs` row is inserted |
-| New document version | Partial | Bates route creates a new PDF version, but it uses append-transform metadata rather than visual page numbering |
+| New document version | Partial | Bates route creates a new PDF version, but current processing only appends marker bytes and does not draw visible page numbering |
 | Actual page-visible Bates numbering | Planned | no PDF page drawing engine is integrated |
 | Batch sequence allocation | Planned | no cross-document sequence allocator exists |
 
@@ -117,7 +117,7 @@ This document maps prompt requirements to the current implementation. It is inte
 |---|---|---|
 | Audit helper writes logs | Complete | `domain_events.go` writes audit rows |
 | Main mutation audit | Partial | many main flows write audit; coverage should be enforced route-by-route |
-| Filterable query | Complete | `auditLogsFiltered` supports actor/document/action/request/source/date filters |
+| Filterable query | Complete | `auditLogsFiltered` supports actor/document/action/request/source/date filters and route is Admin-only |
 | Indefinite retention | Complete | no deletion policy exists |
 
 ## Notifications
@@ -128,7 +128,7 @@ This document maps prompt requirements to the current implementation. It is inte
 | Workflow notification | Complete | workflow transition calls `notifyUser` |
 | 500 unread ceiling | Complete | `createNotification` marks oldest unread when ceiling is reached |
 | Per-user query | Complete | `/api/notifications` uses principal user ID |
-| Read acknowledgement | Complete | `/api/notifications/:id/read` |
+| Read acknowledgement | Partial | `/api/notifications/:id/read` updates by user ID, but missing-row behavior still needs stronger API coverage |
 | Annotation mention notification | Complete | annotation creation calls `notifyMentionedUsers` before returning |
 | Admin editable templates | Partial | templates can be listed; edit endpoint is incomplete |
 
@@ -137,16 +137,17 @@ This document maps prompt requirements to the current implementation. It is inte
 | Requirement | Status | Evidence |
 |---|---|---|
 | Backup metadata | Complete | `backup_jobs` table and endpoint |
-| Local backup file output | Partial | `runBackupFile` writes a local `.sql` marker and records Completed status |
+| Local backup artifact output | Partial | current run endpoint writes a JSON metadata snapshot and should report `restore_supported=false`; it is not restore-capable |
 | Real pg_dump execution | Planned | direct `pg_dump` implementation was not added; external command execution was blocked in this editing environment |
 | Filesystem snapshot | Planned | not implemented |
+| Restore workflow | Planned | not implemented |
 | PITR docs | Complete | `docs/pitr.md` |
 
 ## Testing and Acceptance
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Unit tests | Partial | workflow, PDF, rules, crypto, access, and mention tests exist; handler/database integration tests are still limited |
+| Unit tests | Partial | root `run_tests.sh` now includes `go test ./...`, but handler/database integration tests are still limited |
 | API tests | Partial | login/RBAC/upload/admin-read tests exist; workflow/redaction/Bates/compare/backup coverage remains insufficient |
 | No SKIP-as-success suites | Partial | known SKIP suites were removed; coverage is still not near 90% |
 | Docker acceptance path | Complete | `scripts/docker_acceptance.sh` exists |
@@ -156,7 +157,7 @@ This document maps prompt requirements to the current implementation. It is inte
 
 1. True forensic PDF redaction burn-in is not implemented.
 2. Page-visible Bates numbering is not implemented.
-3. Real `pg_dump` and filesystem snapshot backup are not implemented.
+3. Real `pg_dump`, filesystem snapshot backup, and restore workflow are not implemented.
 4. Compare API does not perform text-level PDF diff with real page/bbox extraction.
 5. API endpoint coverage remains below the requested threshold.
 6. Handler/database integration tests are still limited.
