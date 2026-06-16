@@ -13,6 +13,9 @@ expect_code "admin workflow statuses" 200 "$code" || FAIL=$((FAIL+1))
 code=$(auth_get "$ADMIN_TOKEN" /api/admin/notification-templates)
 expect_code "admin notification templates" 200 "$code" || FAIL=$((FAIL+1))
 
+code=$(auth_patch_json "$ADMIN_TOKEN" /api/admin/notification-templates/workflow.transition '{"subject":"Workflow transition","body":"Document status changed"}')
+expect_code "admin updates notification template" 200 "$code" || FAIL=$((FAIL+1))
+
 code=$(auth_get "$ADMIN_TOKEN" /api/audit-logs)
 expect_code "audit log list" 200 "$code" || FAIL=$((FAIL+1))
 
