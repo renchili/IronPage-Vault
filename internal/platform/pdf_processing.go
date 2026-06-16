@@ -3,6 +3,7 @@ package platform
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,9 +33,23 @@ type BatesOptions struct {
 	StartNumber int    `json:"start_number"`
 }
 
+type TextBlock struct {
+	Page int     `json:"page"`
+	XMin float64 `json:"xmin"`
+	YMin float64 `json:"ymin"`
+	XMax float64 `json:"xmax"`
+	YMax float64 `json:"ymax"`
+	Text string  `json:"text"`
+}
+
 func RewritePDFWithRedactions(input string, output string, regions []RedactionRegion) (PDFProcessResult, error) {
 	if err := os.MkdirAll(filepath.Dir(output), 0750); err != nil {
 		return PDFProcessResult{}, err
+	}
+	if pythonHasRasterRedactionDeps() && toolExists("pdftoppm") {
+		if err := runPythonRasterRedaction(input, output, regions); err == nil {
+			return PDFProcessResult{Mode: "raster_redaction_burnin", Details: "PDF pages were rasterized, redaction rectangles burned into pixels, and rebuilt into a new PDF artifact"}, nil
+		}
 	}
 	if pythonHasPDFDrawingDeps() {
 		if err := runPythonRedactionOverlay(input, output, regions); err == nil {
@@ -76,6 +91,90 @@ func ExtractPDFText(path string) (string, string, error) {
 	}, raw)), "printable_bytes", nil
 }
 
+func ExtractPDFTextBlocks(path string) ([]TextBlock, string, error) {
+	if _, err := exec.LookPath("pdftotext"); err == nil {
+		out, err := exec.Command("pdftotext", "-bbox", path, "-").Output()
+		if err == nil {
+			blocks := parseBBOXTextBlocks(out)
+			if len(blocks) > 0 {
+				return blocks, "pdftotext_bbox", nil
+			}
+		}
+	}
+	text, mode, err := ExtractPDFText(path)
+	if err != nil {
+		return nil, mode, err
+	}
+	lines := strings.Split(text, "\n")
+	blocks := make([]TextBlock, 0, len(lines))
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		blocks = append(blocks, TextBlock{Page: 1, XMin: 0, YMin: float64(i * 12), XMax: 0, YMax: float64(i*12 + 12), Text: line})
+	}
+	return blocks, mode, nil
+}
+
+func parseBBOXTextBlocks(raw []byte) []TextBlock {
+	type word struct {
+		XMin float64 `xml:"xMin,attr"`
+		YMin float64 `xml:"yMin,attr"`
+		XMax float64 `xml:"xMax,attr"`
+		YMax float64 `xml:"yMax,attr"`
+		Text string  `xml:",chardata"`
+	}
+	type page struct {
+		Number int    `xml:"number,attr"`
+		Words  []word `xml:"word"`
+	}
+	type doc struct {
+		Pages []page `xml:"body>doc>page"`
+	}
+	var d doc
+	if err := xml.Unmarshal(raw, &d); err != nil {
+		return nil
+	}
+	var blocks []TextBlock
+	for _, p := range d.Pages {
+		for _, w := range p.Words {
+			t := strings.TrimSpace(w.Text)
+			if t == "" {
+				continue
+			}
+			blocks = append(blocks, TextBlock{Page: p.Number, XMin: w.XMin, YMin: w.YMin, XMax: w.XMax, YMax: w.YMax, Text: t})
+		}
+	}
+	return blocks
+}
+
+func DiffTextBlocks(left []TextBlock, right []TextBlock) (added []TextBlock, removed []TextBlock, modified []TextBlock) {
+	leftMap := map[string]TextBlock{}
+	rightMap := map[string]TextBlock{}
+	for _, b := range left {
+		leftMap[textBlockKey(b)] = b
+	}
+	for _, b := range right {
+		rightMap[textBlockKey(b)] = b
+	}
+	for k, b := range rightMap {
+		if _, ok := leftMap[k]; !ok {
+			added = append(added, b)
+		}
+	}
+	for k, b := range leftMap {
+		if _, ok := rightMap[k]; !ok {
+			removed = append(removed, b)
+		}
+	}
+	return added, removed, modified
+}
+
+func textBlockKey(b TextBlock) string {
+	return fmt.Sprintf("%d|%.2f|%.2f|%.2f|%.2f|%s", b.Page, b.XMin, b.YMin, b.XMax, b.YMax, b.Text)
+}
+
 func FormatBatesLabel(opts BatesOptions, pageIndex int) string {
 	n := opts.StartNumber + pageIndex
 	body := strconv.Itoa(n)
@@ -85,8 +184,57 @@ func FormatBatesLabel(opts BatesOptions, pageIndex int) string {
 	return strings.TrimSpace(opts.Prefix + body + opts.Suffix)
 }
 
+func toolExists(name string) bool { _, err := exec.LookPath(name); return err == nil }
+
 func pythonHasPDFDrawingDeps() bool {
 	return exec.Command("python3", "-c", "import pypdf, reportlab").Run() == nil
+}
+
+func pythonHasRasterRedactionDeps() bool {
+	return exec.Command("python3", "-c", "import PIL, reportlab").Run() == nil
+}
+
+func runPythonRasterRedaction(input string, output string, regions []RedactionRegion) error {
+	raw, _ := json.Marshal(regions)
+	tmp := filepath.Join(os.TempDir(), "ironpage_redact_"+strconv.FormatInt(int64(os.Getpid()), 10))
+	_ = os.RemoveAll(tmp)
+	if err := os.MkdirAll(tmp, 0700); err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	prefix := filepath.Join(tmp, "page")
+	if err := exec.Command("pdftoppm", "-r", "144", "-png", input, prefix).Run(); err != nil {
+		return err
+	}
+	code := `
+import glob, json, os, sys
+from PIL import Image, ImageDraw
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+tmp, outp, raw = sys.argv[1], sys.argv[2], sys.argv[3]
+regions = json.loads(raw)
+pages = sorted(glob.glob(os.path.join(tmp, "page-*.png")))
+c = None
+for idx, path in enumerate(pages, start=1):
+    im = Image.open(path).convert("RGB")
+    draw = ImageDraw.Draw(im)
+    sx = im.width / 612.0
+    sy = im.height / 792.0
+    for r in regions:
+        if int(r.get("page", 0)) == idx:
+            x = float(r.get("x", 0)) * sx; y = float(r.get("y", 0)) * sy
+            w = float(r.get("width", 0)) * sx; h = float(r.get("height", 0)) * sy
+            draw.rectangle([x, y, x+w, y+h], fill="black")
+    redacted_path = os.path.join(tmp, f"redacted-{idx}.png")
+    im.save(redacted_path)
+    if c is None: c = canvas.Canvas(outp, pagesize=(im.width, im.height))
+    else: c.setPageSize((im.width, im.height))
+    c.drawImage(ImageReader(redacted_path), 0, 0, width=im.width, height=im.height)
+    c.showPage()
+if c is None: raise SystemExit("no pages rendered")
+c.save()
+`
+	return exec.Command("python3", "-c", code, tmp, output, string(raw)).Run()
 }
 
 func runPythonRedactionOverlay(input string, output string, regions []RedactionRegion) error {

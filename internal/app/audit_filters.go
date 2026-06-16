@@ -9,6 +9,9 @@ import (
 )
 
 func (a *App) auditLogsFiltered(c echo.Context) error {
+	if principal(c).Role != RoleAdmin {
+		return apiErr(c, http.StatusForbidden, "AUDIT_ADMIN_REQUIRED", "only admin may list audit logs")
+	}
 	page, size := parsePage(c, a.cfg)
 	filters := store.AuditLogFilters{
 		ActorUserID: c.QueryParam("actor_user_id"),

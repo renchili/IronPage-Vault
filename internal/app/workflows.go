@@ -87,19 +87,22 @@ func versionComparisonResult(left DocumentVersion, right DocumentVersion, leftRa
 
 func versionTextComparisonResult(left DocumentVersion, right DocumentVersion, leftRaw []byte, rightRaw []byte) map[string]interface{} {
 	result := versionComparisonResult(left, right, leftRaw, rightRaw)
-	result["comparison_kind"] = "text_and_binary"
+	result["comparison_kind"] = "text_bbox"
 	result["text_diff_supported"] = true
-	leftText, leftMode, leftErr := platform.ExtractPDFText(left.FilePath)
-	rightText, rightMode, rightErr := platform.ExtractPDFText(right.FilePath)
+	result["bbox_supported"] = true
+	leftBlocks, leftMode, leftErr := platform.ExtractPDFTextBlocks(left.FilePath)
+	rightBlocks, rightMode, rightErr := platform.ExtractPDFTextBlocks(right.FilePath)
 	result["text_extract_left_mode"] = leftMode
 	result["text_extract_right_mode"] = rightMode
 	if leftErr != nil || rightErr != nil {
 		result["text_diff_supported"] = false
+		result["bbox_supported"] = false
 		return result
 	}
-	if leftText != rightText {
-		result["modified"] = []map[string]interface{}{{"page": 1, "bbox": map[string]int{"x": 0, "y": 0, "w": 0, "h": 0}, "text": "extracted text differs between supplied versions"}}
-	}
+	added, removed, modified := platform.DiffTextBlocks(leftBlocks, rightBlocks)
+	result["added"] = added
+	result["removed"] = removed
+	result["modified"] = modified
 	return result
 }
 
