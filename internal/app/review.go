@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"ironpage-vault/internal/platform"
+	"ironpage-vault/internal/service"
 )
 
 func (a *App) ensureMutable(c echo.Context, docID string) (Document, error) {
@@ -124,7 +125,7 @@ func (a *App) confirmRedaction(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_QUERY_ERROR", "could not load redaction regions")
 	}
-	if _, err := platform.RewritePDFWithRedactions(v.FilePath, dst, regions); err != nil {
+	if _, err := service.ApplyRedactionBurnIn(v.FilePath, dst, regions); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_BURNIN_ERROR", "could not create redacted binary")
 	}
 	info, err := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)

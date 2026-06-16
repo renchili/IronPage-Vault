@@ -4,23 +4,20 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/labstack/echo/v4"
 
 	"ironpage-vault/internal/platform"
+	"ironpage-vault/internal/repository"
+	"ironpage-vault/internal/service"
 )
 
 func (a *App) collectBackupSnapshot(c echo.Context, id string) (platform.BackupMetadataSnapshot, error) {
-	counts := []platform.BackupTableCount{}
-	for _, table := range platform.BackupSnapshotTables() {
-		var n int
-		if err := a.db.GetContext(c.Request().Context(), &n, "SELECT COUNT(*) FROM "+table); err != nil {
-			return platform.BackupMetadataSnapshot{}, err
-		}
-		counts = append(counts, platform.BackupTableCount{Table: table, Count: n})
+	counts, err := repository.New(a.db).CountBackupTables(c.Request().Context())
+	if err != nil {
+		return platform.BackupMetadataSnapshot{}, err
 	}
-	return platform.NewBackupMetadataSnapshot(id, a.cfg.DBName, counts, time.Now().UTC()), nil
+	return service.NewBackupSnapshot(id, a.cfg.DBName, counts), nil
 }
 
 func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
@@ -38,7 +35,7 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 	if err := platform.WriteBackupMetadataSnapshot(target, snapshot); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_WRITE_ERROR", "could not write backup metadata snapshot file")
 	}
-	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'metadata_snapshot','Completed',$2,$3,NOW())`, id, target, p.UserID)
+	err = repository.New(a.db).InsertBackupJob(c.Request().Context(), id, target, p.UserID)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_CREATE_ERROR", "could not record backup metadata snapshot job")
 	}

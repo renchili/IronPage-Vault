@@ -147,7 +147,7 @@ This document maps prompt requirements to the current implementation after the r
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Unit tests | Complete | root `run_tests.sh` includes `go test ./...` |
+| Unit tests | Complete | root `run_tests.sh` directly invokes `go test ./...` |
 | API tests | Complete | API tests cover auth/RBAC/upload/admin/workflow/redaction/Bates/backup/compare/notification denial flows including static-review reject checks |
 | No SKIP-as-success suites | Complete | no SKIP-as-success acceptance suites are required for the documented path |
 | Docker acceptance path | Complete | `scripts/docker_acceptance.sh` exists |
