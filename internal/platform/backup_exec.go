@@ -18,14 +18,19 @@ type BackupArtifactManifest struct {
 	RestoreSupported bool      `json:"restore_supported"`
 }
 
-func RunBackupArtifacts(id string, databaseURL string, storageDir string, backupDir string) (BackupArtifactManifest, error) {
+func RunBackupArtifacts(id string, dsn string, storageDir string, backupDir string) (BackupArtifactManifest, error) {
 	if err := os.MkdirAll(backupDir, 0750); err != nil {
 		return BackupArtifactManifest{}, err
 	}
-	manifest := BackupArtifactManifest{BackupID: id, CreatedAt: time.Now().UTC(), DatabaseDumpPath: filepath.Join(backupDir, id+".dump"), FileSnapshotPath: filepath.Join(backupDir, id+"_files.tar"), RestoreSupported: true}
-
-	if _, err := exec.LookPath("pg_dump"); err == nil && databaseURL != "" {
-		cmd := exec.Command("pg_dump", "--format=custom", "--file", manifest.DatabaseDumpPath, databaseURL)
+	manifest := BackupArtifactManifest{
+		BackupID:         id,
+		CreatedAt:        time.Now().UTC(),
+		DatabaseDumpPath: filepath.Join(backupDir, id+".dump"),
+		FileSnapshotPath: filepath.Join(backupDir, id+"_files.tar"),
+		RestoreSupported: true,
+	}
+	if _, err := exec.LookPath("pg_dump"); err == nil && dsn != "" {
+		cmd := exec.Command("pg_dump", "--format=custom", "--file", manifest.DatabaseDumpPath, dsn)
 		if err := cmd.Run(); err != nil {
 			manifest.DatabaseDumpMode = "pg_dump_failed_metadata_only"
 			_ = os.WriteFile(manifest.DatabaseDumpPath+".error", []byte(err.Error()), 0640)
@@ -34,9 +39,8 @@ func RunBackupArtifacts(id string, databaseURL string, storageDir string, backup
 		}
 	} else {
 		manifest.DatabaseDumpMode = "pg_dump_unavailable_metadata_only"
-		_ = os.WriteFile(manifest.DatabaseDumpPath+".missing", []byte("pg_dump or database URL unavailable"), 0640)
+		_ = os.WriteFile(manifest.DatabaseDumpPath+".missing", []byte("pg_dump or DSN unavailable"), 0640)
 	}
-
 	if _, err := exec.LookPath("tar"); err == nil {
 		cmd := exec.Command("tar", "-cf", manifest.FileSnapshotPath, "-C", storageDir, ".")
 		if err := cmd.Run(); err != nil {
@@ -49,7 +53,6 @@ func RunBackupArtifacts(id string, databaseURL string, storageDir string, backup
 		manifest.FileSnapshotMode = "tar_unavailable"
 		_ = os.WriteFile(manifest.FileSnapshotPath+".missing", []byte("tar unavailable"), 0640)
 	}
-
 	raw, _ := json.MarshalIndent(manifest, "", "  ")
 	if err := os.WriteFile(filepath.Join(backupDir, id+"_manifest.json"), raw, 0640); err != nil {
 		return manifest, err
@@ -57,11 +60,11 @@ func RunBackupArtifacts(id string, databaseURL string, storageDir string, backup
 	return manifest, nil
 }
 
-func RunRestoreArtifacts(databaseURL string, databaseDumpPath string, fileSnapshotPath string, storageDir string) (map[string]string, error) {
+func RunRestoreArtifacts(dsn string, databaseDumpPath string, fileSnapshotPath string, storageDir string) (map[string]string, error) {
 	result := map[string]string{}
 	if databaseDumpPath != "" {
-		if _, err := exec.LookPath("pg_restore"); err == nil && databaseURL != "" {
-			cmd := exec.Command("pg_restore", "--clean", "--if-exists", "--dbname", databaseURL, databaseDumpPath)
+		if _, err := exec.LookPath("pg_restore"); err == nil && dsn != "" {
+			cmd := exec.Command("pg_restore", "--clean", "--if-exists", "--dbname", dsn, databaseDumpPath)
 			if err := cmd.Run(); err != nil {
 				result["database_restore"] = "pg_restore_failed"
 				result["database_restore_error"] = err.Error()
