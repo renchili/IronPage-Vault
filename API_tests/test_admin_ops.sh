@@ -19,6 +19,9 @@ expect_code "audit log list" 200 "$code" || FAIL=$((FAIL+1))
 code=$(auth_get "$ADMIN_TOKEN" '/api/audit-logs?action_type=DOCUMENT_UPLOAD')
 expect_code "audit log action filter" 200 "$code" || FAIL=$((FAIL+1))
 
+code=$(auth_post_json "$ADMIN_TOKEN" /api/admin/backup/run '{}')
+expect_code "admin backup metadata snapshot run" 201 "$code" || FAIL=$((FAIL+1))
+
 code=$(auth_get "$ADMIN_TOKEN" /api/admin/backup/jobs)
 expect_code "admin backup jobs" 200 "$code" || FAIL=$((FAIL+1))
 
