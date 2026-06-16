@@ -1,6 +1,9 @@
 package app
 
-import "ironpage-vault/internal/core"
+import (
+    "ironpage-vault/internal/core"
+    "ironpage-vault/internal/store"
+)
 
 func corePrincipal(p Principal) core.Principal {
     return core.Principal{UserID:p.UserID, Role:p.Role}
@@ -27,7 +30,5 @@ func canTransitionDocumentObject(p Principal, d Document) bool {
 }
 
 func documentListWhereClause(p Principal) (string, []interface{}) {
-    if p.Role == RoleAdmin { return "1=1", nil }
-    if p.Role == RoleReviewer { return "status <> 'Draft'", nil }
-    return "owner_id=$1", []interface{}{p.UserID}
+    return store.DocumentListWhereClause(store.PrincipalFilter{UserID:p.UserID, Role:p.Role})
 }
