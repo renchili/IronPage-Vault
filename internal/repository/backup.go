@@ -24,6 +24,6 @@ func (r Repository) CountBackupTables(ctx context.Context) ([]BackupTableCount, 
 }
 
 func (r Repository) InsertBackupJob(ctx context.Context, id string, targetPath string, userID string) error {
-	_, err := r.DB.ExecContext(ctx, `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'metadata_snapshot','Completed',$2,$3,NOW())`, id, targetPath, userID)
+	_, err := r.DB.ExecContext(ctx, `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'full_backup','Completed',$2,$3,NOW())`, id, targetPath, userID)
 	return err
 }
