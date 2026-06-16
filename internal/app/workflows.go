@@ -77,7 +77,7 @@ func (a *App) finalizeDocument(c echo.Context) error {
 }
 
 func versionComparisonResult(left DocumentVersion, right DocumentVersion, leftRaw []byte, rightRaw []byte) map[string]interface{} {
-	result := map[string]interface{}{"left_version_id": left.ID, "right_version_id": right.ID, "same_sha256": left.FileSHA256 == right.FileSHA256, "same_size": left.SizeBytes == right.SizeBytes, "same_page_count": left.PageCount == right.PageCount, "byte_length_delta": len(rightRaw) - len(leftRaw), "added": []interface{}{}, "removed": []interface{}{}, "modified": []interface{}{}}
+	result := map[string]interface{}{"left_version_id": left.ID, "right_version_id": right.ID, "comparison_kind": "binary_metadata", "text_diff_supported": false, "bbox_supported": false, "same_sha256": left.FileSHA256 == right.FileSHA256, "same_size": left.SizeBytes == right.SizeBytes, "same_page_count": left.PageCount == right.PageCount, "byte_length_delta": len(rightRaw) - len(leftRaw), "added": []interface{}{}, "removed": []interface{}{}, "modified": []interface{}{}}
 	if !bytes.Equal(leftRaw, rightRaw) {
 		result["modified"] = []map[string]interface{}{{"page": 1, "bbox": map[string]int{"x": 0, "y": 0, "w": 0, "h": 0}, "text": "binary content differs between supplied versions"}}
 	}
