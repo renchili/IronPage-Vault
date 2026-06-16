@@ -129,7 +129,7 @@ This document maps prompt requirements to the current implementation. It is inte
 | Workflow notification | Complete | workflow transition calls `notifyUser` |
 | 500 unread ceiling | Complete | `createNotification` marks oldest unread when ceiling is reached |
 | Per-user query | Complete | `/api/notifications` uses principal user ID |
-| Read acknowledgement | Partial | `/api/notifications/:id/read` updates by user ID, but missing-row behavior still needs stronger API coverage |
+| Read acknowledgement | Complete | `/api/notifications/:id/read` verifies the row belongs to the caller and API coverage asserts missing notifications return 404 |
 | Annotation mention notification | Complete | annotation creation calls `notifyMentionedUsers` before returning |
 | Admin editable templates | Complete | templates can be listed and updated through Admin-only notification template endpoints |
 
