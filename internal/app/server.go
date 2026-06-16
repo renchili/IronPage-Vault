@@ -52,7 +52,7 @@ func Run(cfg Config) error {
     admin.PATCH("/config/:key", a.patchConfig)
     admin.GET("/workflow-statuses", a.workflowStatuses)
     admin.GET("/notification-templates", a.notificationTemplates)
-    admin.POST("/backup/run", a.runBackupFile)
+    admin.POST("/backup/run", a.runBackupMetadataSnapshot)
     admin.GET("/backup/jobs", a.backupJobs)
 
     docs := api.Group("/documents")
