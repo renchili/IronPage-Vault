@@ -16,7 +16,7 @@ func TestIsValidUserSecret(t *testing.T) {
 	}
 	for _, tc := range cases {
 		if got := IsValidUserSecret(tc.secret); got != tc.want {
-			t.Fatalf("%s: IsValidUserSecret()=%v want %v", tc.name, got, tc.want)
+			t.Fatalf("%s: got %v want %v", tc.name, got, tc.want)
 		}
 	}
 }

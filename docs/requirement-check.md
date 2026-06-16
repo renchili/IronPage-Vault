@@ -156,7 +156,6 @@ This document maps prompt requirements to the current implementation. It is inte
 
 ## Current Blocking Gaps
 
-3. Real `pg_dump`, filesystem snapshot backup, and restore workflow are not implemented.
 4. Compare API does not perform text-level PDF diff with real page/bbox extraction.
 5. API endpoint coverage remains below the requested threshold.
 6. Handler/database integration tests are still limited.
