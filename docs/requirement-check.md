@@ -131,7 +131,7 @@ This document maps prompt requirements to the current implementation. It is inte
 | Per-user query | Complete | `/api/notifications` uses principal user ID |
 | Read acknowledgement | Partial | `/api/notifications/:id/read` updates by user ID, but missing-row behavior still needs stronger API coverage |
 | Annotation mention notification | Complete | annotation creation calls `notifyMentionedUsers` before returning |
-| Admin editable templates | Partial | templates can be listed; edit endpoint is incomplete |
+| Admin editable templates | Complete | templates can be listed and updated through Admin-only notification template endpoints |
 
 ## Backup and Recovery
 
