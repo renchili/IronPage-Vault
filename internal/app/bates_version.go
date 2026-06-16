@@ -6,6 +6,8 @@ import (
     "strings"
 
     "github.com/labstack/echo/v4"
+
+    "ironpage-vault/internal/platform"
 )
 
 func batesVersionPath(currentPath string, newVersion int) string {
@@ -29,7 +31,7 @@ func (a *App) applyBatesVersion(c echo.Context) error {
     newVersion := d.CurrentVersion + 1
     dst := batesVersionPath(v.FilePath, newVersion)
     marker := batesMarker(req.Prefix, req.Suffix, req.ZeroPadding, req.Start)
-    if err := ApplyAppendOnlyPDFTransform(v.FilePath, dst, marker); err != nil { return apiErr(c, http.StatusInternalServerError, "BATES_APPLY_ERROR", "could not create Bates PDF version") }
+    if err := platform.AppendPDFMetadataMarkerFile(v.FilePath, dst, marker); err != nil { return apiErr(c, http.StatusInternalServerError, "BATES_APPLY_ERROR", "could not create Bates PDF version") }
     info, err := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
     if err != nil { return apiErr(c, http.StatusInternalServerError, "BATES_VERIFY_ERROR", "could not verify Bates PDF version") }
     jobID := makeIdentifier("bts")

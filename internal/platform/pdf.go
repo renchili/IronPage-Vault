@@ -68,11 +68,15 @@ func InspectPDF(path string, maxBytes int64, maxPages int) (PDFInfo, error) {
 	}, nil
 }
 
-func AppendPDFTransformMarker(raw []byte, marker string) []byte {
+func AppendPDFMetadataMarker(raw []byte, marker string) []byte {
 	return append(raw, []byte("\n% IronPage Vault transform: "+marker+"\n")...)
 }
 
-func ApplyAppendOnlyPDFTransform(src, dst, marker string) error {
+func AppendPDFTransformMarker(raw []byte, marker string) []byte {
+	return AppendPDFMetadataMarker(raw, marker)
+}
+
+func AppendPDFMetadataMarkerFile(src, dst, marker string) error {
 	raw, err := os.ReadFile(src)
 	if err != nil {
 		return err
@@ -80,6 +84,10 @@ func ApplyAppendOnlyPDFTransform(src, dst, marker string) error {
 	if !strings.HasPrefix(string(raw), "%PDF-") {
 		return fmt.Errorf("source is not pdf")
 	}
-	raw = AppendPDFTransformMarker(raw, marker)
+	raw = AppendPDFMetadataMarker(raw, marker)
 	return os.WriteFile(dst, raw, 0640)
+}
+
+func ApplyAppendOnlyPDFTransform(src, dst, marker string) error {
+	return AppendPDFMetadataMarkerFile(src, dst, marker)
 }

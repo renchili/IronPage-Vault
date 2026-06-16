@@ -48,13 +48,15 @@ This is partial column-level protection, not full sensitive-field encryption. Co
 
 The redaction flow can stage regions, confirm a redaction, create a new version, and record audit.
 
-It still does not perform forensic content removal. The current transform does not rewrite PDF content streams to make selected content unrecoverable. Final acceptance requires a real PDF content removal engine and tests proving the removed content cannot be extracted.
+It still does not perform forensic content removal. The current PDF marker helper only appends metadata-like marker bytes to a copied PDF file; it does not rewrite content streams, remove text, or prove unrecoverability.
+
+Final acceptance requires a real PDF content removal engine and tests proving the removed content cannot be extracted.
 
 ## Q8. What does Bates processing currently provide?
 
 Bates processing now creates a new document version and records the job. That is an improvement over metadata-only behavior.
 
-It still does not draw visible Bates numbers on each PDF page and does not allocate cross-document batch sequences. The correct status is Partial until page-visible numbering exists.
+It still does not draw visible Bates numbers on each PDF page and does not allocate cross-document batch sequences. The current PDF marker helper only appends marker bytes to the copied PDF file. The correct status is Partial until page-visible numbering exists.
 
 ## Q9. What does document comparison currently provide?
 
@@ -176,7 +178,7 @@ Then the app wrappers can be deleted.
 
 ## Q22. Why move PDF helpers into internal/platform?
 
-PDF inspection and append-only transform helpers are filesystem/PDF adapter code. They read files, validate PDF headers, count page markers, compute file digests, and write transformed PDF artifacts.
+PDF inspection and PDF marker helpers are filesystem/PDF adapter code. They read files, validate PDF headers, count page markers, compute file digests, and write copied PDF artifacts.
 
 That is not API handler responsibility and not domain policy. The real implementation belongs in `internal/platform`.
 

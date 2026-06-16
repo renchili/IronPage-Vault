@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+
+	"ironpage-vault/internal/platform"
 )
 
 func (a *App) ensureMutable(c echo.Context, docID string) (Document, error) {
@@ -102,7 +104,7 @@ func (a *App) confirmRedaction(c echo.Context) error {
 	}
 	newVersion := d.CurrentVersion + 1
 	dst := redactedVersionPath(v.FilePath, newVersion)
-	if err := ApplyAppendOnlyPDFTransform(v.FilePath, dst, redactionTransformMarker()); err != nil {
+	if err := platform.AppendPDFMetadataMarkerFile(v.FilePath, dst, redactionTransformMarker()); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_BURNIN_ERROR", "could not create redacted binary")
 	}
 	info, err := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
