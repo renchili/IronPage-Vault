@@ -14,7 +14,7 @@ jobs:
         with:
           go-version: '1.23'
       - name: Go tests
-        run: go test ./...
+        run: go test -mod=mod ./...
       - name: Static rules
         run: unit_tests/test_rules.sh
       - name: Docker build
