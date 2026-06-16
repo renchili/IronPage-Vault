@@ -6,6 +6,14 @@ COPY . .
 RUN go build -o /out/ironpage ./cmd/server
 
 FROM postgres:16-bookworm
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        poppler-utils \
+        python3 \
+        python3-pip \
+        tar \
+    && python3 -m pip install --break-system-packages --no-cache-dir pypdf reportlab \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /out/ironpage /usr/local/bin/ironpage
 COPY migrations /opt/ironpage/migrations
 COPY public /opt/ironpage/public

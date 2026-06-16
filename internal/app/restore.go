@@ -17,7 +17,7 @@ func (a *App) restoreBackup(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return apiErr(c, http.StatusBadRequest, "INVALID_RESTORE_REQUEST", "invalid restore request")
 	}
-	result, err := platform.RunRestoreArtifacts(a.cfg.DatabaseURL, req.DatabaseDumpPath, req.FileSnapshotPath, a.cfg.StorageDir)
+	result, err := platform.RunRestoreArtifacts(a.cfg.DSN(), req.DatabaseDumpPath, req.FileSnapshotPath, a.cfg.StorageDir)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "RESTORE_ERROR", "restore failed")
 	}

@@ -86,7 +86,7 @@ func versionComparisonResult(left DocumentVersion, right DocumentVersion, leftRa
 }
 
 func versionTextComparisonResult(left DocumentVersion, right DocumentVersion, leftRaw []byte, rightRaw []byte) map[string]interface{} {
-	result := versionTextComparisonResult(left, right, leftRaw, rightRaw)
+	result := versionComparisonResult(left, right, leftRaw, rightRaw)
 	result["comparison_kind"] = "text_and_binary"
 	result["text_diff_supported"] = true
 	leftText, leftMode, leftErr := platform.ExtractPDFText(left.FilePath)
