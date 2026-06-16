@@ -6,7 +6,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"ironpage-vault/internal/platform"
 	"ironpage-vault/internal/service"
 )
 
