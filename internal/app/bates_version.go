@@ -18,6 +18,17 @@ func batesMarker(prefix, suffix string, zeroPadding int, start int) string {
 	return "Bates applied: prefix=" + prefix + ", suffix=" + suffix + ", zero_padding=" + strconv.Itoa(zeroPadding) + ", start=" + strconv.Itoa(start)
 }
 
+func (a *App) allocateBatesStart(c echo.Context, requested int) (int, error) {
+	if requested > 0 {
+		return requested, nil
+	}
+	var start int
+	if err := a.db.GetContext(c.Request().Context(), &start, `INSERT INTO bates_sequences(scope,next_number,updated_at) VALUES('global',2,NOW()) ON CONFLICT(scope) DO UPDATE SET next_number=bates_sequences.next_number+1, updated_at=NOW() RETURNING next_number-1`); err != nil {
+		return 0, err
+	}
+	return start, nil
+}
+
 func (a *App) applyBatesVersion(c echo.Context) error {
 	p := principal(c)
 	docID := c.Param("id")
@@ -47,11 +58,15 @@ func (a *App) applyBatesVersion(c echo.Context) error {
 	if !IsValidBatesPadding(req.ZeroPadding) {
 		return apiErr(c, http.StatusBadRequest, "INVALID_ZERO_PADDING", "zero padding must be between 0 and 10")
 	}
-	req.Start = NormalizeBatesStart(req.Start)
+	allocatedStart, err := a.allocateBatesStart(c, req.Start)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "BATES_SEQUENCE_ERROR", "could not allocate Bates sequence")
+	}
+	req.Start = NormalizeBatesStart(allocatedStart)
 	newVersion := d.CurrentVersion + 1
 	dst := batesVersionPath(v.FilePath, newVersion)
-	marker := batesMarker(req.Prefix, req.Suffix, req.ZeroPadding, req.Start)
-	if err := platform.AppendPDFMetadataMarkerFile(v.FilePath, dst, marker); err != nil {
+	_ = batesMarker(req.Prefix, req.Suffix, req.ZeroPadding, req.Start)
+	if _, err := platform.RewritePDFWithBates(v.FilePath, dst, platform.BatesOptions{Prefix: req.Prefix, Suffix: req.Suffix, ZeroPadding: req.ZeroPadding, StartNumber: req.Start}); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BATES_APPLY_ERROR", "could not create Bates PDF version")
 	}
 	info, err := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)

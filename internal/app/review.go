@@ -60,8 +60,24 @@ func (a *App) proposeRedaction(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction reason")
 	}
+	xCipher, err := encryptString(a.cfg.AESKey, formatFloat(req.X))
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction coordinate")
+	}
+	yCipher, err := encryptString(a.cfg.AESKey, formatFloat(req.Y))
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction coordinate")
+	}
+	widthCipher, err := encryptString(a.cfg.AESKey, formatFloat(req.Width))
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction coordinate")
+	}
+	heightCipher, err := encryptString(a.cfg.AESKey, formatFloat(req.Height))
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction coordinate")
+	}
 	id := makeIdentifier("red")
-	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO redaction_proposals(id,document_id,page,x,y,width,height,reason,status,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'Staged',$9,NOW())`, id, docID, req.Page, req.X, req.Y, req.Width, req.Height, reason, p.UserID)
+	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO redaction_proposals(id,document_id,page,x,y,width,height,x_ciphertext,y_ciphertext,width_ciphertext,height_ciphertext,reason,status,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Staged',$13,NOW())`, id, docID, req.Page, req.X, req.Y, req.Width, req.Height, xCipher, yCipher, widthCipher, heightCipher, reason, p.UserID)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_CREATE_ERROR", "could not stage redaction")
 	}
@@ -104,7 +120,11 @@ func (a *App) confirmRedaction(c echo.Context) error {
 	}
 	newVersion := d.CurrentVersion + 1
 	dst := redactedVersionPath(v.FilePath, newVersion)
-	if err := platform.AppendPDFMetadataMarkerFile(v.FilePath, dst, redactionTransformMarker()); err != nil {
+	regions, err := a.confirmedRedactionRegions(c, docID, c.Param("redaction_id"))
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "REDACTION_QUERY_ERROR", "could not load redaction regions")
+	}
+	if _, err := platform.RewritePDFWithRedactions(v.FilePath, dst, regions); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_BURNIN_ERROR", "could not create redacted binary")
 	}
 	info, err := InspectPDF(dst, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
