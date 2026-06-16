@@ -60,6 +60,12 @@ The workflow status chain is domain policy. It decides the valid next legal docu
 
 For that reason `NextWorkflowStatus` and `WorkflowStatusChain` belong in `internal/core`. `internal/app` may temporarily keep a wrapper for handler compatibility, but the real rule should not live in the API adapter layer.
 
+## Why text token parsing is a core rule
+
+Mention parsing decides which local usernames are referenced by an annotation comment. The parser is deterministic text policy and does not require Echo, SQL, or notification persistence.
+
+For that reason `ExtractMentionUsernames` belongs in `internal/core`. The database lookup and notification creation remain outside core because they are persistence and side-effect behavior.
+
 ## Why notification cap policy is a core rule
 
 The unread notification cap decides how many old unread records must be marked read before inserting a new notification. The calculation itself is deterministic domain policy and does not require Echo or SQL.

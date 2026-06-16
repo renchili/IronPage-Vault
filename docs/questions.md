@@ -226,3 +226,22 @@ trim = unread - limit + 1 when unread >= limit
 It does not need Echo, SQL, or HTTP response formatting. It belongs in `internal/core`.
 
 The database update that marks rows as read remains outside core because SQL and persistence side effects belong in the app/store migration path.
+
+
+## Q25. Why move mention parsing into internal/core?
+
+Mention parsing is pure text policy. It takes an annotation comment and returns candidate usernames. It does not need Echo, SQL, or notification persistence.
+
+The database lookup for users and the creation of notification rows remain outside core. Those side effects should later move through service/store boundaries.
+
+The temporary wrapper strategy is:
+
+```text
+annotation handler -> internal/app wrapper -> internal/core text parser
+```
+
+The follow-up cleanup is:
+
+```text
+annotation service -> internal/core text parser
+```

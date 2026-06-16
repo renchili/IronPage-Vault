@@ -47,6 +47,7 @@ Current migration status:
 - domain validation rules have moved from `internal/app` to `internal/core`
 - workflow chain rules have moved from `internal/app` to `internal/core`
 - notification unread-cap policy has moved from `internal/app` to `internal/core`
+- text token and mention parsing policy has moved from `internal/app` to `internal/core`
 - object-level access policy has moved from `internal/app` to `internal/core`
 - crypto, digest, and PDF helper implementations have moved from `internal/app` to `internal/platform`
 - `internal/app` keeps temporary compatibility wrappers while handlers are migrated in small PRs
