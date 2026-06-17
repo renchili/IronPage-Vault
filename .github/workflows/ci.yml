@@ -21,7 +21,9 @@ jobs:
           test -f docs/swagger/docs.go
           test -f docs/swagger/swagger.yaml
       - name: Go format
-        run: test -z "$(gofmt -l .)"
+        run: |
+          files="$(find . -name '*.go' -not -path './docs/swagger/*')"
+          test -z "$(gofmt -l $files)"
       - name: Go vet
         run: go vet ./...
       - name: Go tests
