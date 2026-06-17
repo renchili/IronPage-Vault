@@ -6,7 +6,8 @@ package app
 // @Success 200 {object} map[string]interface{}
 // @Failure 503 {object} map[string]interface{}
 // @Router /healthz [get]
-func healthSwagger() {}
+func healthSwagger() {
+}
 
 // authRoutesSwagger documents auth endpoints.
 // @Summary Local login
@@ -29,7 +30,8 @@ func healthSwagger() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Router /api/auth/me [get]
-func authRoutesSwagger() {}
+func authRoutesSwagger() {
+}
 
 // adminRoutesSwagger documents admin endpoints.
 // @Summary Create user
@@ -59,7 +61,8 @@ func authRoutesSwagger() {}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/admin/config/{key} [patch]
-func adminRoutesSwagger() {}
+func adminRoutesSwagger() {
+}
 
 // adminWorkflowRoutesSwagger documents workflow and template admin endpoints.
 // @Summary List workflow statuses
@@ -82,7 +85,8 @@ func adminRoutesSwagger() {}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/admin/notification-templates/{key} [patch]
-func adminWorkflowRoutesSwagger() {}
+func adminWorkflowRoutesSwagger() {
+}
 
 // backupRoutesSwagger documents backup endpoints.
 // @Summary Run backup
@@ -105,7 +109,8 @@ func adminWorkflowRoutesSwagger() {}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/admin/backup/restore [post]
-func backupRoutesSwagger() {}
+func backupRoutesSwagger() {
+}
 
 // documentRoutesSwagger documents document collection endpoints.
 // @Summary List documents
@@ -135,7 +140,8 @@ func backupRoutesSwagger() {}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/documents/batch [post]
-func documentRoutesSwagger() {}
+func documentRoutesSwagger() {
+}
 
 // documentItemRoutesSwagger documents document item endpoints.
 // @Summary Get document metadata
@@ -162,7 +168,8 @@ func documentRoutesSwagger() {}
 // @Failure 403 {object} map[string]interface{}
 // @Failure 404 {object} map[string]interface{}
 // @Router /api/documents/{id}/versions [get]
-func documentItemRoutesSwagger() {}
+func documentItemRoutesSwagger() {
+}
 
 // documentMutationRoutesSwagger documents document mutation endpoints.
 // @Summary Roll back document version
@@ -190,7 +197,8 @@ func documentItemRoutesSwagger() {}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/documents/{id}/workflow/transition [post]
-func documentMutationRoutesSwagger() {}
+func documentMutationRoutesSwagger() {
+}
 
 // reviewRoutesSwagger documents redaction endpoints.
 // @Summary Stage redaction region
@@ -218,7 +226,8 @@ func documentMutationRoutesSwagger() {}
 // @Failure 403 {object} map[string]interface{}
 // @Failure 409 {object} map[string]interface{}
 // @Router /api/documents/{id}/redactions/{redaction_id}/confirm [post]
-func reviewRoutesSwagger() {}
+func reviewRoutesSwagger() {
+}
 
 // annotationRoutesSwagger documents annotation endpoints.
 // @Summary Create annotation
@@ -244,7 +253,8 @@ func reviewRoutesSwagger() {}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/annotations/{id}/disposition [patch]
-func annotationRoutesSwagger() {}
+func annotationRoutesSwagger() {
+}
 
 // batesCompareRoutesSwagger documents Bates and compare endpoints.
 // @Summary Apply Bates numbering
@@ -263,7 +273,8 @@ func annotationRoutesSwagger() {}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/documents/compare [post]
-func batesCompareRoutesSwagger() {}
+func batesCompareRoutesSwagger() {
+}
 
 // auditNotificationRoutesSwagger documents audit and notification endpoints.
 // @Summary List audit logs
@@ -293,4 +304,5 @@ func batesCompareRoutesSwagger() {}
 // @Failure 403 {object} map[string]interface{}
 // @Failure 404 {object} map[string]interface{}
 // @Router /api/notifications/{id}/read [post]
-func auditNotificationRoutesSwagger() {}
+func auditNotificationRoutesSwagger() {
+}
