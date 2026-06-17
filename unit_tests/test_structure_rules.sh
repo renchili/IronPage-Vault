@@ -23,8 +23,8 @@ check "finalized test walks approved state" "grep -q 'Redaction Pending' API_tes
 check "pdf content test checks redacted text" "grep -q 'SECRET_NEVER_APPEAR' API_tests/test_pdf_content_acceptance.sh && grep -q 'pdftotext' API_tests/test_pdf_content_acceptance.sh"
 check "bates content test checks label" "grep -q 'CNT-001' API_tests/test_pdf_content_acceptance.sh"
 check "backup artifact existence checked" "grep -q 'dump artifact file missing' API_tests/test_admin_ops.sh && grep -q 'file artifact missing' API_tests/test_admin_ops.sh"
-check "bates sequence multi doc test exists" "test -x API_tests/test_bates_sequence_multi_doc.sh"
-check "strict dependency negative test exists" "test -x API_tests/test_strict_dependency_failures.sh"
-check "mention side effect test exists" "test -x API_tests/test_notification_mention_side_effect.sh"
+check "bates sequence multi doc test exists" "test -f API_tests/test_bates_sequence_multi_doc.sh"
+check "strict dependency negative test exists" "test -f API_tests/test_strict_dependency_failures.sh"
+check "mention side effect test exists" "test -f API_tests/test_notification_mention_side_effect.sh"
 
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
