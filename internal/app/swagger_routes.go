@@ -136,3 +136,161 @@ func backupRoutesSwagger() {}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/documents/batch [post]
 func documentRoutesSwagger() {}
+
+// documentItemRoutesSwagger documents document item endpoints.
+// @Summary Get document metadata
+// @Tags documents
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Router /api/documents/{id} [get]
+// @Summary Download current document file
+// @Tags documents
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 200 {file} file
+// @Failure 403 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Router /api/documents/{id}/file [get]
+// @Summary List document versions
+// @Tags versions
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Router /api/documents/{id}/versions [get]
+func documentItemRoutesSwagger() {}
+
+// documentMutationRoutesSwagger documents document mutation endpoints.
+// @Summary Roll back document version
+// @Tags versions
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 409 {object} map[string]interface{}
+// @Router /api/documents/{id}/rollback [post]
+// @Summary Finalize document
+// @Tags workflow
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 409 {object} map[string]interface{}
+// @Router /api/documents/{id}/finalize [post]
+// @Summary Transition document workflow
+// @Tags workflow
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Router /api/documents/{id}/workflow/transition [post]
+func documentMutationRoutesSwagger() {}
+
+// reviewRoutesSwagger documents redaction endpoints.
+// @Summary Stage redaction region
+// @Tags redactions
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 201 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Router /api/documents/{id}/redactions [post]
+// @Summary List redaction proposals
+// @Tags redactions
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Router /api/documents/{id}/redactions [get]
+// @Summary Confirm redaction burn-in
+// @Tags redactions
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Param redaction_id path string true "redaction id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 409 {object} map[string]interface{}
+// @Router /api/documents/{id}/redactions/{redaction_id}/confirm [post]
+func reviewRoutesSwagger() {}
+
+// annotationRoutesSwagger documents annotation endpoints.
+// @Summary Create annotation
+// @Tags annotations
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 201 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Router /api/documents/{id}/annotations [post]
+// @Summary List annotations
+// @Tags annotations
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Router /api/documents/{id}/annotations [get]
+// @Summary Update annotation disposition
+// @Tags annotations
+// @Security BearerAuth
+// @Param id path string true "annotation id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Router /api/annotations/{id}/disposition [patch]
+func annotationRoutesSwagger() {}
+
+// batesCompareRoutesSwagger documents Bates and compare endpoints.
+// @Summary Apply Bates numbering
+// @Tags bates
+// @Security BearerAuth
+// @Param id path string true "document id"
+// @Success 201 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 409 {object} map[string]interface{}
+// @Router /api/documents/{id}/bates [post]
+// @Summary Compare document versions
+// @Tags compare
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Router /api/documents/compare [post]
+func batesCompareRoutesSwagger() {}
+
+// auditNotificationRoutesSwagger documents audit and notification endpoints.
+// @Summary List audit logs
+// @Tags audit
+// @Security BearerAuth
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
+// @Param user_id query string false "actor user id"
+// @Param document_id query string false "document id"
+// @Param action_type query string false "action type"
+// @Param from query string false "start timestamp"
+// @Param to query string false "end timestamp"
+// @Success 200 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Router /api/audit-logs [get]
+// @Summary List notifications
+// @Tags notifications
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Router /api/notifications [get]
+// @Summary Mark notification as read
+// @Tags notifications
+// @Security BearerAuth
+// @Param id path string true "notification id"
+// @Success 200 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Router /api/notifications/{id}/read [post]
+func auditNotificationRoutesSwagger() {}
