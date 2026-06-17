@@ -4,6 +4,20 @@ set -u -o pipefail
 BASE_URL=${BASE_URL:-http://localhost:8080}
 BODY=${BODY:-/tmp/ironpage_api_body.json}
 
+load_saved_tokens() {
+  if [ -z "${ADMIN_TOKEN:-}" ] && [ -s /tmp/ironpage_admin_token.out ]; then
+    export ADMIN_TOKEN="$(cat /tmp/ironpage_admin_token.out)"
+  fi
+  if [ -z "${EDITOR_TOKEN:-}" ] && [ -s /tmp/ironpage_editor_token.out ]; then
+    export EDITOR_TOKEN="$(cat /tmp/ironpage_editor_token.out)"
+  fi
+  if [ -z "${REVIEWER_TOKEN:-}" ] && [ -s /tmp/ironpage_reviewer_token.out ]; then
+    export REVIEWER_TOKEN="$(cat /tmp/ironpage_reviewer_token.out)"
+  fi
+}
+
+load_saved_tokens
+
 reqid() { echo "req_$(date +%s%N)_$RANDOM"; }
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
