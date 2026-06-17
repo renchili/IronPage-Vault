@@ -25,4 +25,8 @@ for i in $(seq 1 60); do
   fi
 done
 
-bash ./run_tests.sh
+if ! bash ./run_tests.sh; then
+  echo "Docker acceptance failed; dumping compose logs"
+  docker compose logs --no-color || true
+  exit 1
+fi
