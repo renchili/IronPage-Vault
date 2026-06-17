@@ -13,8 +13,18 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+      - name: Install Swagger generator
+        run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+      - name: Generate Swagger
+        run: bash scripts/generate_swagger.sh
+      - name: Go format
+        run: test -z "$(gofmt -l .)"
+      - name: Go vet
+        run: go vet ./...
       - name: Go tests
         run: go test -mod=mod ./...
+      - name: Swagger drift check
+        run: git diff --exit-code docs/swagger
       - name: Static rules
         run: bash unit_tests/test_rules.sh
       - name: Docker build
