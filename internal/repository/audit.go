@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type AuditLogFilters struct {
@@ -14,6 +16,17 @@ type AuditLogFilters struct {
 	SourceIP    string
 	CreatedFrom string
 	CreatedTo   string
+}
+
+type AuditLogRow struct {
+	ID          string          `db:"id" json:"id"`
+	ActorUserID *string         `db:"actor_user_id" json:"actor_user_id,omitempty"`
+	DocumentID  *string         `db:"document_id" json:"document_id,omitempty"`
+	ActionType  string          `db:"action_type" json:"action_type"`
+	RequestID   string          `db:"request_id" json:"request_id"`
+	SourceIP    string          `db:"source_ip" json:"source_ip"`
+	Metadata    json.RawMessage `db:"metadata" json:"metadata"`
+	CreatedAt   time.Time       `db:"created_at" json:"created_at"`
 }
 
 func BuildAuditLogListQuery(filters AuditLogFilters, limit int, offset int) (string, []interface{}) {
@@ -53,9 +66,9 @@ func BuildAuditLogListQuery(filters AuditLogFilters, limit int, offset int) (str
 	return query, args
 }
 
-func (r Repository) ListAuditLogs(ctx context.Context, filters AuditLogFilters, limit int, offset int) ([]map[string]interface{}, error) {
+func (r Repository) ListAuditLogs(ctx context.Context, filters AuditLogFilters, limit int, offset int) ([]AuditLogRow, error) {
 	query, args := BuildAuditLogListQuery(filters, limit, offset)
-	rows := []map[string]interface{}{}
+	rows := []AuditLogRow{}
 	if err := r.DB.SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, err
 	}

@@ -85,6 +85,15 @@ func (a *App) proposeRedaction(c echo.Context) error {
 	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "status": "Staged"})
 }
 
+type redactionListRow struct {
+	ID         string `db:"id" json:"id"`
+	DocumentID string `db:"document_id" json:"document_id"`
+	Page       int    `db:"page" json:"page"`
+	Status     string `db:"status" json:"status"`
+	CreatedBy  string `db:"created_by" json:"created_by"`
+	CreatedAt  string `db:"created_at" json:"created_at"`
+}
+
 func (a *App) listRedactions(c echo.Context) error {
 	p := principal(c)
 	var d Document
@@ -94,8 +103,8 @@ func (a *App) listRedactions(c echo.Context) error {
 	if !canReadDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope")
 	}
-	rows := []map[string]interface{}{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,page,status,created_by,created_at FROM redaction_proposals WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil {
+	rows := []redactionListRow{}
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,page,status,created_by,created_at::text AS created_at FROM redaction_proposals WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_QUERY_ERROR", "could not list redactions")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})

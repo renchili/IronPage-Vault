@@ -57,7 +57,8 @@ func (a *App) applyBatesVersion(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BATES_SEQUENCE_ERROR", "could not allocate Bates sequence")
 	}
-	req.Start = NormalizeBatesStart(allocatedStart)
+	startNumber := NormalizeBatesStart(allocatedStart)
+	req.Start = startNumber
 	newVersion := d.CurrentVersion + 1
 	dst := batesVersionPath(v.FilePath, newVersion)
 	_ = batesMarker(req.Prefix, req.Suffix, req.ZeroPadding, req.Start)
@@ -88,5 +89,5 @@ func (a *App) applyBatesVersion(c echo.Context) error {
 	if err := tx.Commit(); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit Bates version")
 	}
-	return c.JSON(http.StatusCreated, map[string]interface{}{"id": jobID, "status": "created", "version": newVersion})
+	return c.JSON(http.StatusCreated, map[string]interface{}{"id": jobID, "status": "created", "version": newVersion, "start_number": startNumber})
 }
