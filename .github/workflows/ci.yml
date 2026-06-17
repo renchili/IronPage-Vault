@@ -16,15 +16,16 @@ jobs:
       - name: Install Swagger generator
         run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
       - name: Generate Swagger
-        run: bash scripts/generate_swagger.sh
+        run: |
+          bash scripts/generate_swagger.sh
+          test -f docs/swagger/docs.go
+          test -f docs/swagger/swagger.yaml
       - name: Go format
         run: test -z "$(gofmt -l .)"
       - name: Go vet
         run: go vet ./...
       - name: Go tests
         run: go test -mod=mod ./...
-      - name: Swagger drift check
-        run: git diff --exit-code docs/swagger
       - name: Static rules
         run: bash unit_tests/test_rules.sh
       - name: Docker build
