@@ -41,11 +41,16 @@ check "public swagger yaml exists" "test -f public/swagger.yaml"
 check "ci workflow exists" "test -f .github/workflows/ci.yml"
 check "strict pdf entrypoints exist" "grep -q 'RewritePDFWithRedactionsStrict' internal/platform/pdf_strict.go && grep -q 'RewritePDFWithBatesStrict' internal/platform/pdf_strict.go"
 check "strict backup entrypoints exist" "grep -q 'RunBackupArtifactsStrict' internal/platform/backup_strict.go && grep -q 'RunRestoreArtifactsStrict' internal/platform/backup_strict.go"
-check "redaction coordinates stored encrypted only" "grep -q 'x_ciphertext' internal/app/review.go && ! grep -q 'req.X, req.Y, req.Width, req.Height' internal/app/review.go"
+check "redaction coordinates stored encrypted only" "grep -q 'x_ciphertext' internal/app/review.go && grep -q 'y_ciphertext' internal/app/review.go && grep -q 'width_ciphertext' internal/app/review.go && grep -q 'height_ciphertext' internal/app/review.go && grep -q 'VALUES(\$1,\$2,\$3,0,0,0,0,\$4,\$5,\$6,\$7' internal/app/review.go"
 check "redaction burn-in uses encrypted coordinates" "grep -q 'EncryptedRedactionRegions' internal/app/coordinate_crypto.go"
 check "redaction list hides coordinate plaintext" "! grep -q 'SELECT id,document_id,page,x,y,width,height,reason' internal/app/review.go"
 check "restore strict failure path exists" "grep -q 'RunRestoreArtifactsStrict' internal/app/restore.go"
 check "self-contained compare test exists" "test -f API_tests/test_compare_self_contained.sh"
+
+check "structure rules suite exists" "test -f unit_tests/test_structure_rules.sh"
+check "strict dependency failure API test exists" "test -f API_tests/test_strict_dependency_failures.sh"
+check "bates sequence multi doc API test exists" "test -f API_tests/test_bates_sequence_multi_doc.sh"
+check "platform strict tests exist" "test -f internal/platform/pdf_strict_test.go && test -f internal/platform/backup_strict_test.go"
 
 TOTAL=$((PASS+FAIL))
 echo "UNIT SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"

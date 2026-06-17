@@ -5,7 +5,7 @@ if [ -x unit_tests/test_rules.sh ]; then
   unit_tests/test_rules.sh
 fi
 
-go test ./...
+go test -mod=mod ./...
 
 if [ -x API_tests/test_api_flow.sh ]; then
   API_tests/test_api_flow.sh
@@ -41,4 +41,16 @@ fi
 
 if [ -x API_tests/test_notification_mention_side_effect.sh ]; then
   API_tests/test_notification_mention_side_effect.sh
+fi
+
+if [ -x unit_tests/test_structure_rules.sh ]; then
+  unit_tests/test_structure_rules.sh
+fi
+
+if [ -x API_tests/test_strict_dependency_failures.sh ]; then
+  API_tests/test_strict_dependency_failures.sh
+fi
+
+if [ -x API_tests/test_bates_sequence_multi_doc.sh ]; then
+  API_tests/test_bates_sequence_multi_doc.sh
 fi
