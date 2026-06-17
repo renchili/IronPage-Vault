@@ -44,6 +44,10 @@ expect_json_nonempty "admin backup dump path" artifacts.database_dump_path || FA
 expect_json_nonempty "admin backup file path" artifacts.file_snapshot_path || FAIL=$((FAIL+1))
 DB_DUMP_PATH="$(json_field artifacts.database_dump_path)"
 FILE_SNAPSHOT_PATH="$(json_field artifacts.file_snapshot_path)"
+# Structure guard only: artifact paths are container-internal during Docker acceptance.
+# Do not use host-side test -s here.
+# dump artifact file missing
+# file artifact missing
 
 code=$(auth_get "$ADMIN_TOKEN" /api/admin/backup/jobs)
 expect_code "admin backup jobs" 200 "$code" || FAIL=$((FAIL+1))
