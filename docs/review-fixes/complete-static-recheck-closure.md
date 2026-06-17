@@ -22,3 +22,7 @@ This patch closes the remaining static recheck findings that were not covered by
   - missing backup artifact checks,
   - missing Bates sequence coverage,
   - missing strict dependency coverage.
+
+## CI note
+
+This branch includes follow-up fixes for Go compile and mention parsing failures found by CI.
