@@ -19,3 +19,5 @@ jobs:
         run: bash unit_tests/test_rules.sh
       - name: Docker build
         run: docker build -t ironpage-vault:ci .
+      - name: Docker acceptance
+        run: bash scripts/docker_acceptance.sh
