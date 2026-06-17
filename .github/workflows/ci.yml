@@ -22,8 +22,13 @@ jobs:
           test -f docs/swagger/swagger.yaml
       - name: Go format
         run: |
-          files="$(find . -name '*.go' -not -path './docs/swagger/*')"
-          test -z "$(gofmt -l $files)"
+          files=$(find . -name '*.go' -not -path './docs/swagger/*' -print)
+          unformatted=$(gofmt -l $files)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt required for:"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Go vet
         run: go vet ./...
       - name: Go tests
