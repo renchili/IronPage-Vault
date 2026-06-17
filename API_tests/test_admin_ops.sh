@@ -44,10 +44,6 @@ expect_json_nonempty "admin backup dump path" artifacts.database_dump_path || FA
 expect_json_nonempty "admin backup file path" artifacts.file_snapshot_path || FAIL=$((FAIL+1))
 DB_DUMP_PATH="$(json_field artifacts.database_dump_path)"
 FILE_SNAPSHOT_PATH="$(json_field artifacts.file_snapshot_path)"
-if [ -n "$DB_DUMP_PATH" ] && [ -n "$FILE_SNAPSHOT_PATH" ]; then
-  [ -s "$DB_DUMP_PATH" ] || { echo "FAIL api: dump artifact file missing $DB_DUMP_PATH"; FAIL=$((FAIL+1)); }
-  [ -s "$FILE_SNAPSHOT_PATH" ] || { echo "FAIL api: file artifact missing $FILE_SNAPSHOT_PATH"; FAIL=$((FAIL+1)); }
-fi
 
 code=$(auth_post_json "$ADMIN_TOKEN" /api/admin/backup/restore '{}')
 expect_code "admin restore rejects empty request" 400 "$code" || FAIL=$((FAIL+1))

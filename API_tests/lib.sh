@@ -29,7 +29,12 @@ for part in sys.argv[2].split("."):
         name,idx=part[:-1].split("["); cur=cur[name][int(idx)]
     else:
         cur=cur[part]
-print(cur)' "$BODY" "$1" 2>/dev/null
+if isinstance(cur, bool):
+    print(str(cur).lower())
+elif cur is None:
+    print("")
+else:
+    print(cur)' "$BODY" "$1" 2>/dev/null
 }
 
 expect_code() {
