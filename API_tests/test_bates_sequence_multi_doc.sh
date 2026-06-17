@@ -7,7 +7,7 @@ SAMPLE_PDF=${SAMPLE_PDF:-testdata/pdfs/sample_contract.pdf}
 
 upload_doc() {
   local title="$1"
-  local code
+  local code doc_id
   code=$(curl -s -o "$BODY" -w "%{http_code}" "$BASE_URL/api/documents" \
     -X POST \
     -H "Authorization: Bearer $EDITOR_TOKEN" \
@@ -15,8 +15,15 @@ upload_doc() {
     -H "X-Request-Timestamp: $(ts)" \
     -F "title=$title" \
     -F "file=@$SAMPLE_PDF")
-  expect_code "upload $title" 201 "$code" || return 1
-  json_field data.id
+  if ! expect_code "upload $title" 201 "$code" >&2; then
+    return 1
+  fi
+  doc_id="$(json_field data.id)"
+  if [ -z "$doc_id" ]; then
+    echo "FAIL api: upload $title document id missing" >&2
+    return 1
+  fi
+  printf '%s\n' "$doc_id"
 }
 
 DOC1="$(upload_doc "Bates Sequence Probe 1")" || exit 1
