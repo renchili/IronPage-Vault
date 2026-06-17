@@ -13,7 +13,7 @@ if [ -z "$DOC_ID" ]; then echo "FAIL api: mention probe doc id missing"; exit 1;
 
 code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/$DOC_ID/workflow/transition" '{"status":"Under Review"}')
 expect_code "mention probe to under review" 200 "$code" || FAIL=$((FAIL+1))
-code=$(auth_post_json "$REVIEWER_TOKEN" "/api/documents/$DOC_ID/annotations" '{"type":"comment","page":1,"x":10,"y":10,"width":10,"height":10,"comment":"Please check @editor","disposition":"Needs Discussion"}')
+code=$(auth_post_json "$REVIEWER_TOKEN" "/api/documents/$DOC_ID/annotations" '{"type":"Sticky note","page":1,"x":10,"y":10,"width":10,"height":10,"comment":"Please check @editor","disposition":"Needs Discussion"}')
 expect_code "create mention annotation" 201 "$code" || FAIL=$((FAIL+1))
 code=$(auth_get "$EDITOR_TOKEN" /api/notifications)
 expect_code "editor notifications after mention" 200 "$code" || FAIL=$((FAIL+1))
