@@ -25,4 +25,4 @@ for i in $(seq 1 60); do
   fi
 done
 
-./run_tests.sh
+bash ./run_tests.sh
