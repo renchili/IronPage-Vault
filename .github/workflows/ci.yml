@@ -16,6 +16,6 @@ jobs:
       - name: Go tests
         run: go test -mod=mod ./...
       - name: Static rules
-        run: unit_tests/test_rules.sh
+        run: bash unit_tests/test_rules.sh
       - name: Docker build
         run: docker build -t ironpage-vault:ci .
