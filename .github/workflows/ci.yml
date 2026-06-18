@@ -1,16 +1,14 @@
-name: CI
+name: Pull Request CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: pr-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +16,6 @@ jobs:
     name: Detect changed areas
     runs-on: ubuntu-latest
     outputs:
-      run_all: ${{ steps.filter.outputs.run_all }}
       swagger: ${{ steps.filter.outputs.swagger }}
       format: ${{ steps.filter.outputs.format }}
       core: ${{ steps.filter.outputs.core }}
@@ -27,7 +24,7 @@ jobs:
       app: ${{ steps.filter.outputs.app }}
       repository: ${{ steps.filter.outputs.repository }}
       static_rules: ${{ steps.filter.outputs.static_rules }}
-      docker_acceptance: ${{ steps.filter.outputs.docker_acceptance }}
+      docker_build: ${{ steps.filter.outputs.docker_build }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,16 +33,6 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           filters: |
-            run_all:
-              - '.github/workflows/**'
-              - 'go.mod'
-              - 'go.sum'
-              - 'Dockerfile'
-              - 'docker-compose.yml'
-              - '.dockerignore'
-              - 'run_tests.sh'
-              - 'scripts/**'
-              - 'migrations/**'
             swagger:
               - 'cmd/server/main.go'
               - 'internal/app/server.go'
@@ -96,55 +83,50 @@ jobs:
               - 'public/**'
               - 'go.mod'
               - 'go.sum'
-            docker_acceptance:
+            docker_build:
               - 'Dockerfile'
               - 'docker-compose.yml'
-              - 'migrations/**'
+              - '.dockerignore'
               - 'cmd/**'
               - 'internal/**'
+              - 'migrations/**'
               - 'public/**'
               - 'scripts/**'
-              - 'API_tests/**'
-              - 'testdata/**'
               - 'go.mod'
               - 'go.sum'
 
   swagger:
-    name: Swagger generation and route contract
+    name: Swagger contract
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.swagger == 'true'
+    if: needs.changes.outputs.swagger == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - name: Install Swagger generator
-        run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
-      - name: Generate Swagger
-        run: |
+      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+      - run: |
           bash scripts/generate_swagger.sh
           test -f docs/swagger/docs.go
           test -f docs/swagger/swagger.yaml
-      - name: Verify route coverage
-        run: bash unit_tests/test_swagger_route_coverage.sh
+          bash unit_tests/test_swagger_route_coverage.sh
 
   format:
     name: Go format
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.format == 'true'
+    if: needs.changes.outputs.format == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check Go source formatting
-        run: |
+      - run: |
           find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l | tee /tmp/gofmt.out
           test ! -s /tmp/gofmt.out
 
   core:
     name: Core tests and vet
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.core == 'true'
+    if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -157,7 +139,7 @@ jobs:
   platform:
     name: Platform tests and vet
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.platform == 'true'
+    if: needs.changes.outputs.platform == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,7 +152,7 @@ jobs:
   service:
     name: Service tests
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.service == 'true'
+    if: needs.changes.outputs.service == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -180,25 +162,23 @@ jobs:
       - run: go test -mod=mod ./internal/service
 
   app:
-    name: App and API unit tests
+    name: App tests
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.app == 'true'
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - name: Install Swagger generator
-        run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
-      - name: Generate Swagger import package
-        run: bash scripts/generate_swagger.sh
+      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+      - run: bash scripts/generate_swagger.sh
       - run: go test -mod=mod ./internal/app ./cmd/...
 
   repository:
     name: Repository tests
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.repository == 'true'
+    if: needs.changes.outputs.repository == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -210,38 +190,29 @@ jobs:
   static-rules:
     name: Static and structure rules
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.static_rules == 'true'
+    if: needs.changes.outputs.static_rules == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - name: Install Swagger generator
-        run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
       - run: bash scripts/generate_swagger.sh
       - run: bash unit_tests/test_rules.sh
       - run: bash unit_tests/test_structure_rules.sh
 
-  docker-acceptance:
-    name: Docker build and acceptance
+  docker-build:
+    name: Docker build
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.run_all == 'true' || needs.changes.outputs.docker_acceptance == 'true'
+    if: needs.changes.outputs.docker_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Docker build
-        run: docker build -t ironpage-vault:ci .
-      - name: Prepare acceptance dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y poppler-utils python3-pip
-          python3 -m pip install --user --break-system-packages reportlab pypdf pillow
-      - name: Docker acceptance
-        run: bash scripts/docker_acceptance.sh
+      - run: docker build -t ironpage-vault:pr .
 
-  verification-gate:
-    name: Verification gate
+  pr-gate:
+    name: Pull request gate
     if: always()
     needs:
       - changes
@@ -253,10 +224,10 @@ jobs:
       - app
       - repository
       - static-rules
-      - docker-acceptance
+      - docker-build
     runs-on: ubuntu-latest
     steps:
-      - name: Reject failed selected jobs
+      - name: Reject detector or selected-job failures
         env:
           CHANGES: ${{ needs.changes.result }}
           SWAGGER: ${{ needs.swagger.result }}
@@ -267,13 +238,13 @@ jobs:
           APP: ${{ needs.app.result }}
           REPOSITORY: ${{ needs.repository.result }}
           STATIC_RULES: ${{ needs.static-rules.result }}
-          DOCKER_ACCEPTANCE: ${{ needs.docker-acceptance.result }}
+          DOCKER_BUILD: ${{ needs.docker-build.result }}
         run: |
           failed=0
-          for result in "$CHANGES" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_ACCEPTANCE"; do
+          for result in "$CHANGES" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
             case "$result" in
               success|skipped) ;;
-              *) echo "selected CI job failed or was cancelled: $result"; failed=1 ;;
+              *) echo "required CI stage failed or was cancelled: $result"; failed=1 ;;
             esac
           done
           exit "$failed"
