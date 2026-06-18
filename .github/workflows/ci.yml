@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -132,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check changed Go source formatting
+      - name: Check Go source formatting
         run: |
           find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l | tee /tmp/gofmt.out
           test ! -s /tmp/gofmt.out
@@ -254,6 +258,7 @@ jobs:
     steps:
       - name: Reject failed selected jobs
         env:
+          CHANGES: ${{ needs.changes.result }}
           SWAGGER: ${{ needs.swagger.result }}
           FORMAT: ${{ needs.format.result }}
           CORE: ${{ needs.core.result }}
@@ -265,7 +270,7 @@ jobs:
           DOCKER_ACCEPTANCE: ${{ needs.docker-acceptance.result }}
         run: |
           failed=0
-          for result in "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_ACCEPTANCE"; do
+          for result in "$CHANGES" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_ACCEPTANCE"; do
             case "$result" in
               success|skipped) ;;
               *) echo "selected CI job failed or was cancelled: $result"; failed=1 ;;
