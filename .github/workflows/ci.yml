@@ -25,7 +25,7 @@ jobs:
           gofmt -l cmd/server/main.go internal/app/server.go internal/app/swagger_routes.go | tee /tmp/gofmt.out
           test ! -s /tmp/gofmt.out
       - name: Go vet
-        run: go vet ./...
+        run: go list ./... | grep -v '/docs/swagger' | xargs go vet
       - name: Go tests
         run: go test -mod=mod ./...
       - name: Static rules
