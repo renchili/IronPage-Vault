@@ -24,13 +24,16 @@ jobs:
         run: |
           gofmt -l cmd/server/main.go internal/app/server.go internal/app/swagger_routes.go | tee /tmp/gofmt.out
           test ! -s /tmp/gofmt.out
-      - name: Go vet
-        run: |
-          go vet ./internal/core
-          go vet ./internal/platform
-          go vet ./internal/repository
-          go vet ./internal/service
-          go vet ./internal/store
+      - name: Vet core
+        run: go vet ./internal/core
+      - name: Vet platform
+        run: go vet ./internal/platform
+      - name: Vet repository
+        run: go vet ./internal/repository
+      - name: Vet service
+        run: go vet ./internal/service
+      - name: Vet store
+        run: go vet ./internal/store
       - name: Go tests
         run: go test -mod=mod ./...
       - name: Static rules
