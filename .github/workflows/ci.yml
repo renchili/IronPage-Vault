@@ -1,43 +1,250 @@
-name: CI
+name: Pull Request CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test-and-build:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      swagger: ${{ steps.filter.outputs.swagger }}
+      format: ${{ steps.filter.outputs.format }}
+      core: ${{ steps.filter.outputs.core }}
+      platform: ${{ steps.filter.outputs.platform }}
+      service: ${{ steps.filter.outputs.service }}
+      app: ${{ steps.filter.outputs.app }}
+      repository: ${{ steps.filter.outputs.repository }}
+      static_rules: ${{ steps.filter.outputs.static_rules }}
+      docker_build: ${{ steps.filter.outputs.docker_build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            swagger:
+              - 'cmd/server/main.go'
+              - 'internal/app/server.go'
+              - 'internal/app/swagger_*.go'
+              - 'scripts/generate_swagger.sh'
+              - 'docs/swagger/**'
+              - 'go.mod'
+              - 'go.sum'
+            format:
+              - '**/*.go'
+            core:
+              - 'internal/core/**'
+              - 'go.mod'
+              - 'go.sum'
+            platform:
+              - 'internal/platform/**'
+              - 'go.mod'
+              - 'go.sum'
+            service:
+              - 'internal/service/**'
+              - 'internal/platform/**'
+              - 'go.mod'
+              - 'go.sum'
+            app:
+              - 'cmd/**'
+              - 'internal/app/**'
+              - 'internal/core/**'
+              - 'internal/platform/**'
+              - 'internal/service/**'
+              - 'internal/repository/**'
+              - 'internal/store/**'
+              - 'migrations/**'
+              - 'go.mod'
+              - 'go.sum'
+            repository:
+              - 'internal/repository/**'
+              - 'internal/store/**'
+              - 'migrations/**'
+              - 'go.mod'
+              - 'go.sum'
+            static_rules:
+              - 'unit_tests/**'
+              - 'API_tests/**'
+              - 'internal/**'
+              - 'cmd/**'
+              - 'migrations/**'
+              - 'docs/**'
+              - 'public/**'
+              - 'go.mod'
+              - 'go.sum'
+            docker_build:
+              - 'Dockerfile'
+              - 'docker-compose.yml'
+              - '.dockerignore'
+              - 'cmd/**'
+              - 'internal/**'
+              - 'migrations/**'
+              - 'public/**'
+              - 'scripts/**'
+              - 'go.mod'
+              - 'go.sum'
+
+  swagger:
+    name: Swagger contract
+    needs: changes
+    if: needs.changes.outputs.swagger == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - name: Install Swagger generator
-        run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
-      - name: Generate Swagger
-        run: |
+      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+      - run: |
           bash scripts/generate_swagger.sh
           test -f docs/swagger/docs.go
           test -f docs/swagger/swagger.yaml
-      - name: Go format
-        run: |
-          gofmt -l cmd/server/main.go internal/app/server.go internal/app/swagger_routes.go | tee /tmp/gofmt.out
+          bash unit_tests/test_swagger_route_coverage.sh
+
+  format:
+    name: Go format
+    needs: changes
+    if: needs.changes.outputs.format == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l | tee /tmp/gofmt.out
           test ! -s /tmp/gofmt.out
-      - name: Vet core
-        run: go vet ./internal/core
-      - name: Vet platform
-        run: go vet ./internal/platform
-      - name: Go tests
-        run: go test -mod=mod ./...
-      - name: Static rules
-        run: bash unit_tests/test_rules.sh
-      - name: Docker build
-        run: docker build -t ironpage-vault:ci .
-      - name: Prepare Docker acceptance dependencies
+
+  core:
+    name: Core tests and vet
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go vet ./internal/core
+      - run: go test -mod=mod ./internal/core
+
+  platform:
+    name: Platform tests and vet
+    needs: changes
+    if: needs.changes.outputs.platform == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go vet ./internal/platform
+      - run: go test -mod=mod ./internal/platform
+
+  service:
+    name: Service tests
+    needs: changes
+    if: needs.changes.outputs.service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go test -mod=mod ./internal/service
+
+  app:
+    name: App tests
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+      - run: bash scripts/generate_swagger.sh
+      - run: go test -mod=mod ./internal/app ./cmd/...
+
+  repository:
+    name: Repository tests
+    needs: changes
+    if: needs.changes.outputs.repository == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go test -mod=mod ./internal/repository ./internal/store
+
+  static-rules:
+    name: Static and structure rules
+    needs: changes
+    if: needs.changes.outputs.static_rules == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+      - run: bash scripts/generate_swagger.sh
+      - run: bash unit_tests/test_rules.sh
+      - run: bash unit_tests/test_structure_rules.sh
+
+  docker-build:
+    name: Docker build
+    needs: changes
+    if: needs.changes.outputs.docker_build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ironpage-vault:pr .
+
+  pr-gate:
+    name: Pull request gate
+    if: always()
+    needs:
+      - changes
+      - swagger
+      - format
+      - core
+      - platform
+      - service
+      - app
+      - repository
+      - static-rules
+      - docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject detector or selected-job failures
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          SWAGGER: ${{ needs.swagger.result }}
+          FORMAT: ${{ needs.format.result }}
+          CORE: ${{ needs.core.result }}
+          PLATFORM: ${{ needs.platform.result }}
+          SERVICE: ${{ needs.service.result }}
+          APP: ${{ needs.app.result }}
+          REPOSITORY: ${{ needs.repository.result }}
+          STATIC_RULES: ${{ needs.static-rules.result }}
+          DOCKER_BUILD: ${{ needs.docker-build.result }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y poppler-utils python3-pip
-          python3 -m pip install --user --break-system-packages reportlab pypdf pillow
-      - name: Docker acceptance
-        run: bash scripts/docker_acceptance.sh
+          failed=0
+          for result in "$CHANGES" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "required CI stage failed or was cancelled: $result"; failed=1 ;;
+            esac
+          done
+          exit "$failed"
