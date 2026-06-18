@@ -8,9 +8,12 @@ import (
 	"os"
 	"time"
 
+	_ "ironpage-vault/docs/swagger"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
 type App struct {
@@ -48,7 +51,7 @@ func Run(cfg Config) error {
 	e.Use(a.requestIDMiddleware)
 	e.GET("/healthz", a.health)
 	e.Static("/ui", cfg.PublicDir)
-	e.Static("/swagger", cfg.PublicDir)
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
 	e.POST("/api/auth/login", a.login)
 
 	api := e.Group("/api", a.authMiddleware)

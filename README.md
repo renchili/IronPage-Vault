@@ -78,11 +78,41 @@ Current migration status:
 
 ```text
 unit_tests/test_rules.sh
-go test ./...
+go test -mod=mod ./...
 API_tests/test_api_flow.sh
+API_tests/test_static_review_reject_flows.sh
+API_tests/test_acceptance_denials.sh
+API_tests/test_compare_acceptance.sh
+API_tests/test_finalized_immutability.sh
+API_tests/test_redaction_coordinate_ciphertext.sh
+API_tests/test_pdf_content_acceptance.sh
+API_tests/test_notification_mention_side_effect.sh
+unit_tests/test_structure_rules.sh
+API_tests/test_strict_dependency_failures.sh
+API_tests/test_bates_sequence_multi_doc.sh
 ```
 
-The Go test suite is intentionally included directly so helper-level tests under `internal/core`, `internal/store`, `internal/platform`, and `internal/app` are not hidden behind structure-only shell checks.
+CI additionally runs `gofmt`, `go vet`, Swaggo generation, Docker build, and Docker acceptance.
+
+## Generated API Documentation
+
+OpenAPI documentation is generated from Swaggo annotations in Go source code. Do not manually edit Swagger YAML as the source of truth.
+
+```bash
+bash scripts/generate_swagger.sh
+```
+
+Generated files live under:
+
+```text
+docs/swagger/
+```
+
+The Echo server mounts the generated Swagger UI at:
+
+```text
+/swagger/index.html
+```
 
 ## Roles
 
@@ -127,3 +157,15 @@ See:
 ```text
 docs/docker-builder.md
 ```
+
+## AWS Deployment Options
+
+AWS deployment guidance is available for both serverless-container and EKS targets:
+
+```text
+docs/aws-deployment.md
+deploy/aws/serverless/
+deploy/aws/eks/
+```
+
+Without an AWS account, use Docker/SAM validation for the serverless artifacts and kind or minikube for the EKS manifests.
