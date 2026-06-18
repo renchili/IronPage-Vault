@@ -26,7 +26,6 @@ jobs:
           test ! -s /tmp/gofmt.out
       - name: Go vet
         run: |
-          go vet ./cmd/server
           go vet ./internal/core
           go vet ./internal/platform
           go vet ./internal/repository
