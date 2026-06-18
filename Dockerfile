@@ -1,9 +1,17 @@
 FROM golang:1.23-bookworm AS builder
 WORKDIR /src
+
+# The build image owns dependency resolution and generated Swagger artifacts.
+# No go.sum or docs/swagger output is required in the source checkout.
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN go build -o /out/ironpage ./cmd/server
+RUN go run github.com/swaggo/swag/cmd/swag@v1.16.4 init \
+      -g cmd/server/main.go \
+      -o docs/swagger \
+      --parseInternal \
+      --parseDependency
+RUN go mod tidy && go build -mod=mod -o /out/ironpage ./cmd/server
 
 FROM postgres:16-bookworm
 RUN apt-get update \
