@@ -150,29 +150,39 @@ func parseBBOXTextBlocks(raw []byte) []TextBlock {
 }
 
 func DiffTextBlocks(left []TextBlock, right []TextBlock) (added []TextBlock, removed []TextBlock, modified []TextBlock) {
-	leftMap := map[string]TextBlock{}
-	rightMap := map[string]TextBlock{}
-	for _, b := range left {
-		leftMap[textBlockKey(b)] = b
+	leftByPosition := map[string]TextBlock{}
+	rightByPosition := map[string]TextBlock{}
+	for _, block := range left {
+		leftByPosition[textBlockPositionKey(block)] = block
 	}
-	for _, b := range right {
-		rightMap[textBlockKey(b)] = b
+	for _, block := range right {
+		rightByPosition[textBlockPositionKey(block)] = block
 	}
-	for k, b := range rightMap {
-		if _, ok := leftMap[k]; !ok {
-			added = append(added, b)
+
+	for position, rightBlock := range rightByPosition {
+		leftBlock, exists := leftByPosition[position]
+		if !exists {
+			added = append(added, rightBlock)
+			continue
+		}
+		if leftBlock.Text != rightBlock.Text {
+			modified = append(modified, rightBlock)
 		}
 	}
-	for k, b := range leftMap {
-		if _, ok := rightMap[k]; !ok {
-			removed = append(removed, b)
+	for position, leftBlock := range leftByPosition {
+		if _, exists := rightByPosition[position]; !exists {
+			removed = append(removed, leftBlock)
 		}
 	}
 	return added, removed, modified
 }
 
-func textBlockKey(b TextBlock) string {
-	return fmt.Sprintf("%d|%.2f|%.2f|%.2f|%.2f|%s", b.Page, b.XMin, b.YMin, b.XMax, b.YMax, b.Text)
+func textBlockPositionKey(block TextBlock) string {
+	return fmt.Sprintf("%d|%.2f|%.2f|%.2f|%.2f", block.Page, block.XMin, block.YMin, block.XMax, block.YMax)
+}
+
+func textBlockKey(block TextBlock) string {
+	return textBlockPositionKey(block) + "|" + block.Text
 }
 
 func FormatBatesLabel(opts BatesOptions, pageIndex int) string {
@@ -258,14 +268,12 @@ for idx, page in enumerate(reader.pages, start=1):
         if int(r.get("page", 0)) == idx:
             x = float(r.get("x", 0)); y = float(r.get("y", 0))
             w = float(r.get("width", 0)); h = float(r.get("height", 0))
-            c.rect(x, height - y - h, w, h, stroke=0, fill=1)
+            c.rect(x, y, w, h, fill=1, stroke=0)
     c.save()
     packet.seek(0)
-    overlay = PdfReader(packet)
-    if overlay.pages:
-        page.merge_page(overlay.pages[0])
+    overlay = PdfReader(packet).pages[0]
+    page.merge_page(overlay)
     writer.add_page(page)
-writer.add_metadata({"/IronPageProcessMode":"visible_redaction_overlay"})
 with open(outp, "wb") as f:
     writer.write(f)
 `
@@ -278,48 +286,39 @@ func runPythonBatesOverlay(input string, output string, opts BatesOptions) error
 import io, json, sys
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
-from reportlab.lib.colors import black
 inp, outp, raw = sys.argv[1], sys.argv[2], sys.argv[3]
 opts = json.loads(raw)
 reader = PdfReader(inp)
 writer = PdfWriter()
-prefix = opts.get("prefix", "")
-suffix = opts.get("suffix", "")
-pad = int(opts.get("zero_padding", 0) or 0)
-start = int(opts.get("start_number", 1) or 1)
 for idx, page in enumerate(reader.pages):
     width = float(page.mediabox.width)
     height = float(page.mediabox.height)
-    number = start + idx
-    body = str(number).zfill(pad) if pad > 0 else str(number)
-    label = f"{prefix}{body}{suffix}"
+    n = int(opts.get("start_number", 1)) + idx
+    pad = int(opts.get("zero_padding", 0))
+    body = str(n).zfill(pad) if pad > 0 else str(n)
+    label = (opts.get("prefix", "") + body + opts.get("suffix", "")).strip()
     packet = io.BytesIO()
     c = canvas.Canvas(packet, pagesize=(width, height))
-    c.setFillColor(black)
     c.setFont("Helvetica", 9)
-    c.drawRightString(width - 36, 24, label)
+    c.drawRightString(width - 24, 18, label)
     c.save()
     packet.seek(0)
-    overlay = PdfReader(packet)
-    if overlay.pages:
-        page.merge_page(overlay.pages[0])
+    overlay = PdfReader(packet).pages[0]
+    page.merge_page(overlay)
     writer.add_page(page)
-writer.add_metadata({"/IronPageProcessMode":"visible_bates_overlay"})
 with open(outp, "wb") as f:
     writer.write(f)
 `
 	return exec.Command("python3", "-c", code, input, output, string(raw)).Run()
 }
 
-func copyWithProcessManifest(input string, output string, mode string, payload map[string]interface{}) (PDFProcessResult, error) {
+func copyWithProcessManifest(input string, output string, mode string, details map[string]interface{}) (PDFProcessResult, error) {
 	raw, err := os.ReadFile(input)
 	if err != nil {
 		return PDFProcessResult{}, err
 	}
-	manifest, _ := json.Marshal(payload)
-	raw = append(raw, []byte(fmt.Sprintf("\n%% IronPage Vault processed: %s %s\n", mode, string(manifest)))...)
 	if err := os.WriteFile(output, raw, 0640); err != nil {
 		return PDFProcessResult{}, err
 	}
-	return PDFProcessResult{Mode: mode, Details: "PDF drawing dependency unavailable; artifact rewritten with deterministic manifest"}, nil
+	return PDFProcessResult{Mode: mode, Details: "fallback retained original PDF because strict processing dependencies were unavailable"}, nil
 }
