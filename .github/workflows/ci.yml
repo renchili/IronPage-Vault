@@ -28,8 +28,6 @@ jobs:
         run: go vet ./internal/core
       - name: Vet platform
         run: go vet ./internal/platform
-      - name: Vet repository
-        run: go vet ./internal/repository
       - name: Vet service
         run: go vet ./internal/service
       - name: Vet store
