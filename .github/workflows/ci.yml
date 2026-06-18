@@ -22,15 +22,10 @@ jobs:
           test -f docs/swagger/swagger.yaml
       - name: Go format
         run: |
-          files=$(find . -name '*.go' -not -path './docs/swagger/*' -print)
-          unformatted=$(gofmt -l $files)
-          if [ -n "$unformatted" ]; then
-            echo "gofmt required for:"
-            echo "$unformatted"
-            exit 0
-          fi
+          gofmt -l cmd/server/main.go internal/app/server.go internal/app/swagger_routes.go | tee /tmp/gofmt.out
+          test ! -s /tmp/gofmt.out
       - name: Go vet
-        run: go vet ./... || true
+        run: go vet ./...
       - name: Go tests
         run: go test -mod=mod ./...
       - name: Static rules
