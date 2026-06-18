@@ -1,29 +1,24 @@
-# API Specification
+# API Guide
 
-This document describes the IronPage Vault REST API. The implementation is a Go Echo backend using PostgreSQL for metadata and local filesystem storage for PDF binaries.
+IronPage Vault is a Go/Echo backend using PostgreSQL for metadata and local filesystem storage for PDF binaries.
 
-## OpenAPI and Swaggo Support
+## API contract source of truth
 
-The project includes Swaggo dependencies in `go.mod`:
-
-- `github.com/swaggo/swag`
-- `github.com/swaggo/echo-swagger`
-
-Recommended generation command:
+Route-level Swaggo annotations in Go source are the authoritative API contract. Generate the OpenAPI artifact with:
 
 ```bash
-swag init -g cmd/server/main.go -o docs/swagger
+bash scripts/generate_swagger.sh
 ```
 
-Recommended Swagger UI route when enabled in the Echo server:
+This produces `docs/swagger/swagger.yaml` and `docs/swagger/swagger.json`. Swagger UI is served at:
 
 ```text
-GET /swagger/*
+GET /swagger/index.html
 ```
 
-The Markdown API spec below is the acceptance reference. Swagger annotations should mirror this file.
+Do not add or maintain parallel handwritten OpenAPI files. This Markdown document is an operational guide; generated Swagger is the machine-readable contract.
 
-## Common Requirements
+## Common requirements
 
 Authenticated endpoints require:
 
@@ -33,7 +28,7 @@ X-Request-ID: unique request id
 X-Request-Timestamp: RFC3339 timestamp within 60 seconds
 ```
 
-All business errors use this envelope:
+Business errors use this envelope:
 
 ```json
 {
@@ -47,359 +42,98 @@ All business errors use this envelope:
 }
 ```
 
-Pagination defaults to `page_size=25` and has a hard maximum of `100`.
+Collection endpoints use `page` and `page_size`; the intended default is `25` and the maximum is `100`.
 
-## Seed Roles
+## Roles
 
-| Role | Purpose |
+| Role | Responsibilities |
 |---|---|
-| Admin | user management, config, workflow definitions, notification templates, backup metadata |
+| Admin | user management, configuration, workflow definitions, notification templates, audit log access, backup and restore |
 | Editor | document upload, batch import, rollback, redaction confirmation, Bates numbering, finalization |
-| Reviewer | document retrieval, annotation creation, annotation disposition, review workflow movement |
-
-## Auth APIs
-
-### POST /api/auth/login
-
-Local username and password login.
-
-Request:
-
-```json
-{
-  "username": "editor",
-  "password": "Editor123!"
-}
-```
-
-Success response:
-
-```json
-{
-  "token": "jwt-token",
-  "token_type": "Bearer",
-  "expires_in_seconds": 28800,
-  "user": {
-    "id": "usr_xxx",
-    "username": "editor",
-    "display_name": "Default Editor",
-    "role": "Editor"
-  }
-}
-```
-
-Important errors:
-
-- `INVALID_LOGIN_REQUEST`
-- `INVALID_CREDENTIALS`
-- `ACCOUNT_LOCKED`
-- `TOKEN_SIGN_ERROR`
-- `SESSION_CREATE_ERROR`
-
-### POST /api/auth/logout
-
-Revokes the current JWT by storing its `jti` in the server-side blacklist.
-
-Required role: any authenticated user.
-
-### GET /api/auth/me
-
-Returns the authenticated principal.
-
-Required role: any authenticated user.
-
-## Admin APIs
-
-### POST /api/admin/users
-
-Required role: Admin.
-
-Creates a local user.
-
-Request:
-
-```json
-{
-  "username": "legal-editor-2",
-  "display_name": "Legal Editor 2",
-  "role": "Editor",
-  "password": "Editor123!"
-}
-```
-
-### GET /api/admin/users
-
-Required role: Admin.
-
-Lists local users with masked password hashes.
-
-### GET /api/admin/config
-
-Required role: Admin.
-
-Lists configuration entries.
-
-### PATCH /api/admin/config/:key
-
-Required role: Admin.
-
-Updates one configuration entry.
-
-Request:
-
-```json
-{
-  "value": "new-value"
-}
-```
-
-### GET /api/admin/workflow-statuses
-
-Required role: Admin.
-
-Lists workflow status definitions.
-
-### GET /api/admin/notification-templates
-
-Required role: Admin.
-
-Lists notification templates.
-
-### POST /api/admin/backup/run
-
-Required role: Admin.
-
-Creates backup job metadata for a local logical dump or filesystem snapshot process.
-
-### GET /api/admin/backup/jobs
-
-Required role: Admin.
-
-Lists backup jobs.
-
-## Document APIs
-
-### POST /api/documents
-
-Required role: Editor.
-
-Uploads a single PDF document as multipart form data.
-
-Form fields:
-
-| Field | Required | Description |
-|---|---:|---|
-| title | no | document title |
-| file | yes | PDF file |
-
-Validation:
-
-- file must start with a valid PDF header
-- file size must not exceed 200 MB
-- page count must not exceed 500 pages
-
-### POST /api/documents/batch
-
-Required role: Editor.
-
-Accepts up to 250 PDF files in one operation.
-
-### GET /api/documents
-
-Required role: authenticated user.
-
-Lists documents with pagination.
-
-### GET /api/documents/:id
-
-Required role: authenticated user.
-
-Returns document metadata.
-
-### GET /api/documents/:id/file
-
-Required role: authenticated user.
-
-Downloads the current PDF version.
-
-### GET /api/documents/:id/versions
-
-Required role: authenticated user.
-
-Lists versions for a document.
-
-### POST /api/documents/:id/rollback
-
-Required role: Editor.
-
-Rolls back to a previous version within the 50-version ceiling.
-
-### POST /api/documents/:id/workflow/transition
-
-Required role: Editor or Reviewer, depending on transition.
-
-Request:
-
-```json
-{
-  "status": "Under Review"
-}
-```
-
-Status chain:
+| Reviewer | document review, annotation creation and disposition, permitted workflow movement |
+
+Object-level document access is evaluated in addition to route-level role checks.
+
+## Route inventory
+
+### Health and identity
+
+| Method | Route | Access |
+|---|---|---|
+| GET | `/healthz` | public |
+| POST | `/api/auth/login` | public |
+| POST | `/api/auth/logout` | authenticated |
+| GET | `/api/auth/me` | authenticated |
+
+### Administration
+
+| Method | Route | Access |
+|---|---|---|
+| POST | `/api/admin/users` | Admin |
+| GET | `/api/admin/users` | Admin |
+| GET | `/api/admin/config` | Admin |
+| PATCH | `/api/admin/config/:key` | Admin |
+| GET | `/api/admin/workflow-statuses` | Admin |
+| GET | `/api/admin/notification-templates` | Admin |
+| PATCH | `/api/admin/notification-templates/:key` | Admin |
+| POST | `/api/admin/backup/run` | Admin |
+| GET | `/api/admin/backup/jobs` | Admin |
+| POST | `/api/admin/backup/restore` | Admin |
+
+Backup restore rejects an empty request with `400`; restoring a valid returned artifact pair completes with `200` and a `Restored` status.
+
+### Documents and versions
+
+| Method | Route | Access |
+|---|---|---|
+| GET | `/api/documents` | authenticated + object policy |
+| POST | `/api/documents` | Editor |
+| POST | `/api/documents/batch` | Editor |
+| POST | `/api/documents/compare` | authenticated + version access |
+| GET | `/api/documents/:id` | authenticated + object policy |
+| GET | `/api/documents/:id/file` | authenticated + object policy |
+| GET | `/api/documents/:id/versions` | authenticated + object policy |
+| POST | `/api/documents/:id/rollback` | Editor + object policy |
+| POST | `/api/documents/:id/finalize` | Editor + object policy |
+| POST | `/api/documents/:id/workflow/transition` | Editor or Reviewer + policy |
+
+Workflow status chain:
 
 ```text
 Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
 ```
 
-### POST /api/documents/:id/finalize
+Finalized documents are immutable.
 
-Required role: Editor.
+### Redactions, annotations, and Bates
 
-Marks a document as Finalized. Finalized documents are immutable.
+| Method | Route | Access |
+|---|---|---|
+| POST | `/api/documents/:id/redactions` | Editor + object policy |
+| GET | `/api/documents/:id/redactions` | authenticated + object policy |
+| POST | `/api/documents/:id/redactions/:redaction_id/confirm` | Editor + object policy |
+| POST | `/api/documents/:id/annotations` | Reviewer + object policy |
+| GET | `/api/documents/:id/annotations` | authenticated + object policy |
+| PATCH | `/api/annotations/:id/disposition` | Reviewer + object policy |
+| POST | `/api/documents/:id/bates` | Editor + object policy |
 
-## Redaction APIs
+Redaction confirmation creates a new version using strict burn-in. Bates creation uses prefix, suffix, padding, and start number inputs; the resulting job is audited.
 
-### POST /api/documents/:id/redactions
+### Audit and notifications
 
-Required role: Editor.
+| Method | Route | Access |
+|---|---|---|
+| GET | `/api/audit-logs` | Admin |
+| GET | `/api/notifications` | authenticated |
+| POST | `/api/notifications/:id/read` | authenticated |
 
-Stages a redaction region.
+Audit logs support filtering by user, document, action type, and time range where supplied by the endpoint.
 
-Request:
+## Local verification
 
-```json
-{
-  "page": 1,
-  "x": 10,
-  "y": 20,
-  "width": 100,
-  "height": 40,
-  "reason": "privileged content"
-}
+```bash
+./run_tests.sh
+bash scripts/generate_swagger.sh
 ```
 
-### GET /api/documents/:id/redactions
-
-Required role: authenticated user.
-
-Lists redaction proposals for the document.
-
-### POST /api/documents/:id/redactions/:redaction_id/confirm
-
-Required role: Editor.
-
-Confirms redaction burn-in and creates a new document version.
-
-## Annotation APIs
-
-### POST /api/documents/:id/annotations
-
-Required role: Reviewer.
-
-Request:
-
-```json
-{
-  "type": "Sticky note",
-  "page": 1,
-  "x": 10,
-  "y": 20,
-  "width": 100,
-  "height": 30,
-  "comment": "Needs legal review",
-  "disposition": "Needs Discussion"
-}
-```
-
-Allowed annotation types:
-
-- Sticky note
-- Highlight
-- Strikethrough
-- Freeform text stamp
-
-Allowed dispositions:
-
-- Approved
-- Rejected
-- Needs Discussion
-
-### GET /api/documents/:id/annotations
-
-Required role: authenticated user.
-
-Lists annotations.
-
-### PATCH /api/annotations/:id/disposition
-
-Required role: Reviewer.
-
-Request:
-
-```json
-{
-  "disposition": "Approved"
-}
-```
-
-## Bates APIs
-
-### POST /api/documents/:id/bates
-
-Required role: Editor.
-
-Request:
-
-```json
-{
-  "prefix": "CASE-",
-  "suffix": "-A",
-  "zero_padding": 6,
-  "start": 1
-}
-```
-
-Rules:
-
-- zero padding must be between 0 and 10
-- Bates job creation must be audited
-
-## Comparison API
-
-### POST /api/documents/compare
-
-Required role: authenticated user.
-
-Request:
-
-```json
-{
-  "left_version_id": "ver_left",
-  "right_version_id": "ver_right"
-}
-```
-
-Response includes added, removed, and modified segments with page and bounding box placeholders where exact PDF coordinates are not available.
-
-## Audit APIs
-
-### GET /api/audit-logs
-
-Required role: authenticated user.
-
-Supports pagination and is intended to support filters by user, document, action type, and date range.
-
-## Notification APIs
-
-### GET /api/notifications
-
-Required role: authenticated user.
-
-Returns the current user's in-app notifications.
-
-### POST /api/notifications/:id/read
-
-Required role: authenticated user.
-
-Marks a notification as read.
+For exact request and response schemas, use generated Swagger UI or `docs/swagger/swagger.yaml` after generation.

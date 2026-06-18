@@ -88,11 +88,11 @@ The migration keeps temporary app wrappers so existing handlers can continue cal
 
 ## Why PDF helpers are platform code
 
-PDF inspection and append-only PDF transform helpers are infrastructure adapters. They perform filesystem reads and writes, PDF header validation, page-marker counting, and digest calculation.
+PDF inspection and strict PDF transforms are infrastructure adapters. They perform filesystem reads and writes, PDF validation, page inspection, digest calculation, rasterized redaction burn-in, and page-visible Bates overlays.
 
-They do not belong in the API adapter layer. `internal/app` may temporarily expose wrapper functions for compatibility, but the real implementation belongs in `internal/platform`.
+The strict redaction path rewrites page content so sensitive text is not merely hidden by an annotation layer. The strict Bates path renders the page-visible label into a new version. Both transforms are validated by content-level acceptance tests.
 
-The current append-only transform remains a placeholder-style implementation and is not forensic redaction or page-visible Bates rendering.
+These responsibilities do not belong in the API adapter layer. `internal/app` may expose compatibility wrappers, but the underlying implementation belongs in `internal/platform` and `internal/service`.
 
 ## Why request timestamp and request ID are required
 
