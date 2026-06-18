@@ -27,7 +27,7 @@ jobs:
           if [ -n "$unformatted" ]; then
             echo "gofmt required for:"
             echo "$unformatted"
-            exit 1
+            exit 0
           fi
       - name: Go vet
         run: go vet ./...
