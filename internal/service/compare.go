@@ -1,6 +1,10 @@
 package service
 
-import "ironpage-vault/internal/platform"
+import (
+	"fmt"
+
+	"ironpage-vault/internal/platform"
+)
 
 type VersionFile struct {
 	ID        string
@@ -35,8 +39,43 @@ func CompareVersionFiles(left VersionFile, right VersionFile) map[string]interfa
 		return result
 	}
 	added, removed, modified := platform.DiffTextBlocks(leftBlocks, rightBlocks)
+	added, removed, modified = classifyTextBlockChanges(added, removed, modified)
 	result["added"] = added
 	result["removed"] = removed
 	result["modified"] = modified
 	return result
+}
+
+// classifyTextBlockChanges converts an add/remove pair at the same extracted
+// bounding box into one modified block. A block moved to a different box
+// remains an add and remove, because its document position changed.
+func classifyTextBlockChanges(added, removed, modified []platform.TextBlock) ([]platform.TextBlock, []platform.TextBlock, []platform.TextBlock) {
+	removedByPosition := make(map[string]int, len(removed))
+	for index, block := range removed {
+		removedByPosition[textBlockPositionKey(block)] = index
+	}
+
+	usedRemoved := make(map[int]bool)
+	remainingAdded := make([]platform.TextBlock, 0, len(added))
+	for _, block := range added {
+		index, found := removedByPosition[textBlockPositionKey(block)]
+		if !found || usedRemoved[index] {
+			remainingAdded = append(remainingAdded, block)
+			continue
+		}
+		usedRemoved[index] = true
+		modified = append(modified, block)
+	}
+
+	remainingRemoved := make([]platform.TextBlock, 0, len(removed))
+	for index, block := range removed {
+		if !usedRemoved[index] {
+			remainingRemoved = append(remainingRemoved, block)
+		}
+	}
+	return remainingAdded, remainingRemoved, modified
+}
+
+func textBlockPositionKey(block platform.TextBlock) string {
+	return fmt.Sprintf("%d|%.2f|%.2f|%.2f|%.2f", block.Page, block.XMin, block.YMin, block.XMax, block.YMax)
 }
