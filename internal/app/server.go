@@ -45,6 +45,7 @@ func Run(cfg Config) error {
 		return err
 	}
 	a := &App{cfg: cfg, db: db}
+	a.startBackupScheduler()
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
