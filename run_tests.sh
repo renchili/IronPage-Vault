@@ -27,6 +27,9 @@ go test -mod=mod ./...
 run_script API_tests/test_api_flow.sh
 load_api_tokens
 
+run_script API_tests/test_api_contracts.sh
+load_api_tokens
+
 run_script API_tests/test_static_review_reject_flows.sh
 load_api_tokens
 
