@@ -1,25 +1,48 @@
 # CI Boundary
 
-This repository separates CI control-plane code from project-owned code and project-owned tests.
+This repository separates the CI control plane from product code and project-owned tests.
+
+## Pre-merge pull request checks
+
+`pull_request` workflows are static and build-oriented gates. They analyze the changed surface and verify that new or changed capability has matching test or contract updates.
+
+Allowed pre-merge checks include:
+
+- changed-file impact analysis
+- gofmt
+- go vet
+- targeted `go test` for affected packages
+- generated Swagger/static contract checks
+- shell syntax checks with `bash -n`
+- workflow lint
+- Docker image build
+
+Pre-merge pull request checks must not use `run_tests.sh` as the pass/fail source.
+
+## Merge candidate regression
+
+Full runtime/API regression belongs on a real merge candidate, not on an arbitrary feature branch checkout. Use the `merge_group` workflow for merge-queue regression so the tested tree is the temporary merge result produced from current `main` plus queued changes.
+
+## Post-merge evidence
+
+`push` to `main` may replay full regression and retain logs, JSON summaries, Markdown summaries, and artifacts under `reports/regression/**`.
 
 ## CI control plane
 
-CI workflows may call only CI-owned control scripts under `ci/` for pre-merge conclusions.
+CI-owned control scripts live under `ci/`.
 
 Examples:
 
-- `.github/workflows/**`
+- `ci/change_impact_check.sh`
 - `ci/run_full_regression.sh`
 - `ci/docker_acceptance.sh`
-- `ci/api_smoke.sh`
+- `ci/run_project_api_regression.sh`
 - `ci/shell_syntax_check.sh`
 - `ci/Dockerfile.acceptance`
 
-CI control scripts may run standard tools such as `go test`, `go vet`, `gofmt`, `docker build`, `docker compose`, `bash -n`, and `actionlint`.
+## Product code
 
-## Project-owned code
-
-Project code is the object being tested. It must not decide pre-merge pass/fail by invoking its own aggregate test entrypoint.
+Product code is the object being tested.
 
 Examples:
 
@@ -33,7 +56,7 @@ Examples:
 
 ## Project-owned tests and local tools
 
-These are useful for local development, manual replay, and post-merge evidence, but they are not neutral pre-merge CI gates.
+These are useful for local development, manual replay, merge-candidate regression, and post-merge evidence. They are not the neutral pull-request static gate.
 
 Examples:
 
@@ -42,12 +65,10 @@ Examples:
 - `unit_tests/`
 - `testdata/`
 
-Pre-merge CI may parse these scripts with `bash -n` or lint them, but it must not use `run_tests.sh` as the required CI conclusion.
-
 ## Hard rules
 
-1. Pre-merge workflows call `ci/**`, not `run_tests.sh`.
-2. `ci/**` must not call `run_tests.sh`.
-3. `ci/docker_acceptance.sh` owns Docker runtime acceptance and must not delegate to project-owned aggregate test scripts.
-4. Project-owned tests may be executed post-merge or manually as regression evidence.
-5. If CI control-plane files change, workflow lint and shell syntax checks must run.
+1. Pull-request workflows call CI-owned checks under `ci/**` and standard tools.
+2. Pull-request workflows do not use `run_tests.sh` as a pass/fail source.
+3. Pull-request workflows must analyze changed files and require tests/contracts for new capability.
+4. Runtime/API regression runs on `merge_group` merge candidates or post-merge `main`.
+5. `ci/docker_acceptance.sh` owns Docker runtime regression orchestration and does not delegate to `run_tests.sh`.
