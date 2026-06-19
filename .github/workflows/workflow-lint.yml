@@ -20,4 +20,19 @@ jobs:
       - name: Install actionlint
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
       - name: Lint all workflow definitions
-        run: "$(go env GOPATH)/bin/actionlint -color"
+        id: lint
+        shell: bash
+        run: |
+          set +e
+          "$(go env GOPATH)/bin/actionlint" -color=false 2>&1 | tee actionlint.log
+          status=${PIPESTATUS[0]}
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - name: Upload actionlint output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actionlint-${{ github.sha }}-${{ github.run_id }}
+          path: actionlint.log
+          if-no-files-found: error
+          retention-days: 90
