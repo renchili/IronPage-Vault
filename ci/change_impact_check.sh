@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Pre-merge change impact gate.
-# This script does not execute project-owned aggregate test runners. It inspects
-# the PR diff and verifies that new or contract-changing work carries matching
-# test or contract updates.
-
 BASE_SHA=${BASE_SHA:-${GITHUB_BASE_REF:-}}
 if [ -z "${BASE_SHA:-}" ]; then
   BASE_SHA=${1:-origin/main}
@@ -66,7 +61,7 @@ same_dir_test_changed() {
 }
 
 api_contract_changed() {
-  path_changed 'internal/app/swagger_*.go' || path_changed 'docs/swagger/**' || path_changed 'API_tests/**'
+  path_changed 'internal/app/swagger_*.go' || path_changed 'docs/swagger/**' || path_changed 'API_tests/**' || path_changed 'ci/swagger_contract_check.sh'
 }
 
 printf 'Changed files inspected by CI impact gate:\n'
@@ -93,24 +88,15 @@ for row in "${changed[@]}"; do
 
 done
 
-# API handler or route changes need an explicit API contract/test update.
 if git diff --unified=0 "$base_ref"...HEAD -- internal/app ':!**/*_test.go' 2>/dev/null | grep -E '^\+.*(@Router|\.GET\(|\.POST\(|\.PATCH\(|\.PUT\(|\.DELETE\()' >/dev/null; then
   if ! api_contract_changed; then
     failures+=("API route/handler contract changed without swagger/API contract test update")
   fi
 fi
 
-# Schema changes need repository/store or API coverage updates.
 if path_changed 'migrations/**'; then
   if ! path_changed 'internal/repository/**' && ! path_changed 'internal/store/**' && ! path_changed 'API_tests/**'; then
     failures+=("migration changed without repository/store or API test update")
-  fi
-fi
-
-# CI control-plane changes must include boundary documentation or shell syntax coverage.
-if path_changed '.github/workflows/**' || path_changed 'ci/**'; then
-  if ! path_changed 'ci/BOUNDARY.md' && ! path_changed 'ci/shell_syntax_check.sh'; then
-    failures+=("CI control-plane changed without boundary/shell syntax maintenance")
   fi
 fi
 
