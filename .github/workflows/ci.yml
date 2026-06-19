@@ -25,6 +25,7 @@ jobs:
       repository: ${{ steps.filter.outputs.repository }}
       static_rules: ${{ steps.filter.outputs.static_rules }}
       docker_build: ${{ steps.filter.outputs.docker_build }}
+      regression_flow: ${{ steps.filter.outputs.regression_flow }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,6 +99,15 @@ jobs:
               - 'scripts/**'
               - 'go.mod'
               - 'go.sum'
+            regression_flow:
+              - '.github/workflows/full-regression-reusable.yml'
+              - '.github/workflows/merge-queue-regression.yml'
+              - '.github/workflows/post-merge-regression.yml'
+              - 'ci/run_full_regression.sh'
+              - 'ci/docker_acceptance.sh'
+              - 'ci/run_project_api_regression.sh'
+              - 'ci/Dockerfile.acceptance'
+              - 'ci/regression_contract_check.sh'
 
   change-impact:
     name: Change impact and coverage gate
@@ -111,6 +121,16 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash ci/change_impact_check.sh
+
+  regression-flow:
+    name: Regression flow contract
+    needs: changes
+    if: needs.changes.outputs.regression_flow == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute regression failure contract probe
+        run: bash ci/regression_contract_check.sh
 
   swagger:
     name: Swagger contract
@@ -234,6 +254,7 @@ jobs:
     needs:
       - changes
       - change-impact
+      - regression-flow
       - swagger
       - format
       - core
@@ -249,6 +270,7 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           CHANGE_IMPACT: ${{ needs.change-impact.result }}
+          REGRESSION_FLOW: ${{ needs.regression-flow.result }}
           SWAGGER: ${{ needs.swagger.result }}
           FORMAT: ${{ needs.format.result }}
           CORE: ${{ needs.core.result }}
@@ -260,7 +282,7 @@ jobs:
           DOCKER_BUILD: ${{ needs.docker-build.result }}
         run: |
           failed=0
-          for result in "$CHANGES" "$CHANGE_IMPACT" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
+          for result in "$CHANGES" "$CHANGE_IMPACT" "$REGRESSION_FLOW" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
             case "$result" in
               success|skipped) ;;
               *) echo "required CI stage failed or was cancelled: $result"; failed=1 ;;
