@@ -3,8 +3,25 @@ name: Post-merge Regression Evidence
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'reports/regression/**'
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'migrations/**'
+      - 'public/**'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - 'go.mod'
+      - 'go.sum'
+      - 'scripts/entrypoint.sh'
+      - 'scripts/build_server_in_container.sh'
+      - 'scripts/generate_swagger.sh'
+      - 'API_tests/**'
+      - 'testdata/**'
+      - 'ci/run_full_regression.sh'
+      - 'ci/docker_acceptance.sh'
+      - 'ci/run_project_api_regression.sh'
+      - 'ci/Dockerfile.acceptance'
   workflow_dispatch:
 
 permissions:
