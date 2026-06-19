@@ -1,4 +1,4 @@
-name: Post-merge Regression
+name: Post-merge Regression Evidence
 
 on:
   push:
@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  full-regression:
-    name: Full regression with retained evidence
+  verification-replay:
+    name: Post-merge verification replay
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,9 +37,10 @@ jobs:
                   'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
                   'workflow': os.environ['GITHUB_WORKFLOW'],
                   'repository': os.environ['GITHUB_REPOSITORY'],
+                  'purpose': 'post-merge replay; merge admission is enforced by Pre-merge Full Regression',
               }, f, indent=2)
           PY
-      - name: Run full regression
+      - name: Replay complete regression
         id: regression
         continue-on-error: true
         run: bash scripts/run_full_regression.sh artifacts/regression
@@ -47,7 +48,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: full-regression-${{ github.sha }}-${{ github.run_id }}
+          name: post-merge-regression-${{ github.sha }}-${{ github.run_id }}
           path: artifacts/regression
           if-no-files-found: error
           retention-days: 90
@@ -65,7 +66,7 @@ jobs:
           git add "$REPORT_DIR"
           git commit -m "test(regression): record ${GITHUB_SHA} run ${GITHUB_RUN_ID} [skip regression]" || exit 0
           git push origin HEAD:main
-      - name: Enforce regression result
+      - name: Surface verification mismatch
         if: always()
         env:
           REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
