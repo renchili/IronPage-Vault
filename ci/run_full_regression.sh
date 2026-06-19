@@ -17,7 +17,7 @@ run_stage() {
   set +e
   "$@" >"$log" 2>&1
   status=$?
-  set -e
+  set +e
   ended=$(date +%s)
   elapsed=$((ended-started))
   if [ "$status" -eq 0 ]; then
@@ -57,6 +57,13 @@ with open(os.path.join(out, 'summary.md'), 'w', encoding='utf-8') as f:
 sys.exit(0 if passed else 1)
 PY
 }
+
+if [ "${IRONPAGE_REGRESSION_CONTRACT_PROBE:-}" = "1" ]; then
+  run_stage contract_pass bash -lc 'true'
+  run_stage contract_fail bash -lc 'false'
+  write_summary
+  exit $?
+fi
 
 # CI control-plane rule: this script may execute CI-owned scripts under ci/**
 # and standard tool commands. It must not call run_tests.sh or project-owned
