@@ -1,6 +1,8 @@
-FROM golang:1.23-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 WORKDIR /src
 
+# This builder resolves modules and generates Swagger internally. The source
+# checkout does not need go.sum or docs/swagger artifacts.
 COPY go.mod ./
 RUN go mod download
 COPY . .
