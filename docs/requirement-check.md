@@ -1,16 +1,30 @@
 # Requirement Check
 
-This document maps the requested acceptance items to the implementation after the latest recheck orchestration fixes.
+This document maps the requested acceptance items to the implementation and verification model.
 
-## Current Blocking Gaps
+## Verification model
 
-None tracked after fixing the latest static recheck blockers:
+The repository intentionally separates PR gates, merge-candidate regression, post-merge evidence, and local/manual verification.
 
-- `run_tests.sh` reloads token files created by `test_api_flow.sh` between API scripts.
-- `API_tests/lib.sh` auto-loads saved token files when token env vars are missing.
+| Layer | Purpose | What runs |
+|---|---|---|
+| Pull request CI | Prevent obviously unsafe changes before merge | change-impact analysis, gofmt, targeted `go vet`, targeted `go test`, generated Swagger contract, shell syntax, Docker build, CI-flow contract probes, local entrypoint contract probes |
+| Merge queue regression | Verify the temporary merge result before it reaches `main` | reusable full regression on `merge_group` |
+| Post-merge regression evidence | Retain evidence for product/runtime/regression-impacting changes already merged to `main` | reusable full regression with logs, JSON summary, Markdown summary, and retained artifacts |
+| Local/manual replay | Developer reproduction path | `./run_tests.sh`, which generates Swagger artifacts before compiling/tests |
+
+PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/fail source. Runtime/API Docker acceptance is executed by the reusable full regression flow on merge candidates, post-merge evidence runs, or manual workflow dispatch.
+
+## Current fixed static recheck blockers
+
+- `run_tests.sh` now generates `docs/swagger` before `go test -mod=mod ./...`, so a fresh checkout does not depend on committed generated Swagger artifacts.
+- `ci/run_tests_contract_check.sh` verifies the local test entrypoint can generate Swagger artifacts from a clean state.
+- `ci/swagger_contract_check.sh` verifies every route-level `@Router` annotation appears in generated `docs/swagger/swagger.yaml` and checks key response contracts.
+- PR CI runs the local entrypoint contract when `run_tests.sh`, Swagger generation, or Swagger artifacts change.
+- PR CI runs the regression flow contract when full-regression workflow or runner logic changes.
+- `run_tests.sh` and `API_tests/lib.sh` preserve token availability across API scripts.
 - Mention notification test uses `Sticky note`, a supported annotation type.
 - Bates apply response returns `start_number`, matching the multi-document sequence test.
-- CI runs Go tests, static rules, Docker build, and Docker acceptance.
 
 ## Final hardening evidence
 
@@ -27,8 +41,23 @@ None tracked after fixing the latest static recheck blockers:
 | API token orchestration | Complete | `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts |
 | Mention notification test | Complete | Test uses `Sticky note` |
 | Bates sequence contract | Complete | Bates apply response includes `start_number` |
-| CI | Complete | Workflow runs Go tests, static rules, Docker build, and Docker acceptance |
+| PR CI | Complete | Impact-based static/build gates, generated Swagger contract, local entrypoint contract, and CI-flow contract probes |
+| Full regression | Complete | Reusable full regression runs generated Swagger, full gofmt, `go vet ./...`, race tests, Docker build, and Docker acceptance |
 | Static regression guards | Complete | `unit_tests/test_rules.sh` and `unit_tests/test_structure_rules.sh` guard reject-condition regressions |
+
+## Swagger generated artifact policy
+
+Generated Swagger artifacts under `docs/swagger` are treated as generated output, not the primary source of truth. Route-level Swaggo annotations under `internal/app/swagger_*.go` are the source of truth. Every compile/test entrypoint that imports `ironpage-vault/docs/swagger` must generate or stub the package before compiling.
+
+See `docs/swagger-artifacts.md` for the operational policy.
+
+## Known limitations / separate product-scope follow-ups
+
+The following items are product-scope or evidence-scope follow-ups rather than CI entrypoint blockers:
+
+- Scheduled PostgreSQL logical dumps require explicit scheduler/ticker design and tests if required beyond admin-triggered backups.
+- PII metadata encryption should be backed by an explicit field-level test matrix if the product requirement extends beyond encrypted redaction coordinates.
+- Compare diff content accuracy should continue to gain stronger added/removed/modified text assertions.
 
 ## Notes
 

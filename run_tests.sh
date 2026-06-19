@@ -20,6 +20,29 @@ load_api_tokens() {
   fi
 }
 
+prepare_swagger() {
+  mkdir -p docs/swagger
+  printf 'package swagger\n' > docs/swagger/docs.go
+
+  if command -v swag >/dev/null 2>&1; then
+    SWAG_BIN="$(command -v swag)" bash scripts/generate_swagger.sh
+    return
+  fi
+
+  go install github.com/swaggo/swag/cmd/swag@v1.16.4
+  SWAG_BIN="$(go env GOPATH)/bin/swag" bash scripts/generate_swagger.sh
+}
+
+prepare_swagger
+
+if [ "${IRONPAGE_RUN_TESTS_CONTRACT_PROBE:-}" = "1" ]; then
+  test -s docs/swagger/docs.go
+  test -s docs/swagger/swagger.yaml
+  go test -mod=mod ./internal/core
+  echo "PASS run_tests local entrypoint contract"
+  exit 0
+fi
+
 run_script unit_tests/test_rules.sh
 
 go test -mod=mod ./...

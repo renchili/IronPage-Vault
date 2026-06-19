@@ -26,6 +26,7 @@ jobs:
       static_rules: ${{ steps.filter.outputs.static_rules }}
       docker_build: ${{ steps.filter.outputs.docker_build }}
       regression_flow: ${{ steps.filter.outputs.regression_flow }}
+      local_entrypoint: ${{ steps.filter.outputs.local_entrypoint }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,6 +41,7 @@ jobs:
               - 'internal/app/swagger_*.go'
               - 'scripts/generate_swagger.sh'
               - 'docs/swagger/**'
+              - 'ci/swagger_contract_check.sh'
               - 'go.mod'
               - 'go.sum'
             format:
@@ -108,6 +110,13 @@ jobs:
               - 'ci/run_project_api_regression.sh'
               - 'ci/Dockerfile.acceptance'
               - 'ci/regression_contract_check.sh'
+            local_entrypoint:
+              - 'run_tests.sh'
+              - 'ci/run_tests_contract_check.sh'
+              - 'scripts/generate_swagger.sh'
+              - 'cmd/server/main.go'
+              - 'internal/app/swagger_*.go'
+              - 'docs/swagger/**'
 
   change-impact:
     name: Change impact and coverage gate
@@ -132,6 +141,19 @@ jobs:
       - name: Execute regression failure contract probe
         run: bash ci/regression_contract_check.sh
 
+  local-entrypoint:
+    name: Local test entrypoint contract
+    needs: changes
+    if: needs.changes.outputs.local_entrypoint == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Verify run_tests fresh-checkout contract
+        run: bash ci/run_tests_contract_check.sh
+
   swagger:
     name: Swagger contract
     needs: changes
@@ -141,7 +163,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
       - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
       - run: |
           bash scripts/generate_swagger.sh
@@ -174,7 +196,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
       - run: go vet ./internal/core
       - run: go test -mod=mod ./internal/core
 
@@ -187,7 +209,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
       - run: go vet ./internal/platform
       - run: go test -mod=mod ./internal/platform
 
@@ -200,7 +222,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
       - run: go test -mod=mod ./internal/service
 
   app:
@@ -212,7 +234,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
       - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
       - run: bash scripts/generate_swagger.sh
       - run: go test -mod=mod ./internal/app ./cmd/...
@@ -226,7 +248,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
       - run: go test -mod=mod ./internal/repository ./internal/store
 
   static-rules:
@@ -255,6 +277,7 @@ jobs:
       - changes
       - change-impact
       - regression-flow
+      - local-entrypoint
       - swagger
       - format
       - core
@@ -271,6 +294,7 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           CHANGE_IMPACT: ${{ needs.change-impact.result }}
           REGRESSION_FLOW: ${{ needs.regression-flow.result }}
+          LOCAL_ENTRYPOINT: ${{ needs.local-entrypoint.result }}
           SWAGGER: ${{ needs.swagger.result }}
           FORMAT: ${{ needs.format.result }}
           CORE: ${{ needs.core.result }}
@@ -282,7 +306,7 @@ jobs:
           DOCKER_BUILD: ${{ needs.docker-build.result }}
         run: |
           failed=0
-          for result in "$CHANGES" "$CHANGE_IMPACT" "$REGRESSION_FLOW" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
+          for result in "$CHANGES" "$CHANGE_IMPACT" "$REGRESSION_FLOW" "$LOCAL_ENTRYPOINT" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
             case "$result" in
               success|skipped) ;;
               *) echo "required CI stage failed or was cancelled: $result"; failed=1 ;;
