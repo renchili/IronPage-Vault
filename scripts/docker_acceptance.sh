@@ -2,10 +2,8 @@
 set -euo pipefail
 
 # This script is intentionally Docker-based. It does not require a local Go toolchain.
-# It is provided for evaluators; it was not executed during generation.
 
 docker compose build
-
 docker compose up -d
 
 cleanup() {
@@ -25,7 +23,7 @@ for i in $(seq 1 60); do
   fi
 done
 
-if ! bash ./run_tests.sh; then
+if ! bash ./run_tests.sh || ! bash API_tests/test_request_guard_edges.sh; then
   echo "Docker acceptance failed; dumping compose logs"
   docker compose logs --no-color || true
   exit 1
