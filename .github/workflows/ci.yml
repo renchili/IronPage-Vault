@@ -227,3 +227,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t ironpage-vault:pr .
+
+  pr-gate:
+    name: Pull request gate
+    if: always()
+    needs:
+      - changes
+      - change-impact
+      - swagger
+      - format
+      - core
+      - platform
+      - service
+      - app
+      - repository
+      - static-rules
+      - docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject detector or selected-job failures
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CHANGE_IMPACT: ${{ needs.change-impact.result }}
+          SWAGGER: ${{ needs.swagger.result }}
+          FORMAT: ${{ needs.format.result }}
+          CORE: ${{ needs.core.result }}
+          PLATFORM: ${{ needs.platform.result }}
+          SERVICE: ${{ needs.service.result }}
+          APP: ${{ needs.app.result }}
+          REPOSITORY: ${{ needs.repository.result }}
+          STATIC_RULES: ${{ needs.static-rules.result }}
+          DOCKER_BUILD: ${{ needs.docker-build.result }}
+        run: |
+          failed=0
+          for result in "$CHANGES" "$CHANGE_IMPACT" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "required CI stage failed or was cancelled: $result"; failed=1 ;;
+            esac
+          done
+          exit "$failed"
