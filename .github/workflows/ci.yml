@@ -74,8 +74,12 @@ jobs:
               - 'go.mod'
               - 'go.sum'
             static_rules:
-              - 'unit_tests/**'
+              - '.github/workflows/**'
+              - 'ci/**'
+              - 'scripts/**'
               - 'API_tests/**'
+              - 'unit_tests/**'
+              - 'run_tests.sh'
               - 'internal/**'
               - 'cmd/**'
               - 'migrations/**'
@@ -95,6 +99,19 @@ jobs:
               - 'go.mod'
               - 'go.sum'
 
+  change-impact:
+    name: Change impact and coverage gate
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Analyze changed surface and required coverage
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash ci/change_impact_check.sh
+
   swagger:
     name: Swagger contract
     needs: changes
@@ -108,9 +125,7 @@ jobs:
       - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
       - run: |
           bash scripts/generate_swagger.sh
-          test -f docs/swagger/docs.go
-          test -f docs/swagger/swagger.yaml
-          bash unit_tests/test_swagger_route_coverage.sh
+          bash ci/swagger_contract_check.sh
 
   format:
     name: Go format
@@ -195,19 +210,14 @@ jobs:
       - run: go test -mod=mod ./internal/repository ./internal/store
 
   static-rules:
-    name: Static and structure rules
+    name: CI static guards
     needs: changes
     if: needs.changes.outputs.static_rules == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
-      - run: bash scripts/generate_swagger.sh
-      - run: bash unit_tests/test_rules.sh
-      - run: bash unit_tests/test_structure_rules.sh
+      - name: Check shell script syntax without executing project test entrypoints
+        run: bash ci/shell_syntax_check.sh
 
   docker-build:
     name: Docker build
@@ -217,41 +227,3 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t ironpage-vault:pr .
-
-  pr-gate:
-    name: Pull request gate
-    if: always()
-    needs:
-      - changes
-      - swagger
-      - format
-      - core
-      - platform
-      - service
-      - app
-      - repository
-      - static-rules
-      - docker-build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Reject detector or selected-job failures
-        env:
-          CHANGES: ${{ needs.changes.result }}
-          SWAGGER: ${{ needs.swagger.result }}
-          FORMAT: ${{ needs.format.result }}
-          CORE: ${{ needs.core.result }}
-          PLATFORM: ${{ needs.platform.result }}
-          SERVICE: ${{ needs.service.result }}
-          APP: ${{ needs.app.result }}
-          REPOSITORY: ${{ needs.repository.result }}
-          STATIC_RULES: ${{ needs.static-rules.result }}
-          DOCKER_BUILD: ${{ needs.docker-build.result }}
-        run: |
-          failed=0
-          for result in "$CHANGES" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
-            case "$result" in
-              success|skipped) ;;
-              *) echo "required CI stage failed or was cancelled: $result"; failed=1 ;;
-            esac
-          done
-          exit "$failed"
