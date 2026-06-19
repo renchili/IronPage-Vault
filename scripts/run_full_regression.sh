@@ -28,17 +28,11 @@ run_stage() {
     failed=1
   fi
   printf '%s\t%s\t%s\t%s\n' "$stage" "$status" "$elapsed" "$log" >> "$RESULTS"
+  return "$status"
 }
 
-run_stage swagger bash -lc 'bash scripts/generate_swagger.sh && test -f docs/swagger/docs.go && test -f docs/swagger/swagger.yaml && bash unit_tests/test_swagger_route_coverage.sh'
-run_stage gofmt bash -lc "test -z \"\$(find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l)\""
-run_stage go_vet bash -lc 'go vet ./...'
-run_stage go_test_race bash -lc 'go test -mod=mod -race ./...'
-run_stage static_rules bash -lc 'bash unit_tests/test_rules.sh && bash unit_tests/test_structure_rules.sh'
-run_stage docker_build bash -lc 'docker build --progress=plain -t ironpage-vault:regression .'
-run_stage docker_acceptance bash -lc 'bash scripts/docker_acceptance.sh'
-
-python3 - "$OUT_DIR" "$RESULTS" <<'PY'
+write_summary() {
+  python3 - "$OUT_DIR" "$RESULTS" <<'PY'
 import csv, datetime, json, os, sys
 out, results_path = sys.argv[1:]
 rows = []
@@ -64,3 +58,30 @@ with open(os.path.join(out, 'summary.md'), 'w', encoding='utf-8') as f:
         f.write(f"| {row['stage']} | {label} | {row['duration_seconds']}s | `{row['log']}` |\n")
 sys.exit(0 if passed else 1)
 PY
+}
+
+# The repository deliberately does not commit generated Swagger sources or go.sum.
+# Materialize both only in this disposable CI checkout before any Go command runs.
+if ! run_stage prepare_workspace bash -lc '
+  set -euo pipefail
+  mkdir -p docs/swagger
+  printf "package swagger\\n" > docs/swagger/docs.go
+  go mod tidy
+  go install github.com/swaggo/swag/cmd/swag@v1.16.4
+  SWAG_BIN="$(go env GOPATH)/bin/swag" bash scripts/generate_swagger.sh
+  test -f docs/swagger/docs.go
+  test -f docs/swagger/swagger.yaml
+'; then
+  write_summary
+  exit 1
+fi
+
+run_stage swagger bash -lc 'test -f docs/swagger/docs.go && test -f docs/swagger/swagger.yaml && bash unit_tests/test_swagger_route_coverage.sh'
+run_stage gofmt bash -lc 'find cmd internal -name "*.go" -print0 | xargs -0 gofmt -l | tee /tmp/ironpage_gofmt.out; test ! -s /tmp/ironpage_gofmt.out'
+run_stage go_vet bash -lc 'go vet ./...'
+run_stage go_test_race bash -lc 'go test -mod=mod -race ./...'
+run_stage static_rules bash -lc 'bash unit_tests/test_rules.sh && bash unit_tests/test_structure_rules.sh'
+run_stage docker_build bash -lc 'docker build --progress=plain -t ironpage-vault:regression .'
+run_stage docker_acceptance bash -lc 'bash scripts/docker_acceptance.sh'
+
+write_summary
