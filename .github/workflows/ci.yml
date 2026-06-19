@@ -125,9 +125,9 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          files="$(git diff --name-only "$BASE_SHA"...HEAD -- '*.go')"
-          test -n "$files"
-          gofmt -l $files | tee /tmp/gofmt.out
+          mapfile -t files < <(git diff --name-only "$BASE_SHA"...HEAD -- '*.go')
+          test "${#files[@]}" -gt 0
+          gofmt -l "${files[@]}" | tee /tmp/gofmt.out
           test ! -s /tmp/gofmt.out
 
   core:
