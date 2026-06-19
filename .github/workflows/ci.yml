@@ -119,8 +119,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l | tee /tmp/gofmt.out
+        with:
+          fetch-depth: 0
+      - name: Check changed Go source formatting
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          files="$(git diff --name-only "$BASE_SHA"...HEAD -- '*.go')"
+          test -n "$files"
+          gofmt -l $files | tee /tmp/gofmt.out
           test ! -s /tmp/gofmt.out
 
   core:

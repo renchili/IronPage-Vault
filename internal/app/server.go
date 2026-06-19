@@ -48,6 +48,7 @@ func Run(cfg Config) error {
 	a.startBackupScheduler()
 	e := echo.New()
 	e.HideBanner = true
+	e.HTTPErrorHandler = apiHTTPErrorHandler
 	e.Use(middleware.Recover())
 	e.Use(a.requestIDMiddleware)
 	e.GET("/healthz", a.health)

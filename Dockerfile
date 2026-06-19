@@ -1,9 +1,12 @@
-FROM golang:1.23-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 WORKDIR /src
+
+# This builder resolves modules and generates Swagger internally. The source
+# checkout does not need go.sum or docs/swagger artifacts.
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN go build -o /out/ironpage ./cmd/server
+RUN sh scripts/build_server_in_container.sh
 
 FROM postgres:16-bookworm
 RUN apt-get update \
