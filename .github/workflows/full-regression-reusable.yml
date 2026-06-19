@@ -1,0 +1,51 @@
+name: Reusable Full Regression
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: Artifact name for retained regression evidence
+        required: true
+        type: string
+      record_summary:
+        description: Reserved for post-merge summary recording
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  full-regression:
+    name: Full regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Run complete regression
+        run: bash ci/run_full_regression.sh artifacts/regression
+      - name: Upload complete regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: artifacts/regression
+          if-no-files-found: error
+          retention-days: 90
+      - name: Commit regression summary to main
+        if: always()
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            exit 0
+          fi
+          report_dir="reports/regression/${GITHUB_SHA}/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$report_dir"
+          cp artifacts/regression/summary.json "$report_dir/summary.json"
+          cp artifacts/regression/summary.md "$report_dir/summary.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$report_dir"
+          git commit -m "test(regression): record ${GITHUB_SHA} run ${GITHUB_RUN_ID} [skip regression]" || exit 0
+          git push origin HEAD:main

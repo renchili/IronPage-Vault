@@ -1,9 +1,9 @@
 package app
 
 import (
-    "io"
+	"io"
 
-    "ironpage-vault/internal/platform"
+	"ironpage-vault/internal/platform"
 )
 
 func fileDigest(r io.Reader) (string, error) { return platform.FileDigest(r) }

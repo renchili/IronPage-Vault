@@ -30,7 +30,7 @@ code=$(auth_get "$EDITOR_TOKEN" /api/documents/does-not-exist)
 expect_code "missing document" 404 "$code" || FAIL=$((FAIL+1))
 check_error "missing document envelope" DOCUMENT_NOT_FOUND || FAIL=$((FAIL+1))
 
-code=$(curl -s -o "$BODY" -w "%{http_code}" "$BASE_URL/api/not-a-real-route" -H "X-Request-ID: $(reqid)")
+code=$(auth_get "$EDITOR_TOKEN" /api/not-a-real-route)
 expect_code "unknown route" 404 "$code" || FAIL=$((FAIL+1))
 check_error "unknown route envelope" NOT_FOUND || FAIL=$((FAIL+1))
 

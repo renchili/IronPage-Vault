@@ -5,7 +5,24 @@ FAIL=0
 : "${EDITOR_TOKEN:?set EDITOR_TOKEN}"
 
 command -v python3 >/dev/null 2>&1 || { echo "FAIL api: python3 missing"; exit 1; }
-command -v pdftotext >/dev/null 2>&1 || { echo "FAIL api: pdftotext missing"; exit 1; }
+
+pdftotext_to_file() {
+  local input="$1"
+  local output="$2"
+
+  if command -v pdftotext >/dev/null 2>&1; then
+    pdftotext "$input" "$output"
+    return
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker compose ps ironpage >/dev/null 2>&1; then
+    docker compose exec -T ironpage sh -c 'cat >/tmp/ironpage_pdf_probe.pdf && pdftotext /tmp/ironpage_pdf_probe.pdf -' < "$input" > "$output"
+    return
+  fi
+
+  echo "FAIL api: pdftotext missing on host and docker compose ironpage is unavailable"
+  return 1
+}
 
 python3 - <<'PY'
 from reportlab.pdfgen import canvas
@@ -29,7 +46,7 @@ code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/$DOC_ID/redactions/$RED_ID
 expect_code "confirm content redaction" 200 "$code" || FAIL=$((FAIL+1))
 
 curl -s -o /tmp/ironpage_redacted_probe.pdf -H "Authorization: Bearer $EDITOR_TOKEN" -H "X-Request-ID: $(reqid)" -H "X-Request-Timestamp: $(ts)" "$BASE_URL/api/documents/$DOC_ID/file"
-pdftotext /tmp/ironpage_redacted_probe.pdf /tmp/ironpage_redacted_probe.txt
+pdftotext_to_file /tmp/ironpage_redacted_probe.pdf /tmp/ironpage_redacted_probe.txt
 if grep -q "SECRET_NEVER_APPEAR" /tmp/ironpage_redacted_probe.txt; then
   echo "FAIL api: redacted PDF still exposes target text"
   cat /tmp/ironpage_redacted_probe.txt
@@ -41,7 +58,7 @@ fi
 code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/$DOC_ID/bates" '{"prefix":"CNT-","suffix":"","zero_padding":3,"start":1}')
 expect_code "apply content Bates" 201 "$code" || FAIL=$((FAIL+1))
 curl -s -o /tmp/ironpage_bates_probe.pdf -H "Authorization: Bearer $EDITOR_TOKEN" -H "X-Request-ID: $(reqid)" -H "X-Request-Timestamp: $(ts)" "$BASE_URL/api/documents/$DOC_ID/file"
-pdftotext /tmp/ironpage_bates_probe.pdf /tmp/ironpage_bates_probe.txt
+pdftotext_to_file /tmp/ironpage_bates_probe.pdf /tmp/ironpage_bates_probe.txt
 if grep -q "CNT-001" /tmp/ironpage_bates_probe.txt; then
   echo "PASS api: Bates label is extractable from generated PDF"
 else
