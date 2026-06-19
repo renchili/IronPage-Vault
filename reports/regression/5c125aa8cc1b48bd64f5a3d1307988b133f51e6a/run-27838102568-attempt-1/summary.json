@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-06-19T16:51:14.524614+00:00",
+  "overall_status": "failed",
+  "stages": [
+    {
+      "stage": "prepare_workspace",
+      "status": 0,
+      "duration_seconds": 34,
+      "log": "artifacts/regression/logs/prepare_workspace.log"
+    },
+    {
+      "stage": "swagger_contract",
+      "status": 0,
+      "duration_seconds": 0,
+      "log": "artifacts/regression/logs/swagger_contract.log"
+    },
+    {
+      "stage": "gofmt",
+      "status": 0,
+      "duration_seconds": 1,
+      "log": "artifacts/regression/logs/gofmt.log"
+    },
+    {
+      "stage": "go_vet",
+      "status": 0,
+      "duration_seconds": 19,
+      "log": "artifacts/regression/logs/go_vet.log"
+    },
+    {
+      "stage": "go_test_race",
+      "status": 0,
+      "duration_seconds": 49,
+      "log": "artifacts/regression/logs/go_test_race.log"
+    },
+    {
+      "stage": "shell_syntax",
+      "status": 0,
+      "duration_seconds": 0,
+      "log": "artifacts/regression/logs/shell_syntax.log"
+    },
+    {
+      "stage": "docker_build",
+      "status": 0,
+      "duration_seconds": 82,
+      "log": "artifacts/regression/logs/docker_build.log"
+    },
+    {
+      "stage": "docker_acceptance",
+      "status": 1,
+      "duration_seconds": 76,
+      "log": "artifacts/regression/logs/docker_acceptance.log"
+    }
+  ]
+}
