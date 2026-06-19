@@ -1,0 +1,35 @@
+name: Pre-merge Full Regression
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-merge-regression-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  full-regression:
+    name: Full regression gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Test the synthetic merge result, not only the PR head.
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Run complete regression
+        run: bash scripts/run_full_regression.sh artifacts/regression
+      - name: Upload complete regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-merge-regression-pr-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts/regression
+          if-no-files-found: error
+          retention-days: 90
