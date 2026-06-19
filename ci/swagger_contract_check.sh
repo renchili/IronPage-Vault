@@ -9,69 +9,71 @@ import re
 import sys
 from pathlib import Path
 
-source_routes = []
+source_contracts = []
 for path in sorted(Path('internal/app').glob('swagger_*.go')):
-    text = path.read_text(encoding='utf-8')
-    for match in re.finditer(r'@Router\s+(\S+)\s+\[(\w+)\]', text):
-        route, method = match.groups()
-        source_routes.append((route, method.lower(), str(path)))
+    pending_codes = set()
+    pending_start = None
+    for lineno, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        code_match = re.search(r'@(Success|Failure)\s+(\d{3})\b', line)
+        if code_match:
+            pending_codes.add(code_match.group(2))
+            pending_start = pending_start or lineno
+            continue
+        router_match = re.search(r'@Router\s+(\S+)\s+\[(\w+)\]', line)
+        if router_match:
+            route, method = router_match.groups()
+            source_contracts.append({
+                'route': route,
+                'method': method.lower(),
+                'codes': set(pending_codes),
+                'source': f'{path}:{pending_start or lineno}',
+            })
+            pending_codes = set()
+            pending_start = None
 
-if not source_routes:
+if not source_contracts:
     raise SystemExit('no @Router annotations found under internal/app/swagger_*.go')
 
-swagger = Path('docs/swagger/swagger.yaml').read_text(encoding='utf-8')
+swagger_lines = Path('docs/swagger/swagger.yaml').read_text(encoding='utf-8').splitlines()
 paths = {}
 current_path = None
-for line in swagger.splitlines():
-    path_match = re.match(r'^  (/[^:]+):\s*$', line)
+current_method = None
+for line in swagger_lines:
+    path_match = re.match(r'^  (["\']?/[^:"\']+["\']?):\s*$', line)
     if path_match:
         current_path = path_match.group(1).strip('"\'')
-        paths.setdefault(current_path, set())
+        paths.setdefault(current_path, {})
+        current_method = None
         continue
     method_match = re.match(r'^    (get|post|put|patch|delete|options|head):\s*$', line)
     if current_path and method_match:
-        paths[current_path].add(method_match.group(1))
+        current_method = method_match.group(1)
+        paths[current_path].setdefault(current_method, set())
+        continue
+    code_match = re.match(r'^        ["\']?(\d{3})["\']?:\s*$', line)
+    if current_path and current_method and code_match:
+        paths[current_path][current_method].add(code_match.group(1))
 
 missing = []
-for route, method, source in source_routes:
-    if method not in paths.get(route, set()):
-        missing.append(f'{method.upper()} {route} from {source}')
+for contract in source_contracts:
+    route = contract['route']
+    method = contract['method']
+    generated_codes = paths.get(route, {}).get(method)
+    if generated_codes is None:
+        missing.append(f"missing route {method.upper()} {route} from {contract['source']}")
+        continue
+    for code in sorted(contract['codes']):
+        if code not in generated_codes:
+            missing.append(f"missing response {code} for {method.upper()} {route} from {contract['source']}")
 
 if missing:
-    print('Generated swagger is missing annotated routes:', file=sys.stderr)
+    print('Generated swagger does not match source annotations:', file=sys.stderr)
     for item in missing:
         print(f'  - {item}', file=sys.stderr)
     sys.exit(1)
 
-required_responses = {
-    ('/api/admin/backup/restore', 'post'): {'200', '400'},
-    ('/api/documents', 'get'): {'200', '401'},
-    ('/api/documents', 'post'): {'201', '400', '401'},
-    ('/api/audit-logs', 'get'): {'200', '401', '403'},
-}
-
-lines = swagger.splitlines()
-for (route, method), codes in required_responses.items():
-    try:
-        route_index = next(i for i, line in enumerate(lines) if line == f'  {route}:')
-    except StopIteration:
-        raise SystemExit(f'missing required route section {route}')
-
-    next_route = next((i for i in range(route_index + 1, len(lines)) if re.match(r'^  /[^:]+:\s*$', lines[i])), len(lines))
-    route_block = lines[route_index:next_route]
-    try:
-        method_index = next(i for i, line in enumerate(route_block) if line == f'    {method}:')
-    except StopIteration:
-        raise SystemExit(f'missing method {method.upper()} for {route}')
-
-    next_method = next((i for i in range(method_index + 1, len(route_block)) if re.match(r'^    (get|post|put|patch|delete|options|head):\s*$', route_block[i])), len(route_block))
-    method_block = '\n'.join(route_block[method_index:next_method])
-    for code in sorted(codes):
-        if not re.search(rf'\n\s+"?{code}"?:', method_block):
-            raise SystemExit(f'missing response {code} for {method.upper()} {route}')
-
-if 'BearerAuth' not in swagger and 'ApiKeyAuth' not in swagger:
+if 'BearerAuth' not in '\n'.join(swagger_lines) and 'bearerAuth' not in '\n'.join(swagger_lines) and 'ApiKeyAuth' not in '\n'.join(swagger_lines):
     raise SystemExit('generated swagger does not include an auth security scheme')
 
-print(f'PASS generated Swagger contract: {len(source_routes)} annotated routes verified')
+print(f'PASS generated Swagger contract: {len(source_contracts)} annotated routes verified')
 PY
