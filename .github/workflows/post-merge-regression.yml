@@ -3,10 +3,12 @@ name: Post-merge Regression
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'reports/regression/**'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: post-merge-regression-${{ github.ref }}
@@ -14,41 +16,58 @@ concurrency:
 
 jobs:
   full-regression:
-    name: Full regression and Docker acceptance
+    name: Full regression with retained evidence
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
-      - name: Install Swagger generator
-        run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
-      - name: Generate Swagger and verify route contract
+          go-version: '1.25'
+      - name: Capture execution context
         run: |
-          bash scripts/generate_swagger.sh
-          test -f docs/swagger/docs.go
-          test -f docs/swagger/swagger.yaml
-          bash unit_tests/test_swagger_route_coverage.sh
-      - name: Check Go formatting
+          mkdir -p artifacts/regression
+          python3 - <<'PY'
+          import json, os
+          with open('artifacts/regression/context.json', 'w', encoding='utf-8') as f:
+              json.dump({
+                  'commit': os.environ['GITHUB_SHA'],
+                  'run_id': os.environ['GITHUB_RUN_ID'],
+                  'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                  'workflow': os.environ['GITHUB_WORKFLOW'],
+                  'repository': os.environ['GITHUB_REPOSITORY'],
+              }, f, indent=2)
+          PY
+      - name: Run full regression
+        id: regression
+        continue-on-error: true
+        run: bash scripts/run_full_regression.sh artifacts/regression
+      - name: Upload complete regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-regression-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts/regression
+          if-no-files-found: error
+          retention-days: 90
+      - name: Commit regression summary to main
+        if: always() && github.ref == 'refs/heads/main'
+        env:
+          REPORT_DIR: reports/regression/${{ github.sha }}/run-${{ github.run_id }}-attempt-${{ github.run_attempt }}
         run: |
-          find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l | tee /tmp/gofmt.out
-          test ! -s /tmp/gofmt.out
-      - name: Vet stable packages
+          mkdir -p "$REPORT_DIR"
+          cp artifacts/regression/summary.json "$REPORT_DIR/summary.json"
+          cp artifacts/regression/summary.md "$REPORT_DIR/summary.md"
+          cp artifacts/regression/context.json "$REPORT_DIR/context.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$REPORT_DIR"
+          git commit -m "test(regression): record ${GITHUB_SHA} run ${GITHUB_RUN_ID} [skip regression]" || exit 0
+          git push origin HEAD:main
+      - name: Enforce regression result
+        if: always()
+        env:
+          REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
         run: |
-          go vet ./internal/core
-          go vet ./internal/platform
-      - name: Run complete Go suite
-        run: go test -mod=mod ./...
-      - name: Run static and structure rules
-        run: |
-          bash unit_tests/test_rules.sh
-          bash unit_tests/test_structure_rules.sh
-      - name: Build runtime image
-        run: docker build -t ironpage-vault:main .
-      - name: Install Docker acceptance dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y poppler-utils python3-pip
-          python3 -m pip install --user --break-system-packages reportlab pypdf pillow
-      - name: Run Docker acceptance
-        run: bash scripts/docker_acceptance.sh
+          test "$REGRESSION_OUTCOME" = success
