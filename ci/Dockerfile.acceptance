@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends bash curl ca-ce
 
 WORKDIR /workspace
 COPY API_tests API_tests
+COPY internal internal
 COPY testdata testdata
 COPY ci/run_project_api_regression.sh ci/run_project_api_regression.sh
 RUN chmod +x ci/run_project_api_regression.sh

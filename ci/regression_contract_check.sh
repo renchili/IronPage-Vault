@@ -48,4 +48,12 @@ PY
 
 grep -q 'Overall: \*\*FAILED\*\*' "$probe_dir/summary.md"
 
+docker build -f ci/Dockerfile.acceptance -t ironpage-vault-ci-acceptance-contract .
+docker run --rm --entrypoint bash ironpage-vault-ci-acceptance-contract -lc '
+  test -f internal/service/pdf.go
+  test -f internal/platform/pdf_strict.go
+  test -f internal/platform/backup_strict.go
+  bash API_tests/test_strict_dependency_failures.sh
+'
+
 echo "PASS regression flow contract"
