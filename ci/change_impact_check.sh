@@ -64,6 +64,32 @@ api_contract_changed() {
   path_changed 'internal/app/swagger_*.go' || path_changed 'docs/swagger/**' || path_changed 'API_tests/**' || path_changed 'ci/swagger_contract_check.sh'
 }
 
+workflow_executes_script() {
+  local script="$1"
+  grep -R -F "bash $script" .github/workflows >/dev/null 2>&1
+}
+
+workflow_executes_contract() {
+  local contract="$1"
+  grep -R -F "bash $contract" .github/workflows >/dev/null 2>&1
+}
+
+contract_executes_script() {
+  local script="$1"
+  local contract
+  compgen -G 'ci/*contract*_check.sh' >/dev/null || return 1
+  for contract in ci/*contract*_check.sh; do
+    grep -F "$script" "$contract" >/dev/null 2>&1 || continue
+    workflow_executes_contract "$contract" && return 0
+  done
+  return 1
+}
+
+ci_script_execution_covered() {
+  local script="$1"
+  workflow_executes_script "$script" || contract_executes_script "$script"
+}
+
 printf 'Changed files inspected by CI impact gate:\n'
 printf '  %s\n' "${notes[@]}"
 
@@ -82,6 +108,11 @@ for row in "${changed[@]}"; do
         if ! same_dir_test_changed_or_exists "$path"; then
           failures+=("modified Go source $path has no same-package *_test.go coverage")
         fi
+      fi
+      ;;
+    ci/*.sh)
+      if ! ci_script_execution_covered "$path"; then
+        failures+=("changed CI script $path is not executed directly by PR CI or by a workflow-executed contract check")
       fi
       ;;
   esac
