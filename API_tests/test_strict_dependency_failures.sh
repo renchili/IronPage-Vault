@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -u -o pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAIL=0
 
 check_absent() {
   local name="$1" pattern="$2" file="$3"
-  if grep -q "$pattern" "$file"; then
+  local target="$ROOT_DIR/$file"
+  if grep -q "$pattern" "$target"; then
     echo "FAIL api: $name"
-    grep -n "$pattern" "$file" || true
+    grep -n "$pattern" "$target" || true
     FAIL=$((FAIL+1))
   else
     echo "PASS api: $name"
@@ -16,7 +18,8 @@ check_absent() {
 
 check_present() {
   local name="$1" pattern="$2" file="$3"
-  if grep -q "$pattern" "$file"; then
+  local target="$ROOT_DIR/$file"
+  if grep -q "$pattern" "$target"; then
     echo "PASS api: $name"
   else
     echo "FAIL api: $name"
