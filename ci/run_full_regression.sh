@@ -73,7 +73,7 @@ PY
 
 if [ "${IRONPAGE_REGRESSION_CONTRACT_PROBE:-}" = "1" ]; then
   run_stage contract_pass bash -lc 'true'
-  run_stage contract_fail bash -lc 'false'
+  run_stage contract_fail bash -lc 'echo IRONPAGE_REGRESSION_CONTRACT_FAIL_SENTINEL >&2; false'
   write_summary
   exit $?
 fi
