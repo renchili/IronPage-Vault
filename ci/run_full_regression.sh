@@ -5,7 +5,19 @@ OUT_DIR=${1:-artifacts/regression}
 LOG_DIR="$OUT_DIR/logs"
 RESULTS="$OUT_DIR/results.tsv"
 mkdir -p "$LOG_DIR"
-printf 'stage\tstatus\tduration_seconds\tlog\n' > "$RESULTS"
+printf 'stage	status	duration_seconds	log\n' > "$RESULTS"
+
+print_failure_log_tail() {
+  local stage="$1"
+  local log="$2"
+  echo "---- ${stage} failure log: ${log} ----"
+  if [ -s "$log" ]; then
+    tail -n 200 "$log"
+  else
+    echo "log file is missing or empty"
+  fi
+  echo "---- end ${stage} failure log ----"
+}
 
 run_stage() {
   local stage="$1"
@@ -23,9 +35,10 @@ run_stage() {
   if [ "$status" -eq 0 ]; then
     echo "PASS $stage (${elapsed}s)"
   else
-    echo "FAIL $stage (${elapsed}s); see $log"
+    echo "FAIL $stage (${elapsed}s); see artifact log $log"
+    print_failure_log_tail "$stage" "$log"
   fi
-  printf '%s\t%s\t%s\t%s\n' "$stage" "$status" "$elapsed" "$log" >> "$RESULTS"
+  printf '%s	%s	%s	%s\n' "$stage" "$status" "$elapsed" "$log" >> "$RESULTS"
   return "$status"
 }
 
@@ -60,7 +73,7 @@ PY
 
 if [ "${IRONPAGE_REGRESSION_CONTRACT_PROBE:-}" = "1" ]; then
   run_stage contract_pass bash -lc 'true'
-  run_stage contract_fail bash -lc 'false'
+  run_stage contract_fail bash -lc 'echo IRONPAGE_REGRESSION_CONTRACT_FAIL_SENTINEL >&2; false'
   write_summary
   exit $?
 fi

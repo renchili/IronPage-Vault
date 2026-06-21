@@ -4,7 +4,8 @@ set -euo pipefail
 # Pre-merge CI control-plane contract check.
 # This executes the regression runner in a deliberate failing mode and verifies
 # the CI contract: a failed stage must still produce results.tsv, summary.json,
-# and summary.md, while the runner exits non-zero.
+# and summary.md, while the runner exits non-zero. It also verifies that failed
+# stage log content is printed to stdout.
 
 probe_dir="$(mktemp -d)"
 trap 'rm -rf "$probe_dir"' EXIT
@@ -23,6 +24,13 @@ fi
 test -s "$probe_dir/results.tsv"
 test -s "$probe_dir/summary.json"
 test -s "$probe_dir/summary.md"
+test -s "$probe_dir/logs/contract_fail.log"
+
+grep -q 'IRONPAGE_REGRESSION_CONTRACT_FAIL_SENTINEL' "$probe_dir/logs/contract_fail.log"
+grep -q 'FAIL contract_fail' "$probe_dir/probe.log"
+grep -q -- '---- contract_fail failure log:' "$probe_dir/probe.log"
+grep -q 'IRONPAGE_REGRESSION_CONTRACT_FAIL_SENTINEL' "$probe_dir/probe.log"
+grep -q -- '---- end contract_fail failure log ----' "$probe_dir/probe.log"
 
 python3 - "$probe_dir/summary.json" <<'PY'
 import json, sys
