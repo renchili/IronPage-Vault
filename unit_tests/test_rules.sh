@@ -52,6 +52,7 @@ check "structure rules suite exists" "test -f unit_tests/test_structure_rules.sh
 check "strict dependency failure API test exists" "test -f API_tests/test_strict_dependency_failures.sh"
 check "bates sequence multi doc API test exists" "test -f API_tests/test_bates_sequence_multi_doc.sh"
 check "platform strict tests exist" "test -f internal/platform/pdf_strict_test.go && test -f internal/platform/backup_strict_test.go"
+check "scheduled backup interval test exists" "test -f internal/app/backup_interval_test.go"
 
 TOTAL=$((PASS+FAIL))
 echo "UNIT SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"
