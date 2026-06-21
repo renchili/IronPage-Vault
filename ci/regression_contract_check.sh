@@ -23,6 +23,11 @@ fi
 test -s "$probe_dir/results.tsv"
 test -s "$probe_dir/summary.json"
 test -s "$probe_dir/summary.md"
+test -s "$probe_dir/logs/contract_fail.log"
+
+grep -q 'FAIL contract_fail' "$probe_dir/probe.log"
+grep -q -- '---- contract_fail failure log:' "$probe_dir/probe.log"
+grep -q -- '---- end contract_fail failure log ----' "$probe_dir/probe.log"
 
 python3 - "$probe_dir/summary.json" <<'PY'
 import json, sys
