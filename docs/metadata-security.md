@@ -20,4 +20,4 @@ Plain request text may exist only in local request memory for validation, mentio
 
 ## Contract
 
-`ci/metadata_contract_check.sh` validates the storage and API exposure rules above.
+`ci/metadata_storage_check.sh` validates the storage and API exposure rules above.
