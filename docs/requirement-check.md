@@ -34,9 +34,11 @@ PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/f
 | Redaction processing | Complete | Service path requires raster burn-in for successful redaction output |
 | Bates processing | Complete | Service path requires successful visible page overlay for Bates output |
 | Backup success semantics | Complete | Backup API success requires database dump and filesystem archive artifacts |
+| Scheduled backup evidence | Complete | `ci/scheduled_backup_contract_check.sh` verifies scheduler startup, interval gating, strict artifact worker path, job row, and audit event |
 | Restore success semantics | Complete | Restore API requires artifact paths and successful restore/archive extraction before success |
 | Redaction coordinate storage | Complete | Request geometry is written to encrypted coordinate columns; legacy numeric columns are zero placeholders |
 | Redaction API exposure | Complete | Redaction list response omits coordinate and reason fields |
+| Sensitive metadata storage matrix | Complete | `docs/metadata-security.md` and `ci/metadata_storage_check.sh` cover redaction reason, redaction geometry, and annotation comment storage/exposure rules |
 | Compare API test chain | Complete | Self-contained compare test creates a second version before comparing |
 | API token orchestration | Complete | `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts |
 | Mention notification test | Complete | Test uses `Sticky note` |
@@ -55,8 +57,6 @@ See `docs/swagger-artifacts.md` for the operational policy.
 
 The following items are product-scope or evidence-scope follow-ups rather than CI entrypoint blockers:
 
-- Scheduled PostgreSQL logical dumps require explicit scheduler/ticker design and tests if required beyond admin-triggered backups.
-- PII metadata encryption should be backed by an explicit field-level test matrix if the product requirement extends beyond encrypted redaction coordinates.
 - Compare diff content accuracy should continue to gain stronger added/removed/modified text assertions.
 
 ## Notes
