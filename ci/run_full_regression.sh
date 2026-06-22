@@ -5,7 +5,8 @@ OUT_DIR=${1:-artifacts/regression}
 LOG_DIR="$OUT_DIR/logs"
 RESULTS="$OUT_DIR/results.tsv"
 mkdir -p "$LOG_DIR"
-printf 'stage	status	duration_seconds	log\n' > "$RESULTS"
+printf 'stage	status	duration_seconds	log
+' > "$RESULTS"
 
 print_failure_log_tail() {
   local stage="$1"
@@ -38,7 +39,8 @@ run_stage() {
     echo "FAIL $stage (${elapsed}s); see artifact log $log"
     print_failure_log_tail "$stage" "$log"
   fi
-  printf '%s	%s	%s	%s\n' "$stage" "$status" "$elapsed" "$log" >> "$RESULTS"
+  printf '%s	%s	%s	%s
+' "$stage" "$status" "$elapsed" "$log" >> "$RESULTS"
   return "$status"
 }
 
@@ -97,6 +99,9 @@ if ! run_stage prepare_workspace bash -lc '
 fi
 
 run_stage swagger_contract bash -lc 'test -s docs/swagger/docs.go && test -s docs/swagger/swagger.yaml && grep -q "/api/auth/login" docs/swagger/swagger.yaml && grep -q "/api/documents" docs/swagger/swagger.yaml'
+run_stage swagger_route_coverage bash unit_tests/test_swagger_route_coverage.sh
+run_stage scheduled_backup_contract bash ci/scheduled_backup_contract_check.sh
+run_stage metadata_storage_contract bash ci/metadata_storage_check.sh
 run_stage gofmt bash -lc 'find cmd internal -name "*.go" -print0 | xargs -0 gofmt -l | tee /tmp/ironpage_gofmt.out; test ! -s /tmp/ironpage_gofmt.out'
 run_stage go_vet bash -lc 'go vet ./...'
 run_stage go_test_race bash -lc 'go test -mod=mod -race ./...'
