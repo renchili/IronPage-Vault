@@ -262,6 +262,8 @@ jobs:
         run: bash ci/shell_syntax_check.sh
       - name: Verify scheduled backup contract
         run: bash ci/scheduled_backup_contract_check.sh
+      - name: Verify metadata storage contract
+        run: bash ci/metadata_storage_check.sh
 
   docker-build:
     name: Docker build
