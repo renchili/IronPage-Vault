@@ -40,6 +40,7 @@ PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/f
 | Redaction API exposure | Complete | Redaction list response omits coordinate and reason fields |
 | Sensitive metadata storage matrix | Complete | `docs/metadata-security.md` and `ci/metadata_storage_check.sh` cover redaction reason, redaction geometry, and annotation comment storage/exposure rules |
 | Compare API test chain | Complete | Self-contained compare test creates a second version before comparing |
+| Compare content accuracy | Complete | `internal/service/compare_test.go` asserts added, removed, and modified text blocks contain the expected changed text |
 | API token orchestration | Complete | `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts |
 | Mention notification test | Complete | Test uses `Sticky note` |
 | Bates sequence contract | Complete | Bates apply response includes `start_number` |
@@ -55,9 +56,7 @@ See `docs/swagger-artifacts.md` for the operational policy.
 
 ## Known limitations / separate product-scope follow-ups
 
-The following items are product-scope or evidence-scope follow-ups rather than CI entrypoint blockers:
-
-- Compare diff content accuracy should continue to gain stronger added/removed/modified text assertions.
+No product-scope recheck limitations are currently tracked in this document.
 
 ## Notes
 
