@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-06-22T08:35:21.679533+00:00",
+  "overall_status": "passed",
+  "stages": [
+    {
+      "stage": "prepare_workspace",
+      "status": 0,
+      "duration_seconds": 38,
+      "log": "artifacts/regression/logs/prepare_workspace.log"
+    },
+    {
+      "stage": "swagger_contract",
+      "status": 0,
+      "duration_seconds": 1,
+      "log": "artifacts/regression/logs/swagger_contract.log"
+    },
+    {
+      "stage": "swagger_route_coverage",
+      "status": 0,
+      "duration_seconds": 0,
+      "log": "artifacts/regression/logs/swagger_route_coverage.log"
+    },
+    {
+      "stage": "scheduled_backup_contract",
+      "status": 0,
+      "duration_seconds": 1,
+      "log": "artifacts/regression/logs/scheduled_backup_contract.log"
+    },
+    {
+      "stage": "metadata_storage_contract",
+      "status": 0,
+      "duration_seconds": 1,
+      "log": "artifacts/regression/logs/metadata_storage_contract.log"
+    },
+    {
+      "stage": "gofmt",
+      "status": 0,
+      "duration_seconds": 1,
+      "log": "artifacts/regression/logs/gofmt.log"
+    },
+    {
+      "stage": "go_vet",
+      "status": 0,
+      "duration_seconds": 21,
+      "log": "artifacts/regression/logs/go_vet.log"
+    },
+    {
+      "stage": "go_test_race",
+      "status": 0,
+      "duration_seconds": 49,
+      "log": "artifacts/regression/logs/go_test_race.log"
+    },
+    {
+      "stage": "shell_syntax",
+      "status": 0,
+      "duration_seconds": 0,
+      "log": "artifacts/regression/logs/shell_syntax.log"
+    },
+    {
+      "stage": "docker_build",
+      "status": 0,
+      "duration_seconds": 81,
+      "log": "artifacts/regression/logs/docker_build.log"
+    },
+    {
+      "stage": "docker_acceptance",
+      "status": 0,
+      "duration_seconds": 78,
+      "log": "artifacts/regression/logs/docker_acceptance.log"
+    }
+  ]
+}
