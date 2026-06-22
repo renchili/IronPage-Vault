@@ -45,7 +45,7 @@ PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/f
 | Mention notification test | Complete | Test uses `Sticky note` |
 | Bates sequence contract | Complete | Bates apply response includes `start_number` |
 | PR CI | Complete | Impact-based static/build gates, generated Swagger contract, local entrypoint contract, and CI-flow contract probes |
-| Full regression | Complete | Reusable full regression runs generated Swagger, full gofmt, `go vet ./...`, race tests, Docker build, and Docker acceptance |
+| Full regression | Complete | Reusable full regression runs generated Swagger, generated Swagger route coverage, scheduled backup contract, metadata storage contract, full gofmt, `go vet ./...`, race tests, Docker build, and Docker acceptance |
 | Static regression guards | Complete | `unit_tests/test_rules.sh` and `unit_tests/test_structure_rules.sh` guard reject-condition regressions |
 
 ## Swagger generated artifact policy
