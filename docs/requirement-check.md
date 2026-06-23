@@ -11,18 +11,19 @@ The repository intentionally separates PR gates, merge-candidate regression, pos
 | Pull request CI | Prevent obviously unsafe changes before merge | change-impact analysis, gofmt, targeted `go vet`, targeted `go test`, generated Swagger contract, shell syntax, Docker build, CI-flow contract probes, local entrypoint contract probes |
 | Merge queue regression | Verify the temporary merge result before it reaches `main` | reusable full regression on `merge_group` |
 | Post-merge regression evidence | Retain evidence for product/runtime/regression-impacting changes already merged to `main` | reusable full regression with logs, JSON summary, Markdown summary, and retained artifacts |
-| Local/manual replay | Developer reproduction path | `./run_tests.sh`, which generates Swagger artifacts before compiling/tests |
+| Local/manual replay | Developer reproduction path | `./run_tests.sh`, which generates Swagger artifacts before compiling/tests and writes a visual local acceptance report under `artifacts/local-acceptance/` |
 
 PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/fail source. Runtime/API Docker acceptance is executed by the reusable full regression flow on merge candidates, post-merge evidence runs, or manual workflow dispatch.
 
 ## Current fixed static recheck blockers
 
 - `run_tests.sh` now generates `docs/swagger` before `go test -mod=mod ./...`, so a fresh checkout does not depend on committed generated Swagger artifacts.
-- `ci/run_tests_contract_check.sh` verifies the local test entrypoint can generate Swagger artifacts from a clean state.
+- `run_tests.sh` now records local acceptance stages, logs, JSON/Markdown summaries, and `artifacts/local-acceptance/report.html` for visual review.
+- `ci/run_tests_contract_check.sh` verifies the local test entrypoint can generate Swagger artifacts and the visual local acceptance report from a clean state.
 - `ci/swagger_contract_check.sh` verifies every route-level `@Router` annotation appears in generated `docs/swagger/swagger.yaml` and checks key response contracts.
 - PR CI runs the local entrypoint contract when `run_tests.sh`, Swagger generation, or Swagger artifacts change.
 - PR CI runs the regression flow contract when full-regression workflow or runner logic changes.
-- `run_tests.sh` and `API_tests/lib.sh` preserve token availability across API scripts.
+- `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts.
 - Mention notification test uses `Sticky note`, a supported annotation type.
 - Bates apply response returns `start_number`, matching the multi-document sequence test.
 
@@ -41,6 +42,7 @@ PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/f
 | Sensitive metadata storage matrix | Complete | `docs/metadata-security.md` and `ci/metadata_storage_check.sh` cover redaction reason, redaction geometry, and annotation comment storage/exposure rules |
 | Compare API test chain | Complete | Self-contained compare test creates a second version before comparing |
 | Compare content accuracy | Complete | `internal/service/compare_test.go` asserts added, removed, and modified text blocks contain the expected changed text |
+| Local visual acceptance report | Complete | `run_tests.sh` writes `results.tsv`, `summary.json`, `summary.md`, `report.html`, and per-stage logs under `artifacts/local-acceptance/` |
 | API token orchestration | Complete | `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts |
 | Mention notification test | Complete | Test uses `Sticky note` |
 | Bates sequence contract | Complete | Bates apply response includes `start_number` |
