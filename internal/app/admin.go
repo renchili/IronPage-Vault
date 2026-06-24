@@ -29,23 +29,26 @@ type notificationTemplateResponse struct {
 }
 
 type auditLogResponse struct {
-	ID          string          `db:"id" json:"id"`
-	ActorUserID *string         `db:"actor_user_id" json:"actor_user_id,omitempty"`
-	DocumentID  *string         `db:"document_id" json:"document_id,omitempty"`
-	ActionType  string          `db:"action_type" json:"action_type"`
-	RequestID   string          `db:"request_id" json:"request_id"`
-	SourceIP    string          `db:"source_ip" json:"source_ip"`
-	Metadata    json.RawMessage `db:"metadata" json:"metadata"`
-	CreatedAt   time.Time       `db:"created_at" json:"created_at"`
+	ID                 string          `db:"id" json:"id"`
+	ActorUserID        *string         `db:"actor_user_id" json:"actor_user_id,omitempty"`
+	DocumentID         *string         `db:"document_id" json:"document_id,omitempty"`
+	ActionType         string          `db:"action_type" json:"action_type"`
+	RequestID          string          `db:"request_id" json:"request_id"`
+	SourceIP           string          `db:"source_ip" json:"source_ip"`
+	SourceIPCiphertext string          `db:"source_ip_ciphertext" json:"-"`
+	Metadata           json.RawMessage `db:"metadata" json:"metadata"`
+	MetadataCiphertext string          `db:"metadata_ciphertext" json:"-"`
+	CreatedAt          time.Time       `db:"created_at" json:"created_at"`
 }
 
 type notificationResponse struct {
-	ID          string     `db:"id" json:"id"`
-	DocumentID  *string    `db:"document_id" json:"document_id,omitempty"`
-	TemplateKey string     `db:"template_key" json:"template_key"`
-	Message     string     `db:"message" json:"message"`
-	ReadAt      *time.Time `db:"read_at" json:"read_at,omitempty"`
-	CreatedAt   time.Time  `db:"created_at" json:"created_at"`
+	ID                string     `db:"id" json:"id"`
+	DocumentID        *string    `db:"document_id" json:"document_id,omitempty"`
+	TemplateKey       string     `db:"template_key" json:"template_key"`
+	Message           string     `db:"message" json:"message"`
+	MessageCiphertext string     `db:"message_ciphertext" json:"-"`
+	ReadAt            *time.Time `db:"read_at" json:"read_at,omitempty"`
+	CreatedAt         time.Time  `db:"created_at" json:"created_at"`
 }
 
 type backupJobResponse struct {
@@ -74,6 +77,14 @@ func (a *App) createUser(c echo.Context) error {
 	if !IsValidUserSecret(req.Password) {
 		return apiErr(c, http.StatusBadRequest, "WEAK_PASSWORD", "password must be at least 8 characters and include a digit and special character")
 	}
+	usernameKey := piiLookupKey(a.cfg.AESKey, req.Username)
+	var existing int
+	if err := a.db.GetContext(c.Request().Context(), &existing, `SELECT COUNT(*) FROM users WHERE username=$1 OR username=$2`, usernameKey, req.Username); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "USER_QUERY_ERROR", "could not check user")
+	}
+	if existing > 0 {
+		return apiErr(c, http.StatusConflict, "USER_CREATE_ERROR", "could not create user")
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "PASSWORD_HASH_ERROR", "could not hash password")
@@ -82,19 +93,32 @@ func (a *App) createUser(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "PASSWORD_HASH_ERROR", "could not hash password")
 	}
+	usernameCipher, err := sealPII(a.cfg.AESKey, req.Username)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt username")
+	}
+	displayCipher, err := sealPII(a.cfg.AESKey, req.DisplayName)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt display name")
+	}
 	id := makeIdentifier("usr")
-	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO users(id,username,display_name,role,password_hash,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, id, req.Username, req.DisplayName, req.Role, storedHash)
+	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO users(id,username,username_ciphertext,display_name,display_name_ciphertext,role,password_hash,created_at) VALUES($1,$2,$3,'',$4,$5,$6,NOW())`, id, usernameKey, usernameCipher, displayCipher, req.Role, storedHash)
 	if err != nil {
 		return apiErr(c, http.StatusConflict, "USER_CREATE_ERROR", "could not create user")
 	}
-	_, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,'USER_CREATE',$3,$4,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, currentRequestID(c), c.RealIP())
-	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "username": req.Username, "role": req.Role})
+	a.audit(c, p.UserID, "USER_CREATE", "", nil)
+	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "username": req.Username, "display_name": req.DisplayName, "role": req.Role})
 }
 
 func (a *App) listUsers(c echo.Context) error {
 	rows := []User{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,username,display_name,role,password_hash,failed_attempts,locked_until FROM users ORDER BY username`); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,username,username_ciphertext,display_name,display_name_ciphertext,role,password_hash,failed_attempts,locked_until FROM users ORDER BY created_at`); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "USER_QUERY_ERROR", "could not list users")
+	}
+	for i := range rows {
+		if err := openUserPII(a.cfg.AESKey, &rows[i]); err != nil {
+			return apiErr(c, http.StatusInternalServerError, "USER_QUERY_ERROR", "could not read user")
+		}
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
 }
@@ -119,7 +143,7 @@ func (a *App) patchConfig(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "CONFIG_UPDATE_ERROR", "could not update config")
 	}
-	_, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,'CONFIG_UPDATE',$3,$4,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, currentRequestID(c), c.RealIP())
+	a.audit(c, p.UserID, "CONFIG_UPDATE", "", nil)
 	return c.JSON(http.StatusOK, map[string]interface{}{"key": c.Param("key"), "value": req.Value})
 }
 
@@ -144,12 +168,17 @@ func (a *App) auditLogs(c echo.Context) error {
 	rows := []auditLogResponse{}
 	actionType := c.QueryParam("action_type")
 	if actionType != "" {
-		if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at FROM audit_logs WHERE action_type=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, actionType, size, (page-1)*size); err != nil {
+		if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,actor_user_id,document_id,action_type,request_id,source_ip,source_ip_ciphertext,metadata,metadata_ciphertext,created_at FROM audit_logs WHERE action_type=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, actionType, size, (page-1)*size); err != nil {
 			return apiErr(c, http.StatusInternalServerError, "AUDIT_QUERY_ERROR", "could not list audit logs")
 		}
 	} else {
-		if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at FROM audit_logs ORDER BY created_at DESC LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
+		if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,actor_user_id,document_id,action_type,request_id,source_ip,source_ip_ciphertext,metadata,metadata_ciphertext,created_at FROM audit_logs ORDER BY created_at DESC LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
 			return apiErr(c, http.StatusInternalServerError, "AUDIT_QUERY_ERROR", "could not list audit logs")
+		}
+	}
+	for i := range rows {
+		if err := openAuditPII(a.cfg.AESKey, &rows[i]); err != nil {
+			return apiErr(c, http.StatusInternalServerError, "AUDIT_QUERY_ERROR", "could not read audit log")
 		}
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
@@ -158,8 +187,13 @@ func (a *App) auditLogs(c echo.Context) error {
 func (a *App) notifications(c echo.Context) error {
 	p := principal(c)
 	rows := []notificationResponse{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,template_key,message,read_at,created_at FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`, p.UserID); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,template_key,message,message_ciphertext,read_at,created_at FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`, p.UserID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_QUERY_ERROR", "could not list notifications")
+	}
+	for i := range rows {
+		if err := openNotificationPII(a.cfg.AESKey, &rows[i]); err != nil {
+			return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_QUERY_ERROR", "could not read notification")
+		}
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
 }
@@ -180,7 +214,7 @@ func (a *App) runBackup(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_CREATE_ERROR", "could not create backup job")
 	}
-	_, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,'BACKUP_CREATE',$3,$4,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, currentRequestID(c), c.RealIP())
+	a.audit(c, p.UserID, "BACKUP_CREATE", "", nil)
 	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "status": "Queued", "created_at": time.Now().UTC()})
 }
 
