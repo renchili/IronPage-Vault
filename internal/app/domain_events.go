@@ -2,9 +2,30 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/labstack/echo/v4"
 )
+
+type protectedMetadata struct {
+	Algorithm  string `json:"algorithm"`
+	Ciphertext string `json:"ciphertext"`
+}
+
+func encryptedAuditMetadata(secret string, metadata map[string]interface{}) (string, error) {
+	if len(metadata) == 0 {
+		return `{}`, nil
+	}
+	metadataCipher, err := sealAuditMetadata(secret, metadata)
+	if err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(protectedMetadata{Algorithm: "AES-256-GCM", Ciphertext: metadataCipher})
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
 
 func (a *App) insertAuditRecord(ctx context.Context, actorID, action, documentID, requestID, sourceIP string, metadata map[string]interface{}) error {
 	sourceIPCipher, err := sealAuditSourceIP(a.cfg.AESKey, sourceIP)
