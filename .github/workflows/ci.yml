@@ -111,6 +111,7 @@ jobs:
               - 'ci/Dockerfile.acceptance'
               - 'ci/regression_contract_check.sh'
             local_entrypoint:
+              - '.github/workflows/ci.yml'
               - 'run_tests.sh'
               - 'ci/run_tests_contract_check.sh'
               - 'scripts/generate_swagger.sh'
@@ -153,6 +154,14 @@ jobs:
           go-version: '1.25'
       - name: Verify run_tests fresh-checkout contract
         run: bash ci/run_tests_contract_check.sh
+      - name: Upload local acceptance report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-acceptance-${{ github.run_id }}-${{ github.sha }}
+          path: artifacts/local-acceptance/**
+          if-no-files-found: warn
+          retention-days: 30
 
   swagger:
     name: Swagger contract
