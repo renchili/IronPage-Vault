@@ -63,7 +63,9 @@ func (a *App) runScheduledBackup(ctx context.Context) error {
 	if _, err := a.db.ExecContext(ctx, `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'scheduled_full_backup','Completed',$2,NULL,NOW())`, id, target); err != nil {
 		return err
 	}
-	_, _ = a.db.ExecContext(ctx, `INSERT INTO audit_logs(id,actor_user_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,NULL,'SCHEDULED_BACKUP_CREATE',$2,'scheduler','{}'::jsonb,NOW())`, makeIdentifier("aud"), "scheduler")
+	if err := a.insertAuditRecord(ctx, "", "SCHEDULED_BACKUP_CREATE", "", "scheduler", "scheduler", nil); err != nil {
+		return err
+	}
 	_ = artifacts
 	return nil
 }
