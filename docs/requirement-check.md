@@ -39,11 +39,13 @@ PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/f
 | Restore success semantics | Complete | Restore API requires artifact paths and successful restore/archive extraction before success |
 | Redaction coordinate storage | Complete | Request geometry is written to encrypted coordinate columns; legacy numeric columns are zero placeholders |
 | Redaction API exposure | Complete | Redaction list response omits coordinate and reason fields |
-| Sensitive metadata storage matrix | Complete | `docs/metadata-security.md` and `ci/metadata_storage_check.sh` cover redaction reason, redaction geometry, and annotation comment storage/exposure rules |
+| Sensitive metadata storage matrix | Complete | `docs/metadata-security.md` and `ci/metadata_storage_check.sh` cover password hash verifiers, username/display name, document title, notification message, audit source IP, audit metadata, redaction geometry/reason, and annotation comment storage/exposure rules |
+| Contextual role-based masking matrix | Complete | `docs/role-field-visibility.md` defines Admin, Editor, and Reviewer visibility for decrypted fields and hidden ciphertext/security fields |
 | Compare API test chain | Complete | Self-contained compare test creates a second version before comparing |
 | Compare content accuracy | Complete | `internal/service/compare_test.go` asserts added, removed, and modified text blocks contain the expected changed text |
 | Password hash storage | Complete | `createUser` and seed users seal bcrypt verifiers with AES before writing `users.password_hash`; login opens the sealed verifier before bcrypt comparison |
-| Local visual acceptance report | Complete | `run_tests.sh` writes `results.tsv`, `summary.json`, `summary.md`, `report.html`, and per-stage logs under `artifacts/local-acceptance/` |
+| PII metadata column encryption | Complete | PII source-of-truth values are AES sealed in ciphertext columns while lookup/compatibility columns hold only deterministic keys, blanks, or legacy fallback values |
+| Local visual acceptance report | Complete | `run_tests.sh` writes `results.tsv`, `summary.json`, `summary.md`, `report.html`, and per-stage logs under `artifacts/local-acceptance/`; the browser UI is a manual backend testing aid, not a production frontend acceptance substitute |
 | API token orchestration | Complete | `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts |
 | Mention notification test | Complete | Test uses `Sticky note` |
 | Bates sequence contract | Complete | Bates apply response includes `start_number` |
@@ -63,4 +65,4 @@ No product-scope recheck limitations are currently tracked in this document.
 
 ## Notes
 
-The application keeps the original API shape and database schema compatibility where needed. For redaction geometry, existing numeric columns remain in the schema for compatibility, but the application writes zero placeholders and uses encrypted columns as the source of truth.
+The application keeps the original API shape and database schema compatibility where needed. Protected plaintext is written to AES-256-GCM ciphertext columns as source of truth. Compatibility columns remain only for deterministic lookup keys, blank placeholders, or legacy migration fallback.
