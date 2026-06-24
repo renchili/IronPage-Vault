@@ -15,24 +15,27 @@ const (
 )
 
 type User struct {
-	ID             string     `db:"id" json:"id"`
-	Username       string     `db:"username" json:"username"`
-	DisplayName    string     `db:"display_name" json:"display_name"`
-	Role           string     `db:"role" json:"role"`
-	PasswordHash   string     `db:"password_hash" json:"-"`
-	FailedAttempts int        `db:"failed_attempts" json:"-"`
-	LockedUntil    *time.Time `db:"locked_until" json:"-"`
+	ID                    string     `db:"id" json:"id"`
+	Username              string     `db:"username" json:"username"`
+	UsernameCiphertext    string     `db:"username_ciphertext" json:"-"`
+	DisplayName           string     `db:"display_name" json:"display_name"`
+	DisplayNameCiphertext string     `db:"display_name_ciphertext" json:"-"`
+	Role                  string     `db:"role" json:"role"`
+	PasswordHash          string     `db:"password_hash" json:"-"`
+	FailedAttempts        int        `db:"failed_attempts" json:"-"`
+	LockedUntil           *time.Time `db:"locked_until" json:"-"`
 }
 
 type Document struct {
-	ID             string     `db:"id" json:"id"`
-	Title          string     `db:"title" json:"title"`
-	Status         string     `db:"status" json:"status"`
-	OwnerID        string     `db:"owner_id" json:"owner_id"`
-	CurrentVersion int        `db:"current_version" json:"current_version"`
-	FinalizedAt    *time.Time `db:"finalized_at" json:"finalized_at,omitempty"`
-	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
-	UpdatedAt      time.Time  `db:"updated_at" json:"updated_at"`
+	ID              string     `db:"id" json:"id"`
+	Title           string     `db:"title" json:"title"`
+	TitleCiphertext string     `db:"title_ciphertext" json:"-"`
+	Status          string     `db:"status" json:"status"`
+	OwnerID         string     `db:"owner_id" json:"owner_id"`
+	CurrentVersion  int        `db:"current_version" json:"current_version"`
+	FinalizedAt     *time.Time `db:"finalized_at" json:"finalized_at,omitempty"`
+	CreatedAt       time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt       time.Time  `db:"updated_at" json:"updated_at"`
 }
 
 type DocumentVersion struct {

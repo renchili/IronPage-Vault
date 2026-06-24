@@ -45,6 +45,7 @@ func (a *App) proposeRedaction(c echo.Context) error {
 	if !canEditDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope")
 	}
+
 	var req struct {
 		Page   int     `json:"page"`
 		X      float64 `json:"x"`
@@ -56,6 +57,7 @@ func (a *App) proposeRedaction(c echo.Context) error {
 	if err := c.Bind(&req); err != nil || !IsValidRedactionRegion(req.Page, req.Width, req.Height) {
 		return apiErr(c, http.StatusBadRequest, "INVALID_REDACTION_REGION", "page and positive coordinates are required")
 	}
+
 	reason, err := encryptString(a.cfg.AESKey, req.Reason)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction reason")
@@ -76,6 +78,7 @@ func (a *App) proposeRedaction(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt redaction coordinate")
 	}
+
 	id := makeIdentifier("red")
 	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO redaction_proposals(id,document_id,page,x,y,width,height,x_ciphertext,y_ciphertext,width_ciphertext,height_ciphertext,reason,status,created_by,created_at) VALUES($1,$2,$3,0,0,0,0,$4,$5,$6,$7,$8,'Staged',$9,NOW())`, id, docID, req.Page, xCipher, yCipher, widthCipher, heightCipher, reason, p.UserID)
 	if err != nil {
@@ -103,6 +106,7 @@ func (a *App) listRedactions(c echo.Context) error {
 	if !canReadDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope")
 	}
+
 	rows := []redactionListRow{}
 	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,page,status,created_by,created_at::text AS created_at FROM redaction_proposals WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_QUERY_ERROR", "could not list redactions")
@@ -120,6 +124,7 @@ func (a *App) confirmRedaction(c echo.Context) error {
 	if !canEditDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope")
 	}
+
 	_, v, err := a.currentVersion(c, docID)
 	if err != nil {
 		return apiErr(c, http.StatusNotFound, "VERSION_NOT_FOUND", "current version not found")
@@ -127,6 +132,7 @@ func (a *App) confirmRedaction(c echo.Context) error {
 	if d.CurrentVersion >= a.cfg.MaxVersions {
 		return apiErr(c, http.StatusConflict, "VERSION_LIMIT_REACHED", "document already has 50 versions")
 	}
+
 	newVersion := d.CurrentVersion + 1
 	dst := redactedVersionPath(v.FilePath, newVersion)
 	regions, err := a.confirmedRedactionRegions(c, docID, c.Param("redaction_id"))
@@ -140,19 +146,23 @@ func (a *App) confirmRedaction(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_VERIFY_ERROR", "could not verify redacted binary")
 	}
+
 	verID := makeIdentifier("ver")
 	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
+
 	_, err = tx.ExecContext(c.Request().Context(), `INSERT INTO document_versions(id,document_id,version_number,file_path,file_sha256,size_bytes,page_count,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW())`, verID, docID, newVersion, dst, info.SHA256, info.Size, info.PageCount, p.UserID)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "VERSION_CREATE_ERROR", "could not create redacted version")
 	}
 	_, _ = tx.ExecContext(c.Request().Context(), `UPDATE documents SET current_version=$1,status='Redaction Pending',updated_at=NOW() WHERE id=$2`, newVersion, docID)
 	_, _ = tx.ExecContext(c.Request().Context(), `UPDATE redaction_proposals SET status='Confirmed',confirmed_by=$1,confirmed_at=NOW() WHERE id=$2 AND document_id=$3`, p.UserID, c.Param("redaction_id"), docID)
-	_, _ = tx.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'REDACTION_CONFIRM',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+	if err := a.insertAuditRecord(c.Request().Context(), p.UserID, "REDACTION_CONFIRM", docID, currentRequestID(c), c.RealIP(), nil); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record audit log")
+	}
 	if err := tx.Commit(); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit redaction")
 	}
@@ -169,6 +179,7 @@ func (a *App) createAnnotation(c echo.Context) error {
 	if !canReviewDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this reviewer scope")
 	}
+
 	var req struct {
 		Type        string  `json:"type"`
 		Page        int     `json:"page"`
@@ -189,6 +200,7 @@ func (a *App) createAnnotation(c echo.Context) error {
 	if !IsValidDisposition(req.Disposition) {
 		return apiErr(c, http.StatusBadRequest, "INVALID_DISPOSITION", "disposition must be Approved, Rejected, or Needs Discussion")
 	}
+
 	plainComment := req.Comment
 	comment, err := encryptString(a.cfg.AESKey, req.Comment)
 	if err != nil {
@@ -213,6 +225,7 @@ func (a *App) listAnnotations(c echo.Context) error {
 	if !canReadDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope")
 	}
+
 	rows := []map[string]interface{}{}
 	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,author_user_id,type,page,x,y,width,height,comment,disposition,created_at FROM annotations WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "ANNOTATION_QUERY_ERROR", "could not list annotations")
@@ -231,6 +244,7 @@ func (a *App) updateAnnotationDisposition(c echo.Context) error {
 	if !IsValidDisposition(req.Disposition) {
 		return apiErr(c, http.StatusBadRequest, "INVALID_DISPOSITION", "disposition must be Approved, Rejected, or Needs Discussion")
 	}
+
 	var docID string
 	if err := a.db.GetContext(c.Request().Context(), &docID, `SELECT document_id FROM annotations WHERE id=$1`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "ANNOTATION_NOT_FOUND", "annotation not found")
@@ -242,6 +256,7 @@ func (a *App) updateAnnotationDisposition(c echo.Context) error {
 	if !canReviewDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this reviewer scope")
 	}
+
 	_, err = a.db.ExecContext(c.Request().Context(), `UPDATE annotations SET disposition=$1,updated_at=NOW() WHERE id=$2`, req.Disposition, c.Param("id"))
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "ANNOTATION_UPDATE_ERROR", "could not update disposition")

@@ -85,7 +85,9 @@ func (a *App) applyBatesVersion(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "VERSION_CREATE_ERROR", "could not create Bates version")
 	}
 	_, _ = tx.ExecContext(c.Request().Context(), `UPDATE documents SET current_version=$1,updated_at=NOW() WHERE id=$2`, newVersion, docID)
-	_, _ = tx.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'BATES_APPLY',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+	if err := a.insertAuditRecord(c.Request().Context(), p.UserID, "BATES_APPLY", docID, currentRequestID(c), c.RealIP(), nil); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record audit log")
+	}
 	if err := tx.Commit(); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit Bates version")
 	}

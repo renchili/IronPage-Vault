@@ -17,12 +17,14 @@ func (a *App) persistPDFUpload(c echo.Context, fh *multipart.FileHeader, title s
 		return Document{}, err
 	}
 	defer src.Close()
+
 	docID := makeIdentifier("doc")
 	versionID := makeIdentifier("ver")
 	dir := filepath.Join(a.cfg.StorageDir, docID)
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return Document{}, err
 	}
+
 	path := filepath.Join(dir, "v1.pdf")
 	dst, err := os.Create(path)
 	if err != nil {
@@ -33,6 +35,7 @@ func (a *App) persistPDFUpload(c echo.Context, fh *multipart.FileHeader, title s
 		return Document{}, err
 	}
 	dst.Close()
+
 	info, err := InspectPDF(path, a.cfg.MaxUploadBytes, a.cfg.MaxPDFPages)
 	if err != nil {
 		os.RemoveAll(dir)
@@ -41,12 +44,18 @@ func (a *App) persistPDFUpload(c echo.Context, fh *multipart.FileHeader, title s
 	if title == "" {
 		title = fh.Filename
 	}
+	titleCipher, err := sealPII(a.cfg.AESKey, title)
+	if err != nil {
+		return Document{}, err
+	}
+
 	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		return Document{}, err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(c.Request().Context(), `INSERT INTO documents(id,title,status,owner_id,current_version,created_at,updated_at) VALUES($1,$2,$3,$4,1,NOW(),NOW())`, docID, title, StatusDraft, p.UserID)
+
+	_, err = tx.ExecContext(c.Request().Context(), `INSERT INTO documents(id,title,title_ciphertext,status,owner_id,current_version,created_at,updated_at) VALUES($1,'',$2,$3,$4,1,NOW(),NOW())`, docID, titleCipher, StatusDraft, p.UserID)
 	if err != nil {
 		return Document{}, err
 	}
@@ -54,23 +63,31 @@ func (a *App) persistPDFUpload(c echo.Context, fh *multipart.FileHeader, title s
 	if err != nil {
 		return Document{}, err
 	}
-	_, _ = tx.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'DOCUMENT_UPLOAD',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+	if err := a.insertAuditRecord(c.Request().Context(), p.UserID, "DOCUMENT_UPLOAD", docID, currentRequestID(c), c.RealIP(), nil); err != nil {
+		return Document{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Document{}, err
 	}
+
 	var d Document
-	err = a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID)
-	return d, err
+	if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID); err != nil {
+		return d, err
+	}
+	if err := openDocumentPII(a.cfg.AESKey, &d); err != nil {
+		return d, err
+	}
+	return d, nil
 }
 
 func (a *App) uploadDocument(c echo.Context) error {
 	p := principal(c)
 	fh, err := c.FormFile("file")
 	if err != nil {
-		return apiErr(c, http.StatusBadRequest, "PDF_REQUIRED", "multipart file field file is required")
+		return apiErr(c, http.StatusBadRequest, "PDF_REQUIRED", "pdf is required")
 	}
 	if fh.Size > a.cfg.MaxUploadBytes {
-		return apiErr(c, http.StatusBadRequest, "PDF_TOO_LARGE", "document exceeds 200 MB")
+		return apiErr(c, http.StatusBadRequest, "PDF_TOO_LARGE", "pdf too large")
 	}
 	d, err := a.persistPDFUpload(c, fh, c.FormValue("title"), p)
 	if err != nil {
@@ -83,23 +100,24 @@ func (a *App) batchUploadDocuments(c echo.Context) error {
 	p := principal(c)
 	form, err := c.MultipartForm()
 	if err != nil {
-		return apiErr(c, http.StatusBadRequest, "INVALID_MULTIPART", "multipart form is required")
+		return apiErr(c, http.StatusBadRequest, "INVALID_MULTIPART", "invalid multipart")
 	}
 	files := form.File["files"]
 	if len(files) == 0 {
 		files = form.File["file"]
 	}
 	if !IsValidBatchSize(len(files), a.cfg.MaxBatchFiles) {
-		return apiErr(c, http.StatusBadRequest, "BATCH_LIMIT_INVALID", "batch import requires 1 to 250 files")
+		return apiErr(c, http.StatusBadRequest, "BATCH_LIMIT_INVALID", "invalid batch size")
 	}
+
 	created := []Document{}
 	for _, fh := range files {
 		if fh.Size > a.cfg.MaxUploadBytes {
-			return apiErr(c, http.StatusBadRequest, "PDF_TOO_LARGE", fh.Filename+" exceeds max size")
+			return apiErr(c, http.StatusBadRequest, "PDF_TOO_LARGE", "pdf too large")
 		}
 		d, err := a.persistPDFUpload(c, fh, fh.Filename, p)
 		if err != nil {
-			return apiErr(c, http.StatusBadRequest, "BATCH_FILE_REJECTED", fh.Filename+": "+err.Error())
+			return apiErr(c, http.StatusBadRequest, "BATCH_FILE_REJECTED", err.Error())
 		}
 		created = append(created, d)
 	}
@@ -116,6 +134,11 @@ func (a *App) listDocuments(c echo.Context) error {
 	if err := a.db.SelectContext(c.Request().Context(), &rows, query, args...); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_QUERY_ERROR", "could not list documents")
 	}
+	for i := range rows {
+		if err := openDocumentPII(a.cfg.AESKey, &rows[i]); err != nil {
+			return apiErr(c, http.StatusInternalServerError, "DOCUMENT_QUERY_ERROR", "could not read documents")
+		}
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
 
@@ -127,6 +150,9 @@ func (a *App) getDocument(c echo.Context) error {
 	}
 	if !canReadDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope")
+	}
+	if err := openDocumentPII(a.cfg.AESKey, &d); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_QUERY_ERROR", "could not read document")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": d})
 }
@@ -140,6 +166,7 @@ func (a *App) currentVersion(c echo.Context, docID string) (Document, DocumentVe
 	if err := a.db.GetContext(c.Request().Context(), &v, `SELECT * FROM document_versions WHERE document_id=$1 AND version_number=$2`, docID, d.CurrentVersion); err != nil {
 		return d, v, err
 	}
+	_ = openDocumentPII(a.cfg.AESKey, &d)
 	return d, v, nil
 }
 
@@ -178,8 +205,9 @@ func (a *App) rollbackVersion(c echo.Context) error {
 		Version int `json:"version"`
 	}
 	if err := c.Bind(&req); err != nil || req.Version < 1 {
-		return apiErr(c, http.StatusBadRequest, "VERSION_REQUIRED", "version must be a positive integer")
+		return apiErr(c, http.StatusBadRequest, "VERSION_REQUIRED", "version must be positive")
 	}
+
 	var d Document
 	if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
@@ -187,6 +215,7 @@ func (a *App) rollbackVersion(c echo.Context) error {
 	if d.Status == StatusFinalized {
 		return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable")
 	}
+
 	var exists int
 	if err := a.db.GetContext(c.Request().Context(), &exists, `SELECT COUNT(*) FROM document_versions WHERE document_id=$1 AND version_number=$2`, docID, req.Version); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "VERSION_QUERY_ERROR", "could not verify version")
@@ -194,6 +223,7 @@ func (a *App) rollbackVersion(c echo.Context) error {
 	if exists == 0 {
 		return apiErr(c, http.StatusBadRequest, "VERSION_NOT_FOUND", "target version does not exist")
 	}
+
 	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
@@ -203,7 +233,9 @@ func (a *App) rollbackVersion(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "ROLLBACK_ERROR", "rollback failed")
 	}
-	_, _ = tx.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'VERSION_ROLLBACK',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, docID, currentRequestID(c), c.RealIP())
+	if err := a.insertAuditRecord(c.Request().Context(), p.UserID, "VERSION_ROLLBACK", docID, currentRequestID(c), c.RealIP(), nil); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record audit log")
+	}
 	if err := tx.Commit(); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit rollback")
 	}

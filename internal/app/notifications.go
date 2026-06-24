@@ -23,6 +23,10 @@ func (a *App) createNotification(c echo.Context, userID, documentID, templateKey
 			return err
 		}
 	}
-	_, err := a.db.ExecContext(c.Request().Context(), `INSERT INTO notifications(id,user_id,document_id,template_key,message,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, makeIdentifier("not"), userID, documentID, templateKey, message)
+	messageCipher, err := sealPII(a.cfg.AESKey, message)
+	if err != nil {
+		return err
+	}
+	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO notifications(id,user_id,document_id,template_key,message,message_ciphertext,created_at) VALUES($1,$2,$3,$4,'',$5,NOW())`, makeIdentifier("not"), userID, documentID, templateKey, messageCipher)
 	return err
 }

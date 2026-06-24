@@ -22,7 +22,8 @@ func (a *App) login(c echo.Context) error {
 		return apiErr(c, http.StatusBadRequest, "INVALID_LOGIN_REQUEST", "username and password are required")
 	}
 	var u User
-	err := a.db.GetContext(c.Request().Context(), &u, `SELECT id, username, display_name, role, password_hash, failed_attempts, locked_until FROM users WHERE username=$1`, req.Username)
+	usernameKey := piiLookupKey(a.cfg.AESKey, req.Username)
+	err := a.db.GetContext(c.Request().Context(), &u, `SELECT id, username, username_ciphertext, display_name, display_name_ciphertext, role, password_hash, failed_attempts, locked_until FROM users WHERE username=$1 OR username=$2`, usernameKey, req.Username)
 	if err == sql.ErrNoRows {
 		return apiErr(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid username or password")
 	}
@@ -39,6 +40,9 @@ func (a *App) login(c echo.Context) error {
 	if bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(req.Password)) != nil {
 		a.db.ExecContext(c.Request().Context(), `UPDATE users SET failed_attempts=failed_attempts+1, locked_until=CASE WHEN failed_attempts+1 >= 5 THEN NOW()+INTERVAL '15 minutes' ELSE locked_until END WHERE id=$1`, u.ID)
 		return apiErr(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid username or password")
+	}
+	if err := openUserPII(a.cfg.AESKey, &u); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "DB_READ_ERROR", "could not read user")
 	}
 	a.db.ExecContext(c.Request().Context(), `UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id=$1`, u.ID)
 	jti := makeIdentifier("jti")
