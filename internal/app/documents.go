@@ -63,12 +63,11 @@ func (a *App) persistPDFUpload(c echo.Context, fh *multipart.FileHeader, title s
 	if err != nil {
 		return Document{}, err
 	}
-	if err := a.insertAuditRecord(c.Request().Context(), p.UserID, "DOCUMENT_UPLOAD", docID, currentRequestID(c), c.RealIP(), nil); err != nil {
-		return Document{}, err
-	}
 	if err := tx.Commit(); err != nil {
 		return Document{}, err
 	}
+
+	a.audit(c, p.UserID, "DOCUMENT_UPLOAD", docID, nil)
 
 	var d Document
 	if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID); err != nil {
