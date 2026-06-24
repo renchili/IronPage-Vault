@@ -111,6 +111,7 @@ jobs:
               - 'ci/Dockerfile.acceptance'
               - 'ci/regression_contract_check.sh'
             local_entrypoint:
+              - '.github/workflows/ci.yml'
               - 'run_tests.sh'
               - 'ci/run_tests_contract_check.sh'
               - 'scripts/generate_swagger.sh'
