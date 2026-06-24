@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IronPage Vault Backend Test UI</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --line:#334155; --text:#e5e7eb; --muted:#94a3b8; --ok:#22c55e; --warn:#f59e0b; --accent:#38bdf8; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:linear-gradient(135deg,#020617,#0f172a); color:var(--text); }
+    main { max-width:1120px; margin:0 auto; padding:40px 24px; }
+    header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; margin-bottom:28px; }
+    h1 { margin:0 0 8px; font-size:34px; }
+    p { color:var(--muted); line-height:1.5; }
+    .badge { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:999px; padding:8px 12px; background:rgba(15,23,42,.72); font-weight:700; }
+    .dot { width:10px; height:10px; border-radius:50%; background:var(--warn); }
+    .dot.ok { background:var(--ok); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+    .card { border:1px solid var(--line); border-radius:18px; padding:18px; background:rgba(17,24,39,.86); box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .card h2 { margin:0 0 10px; font-size:18px; }
+    code { background:rgba(148,163,184,.15); padding:2px 6px; border-radius:6px; color:#bae6fd; }
+    label { display:block; color:var(--muted); margin:12px 0 6px; font-size:13px; }
+    input, select, button { width:100%; box-sizing:border-box; border-radius:10px; border:1px solid var(--line); background:#020617; color:var(--text); padding:10px 12px; }
+    button { margin-top:12px; background:linear-gradient(135deg,#0284c7,#2563eb); border:0; font-weight:700; cursor:pointer; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .output { min-height:70px; white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; background:#020617; border:1px solid var(--line); border-radius:12px; padding:12px; color:#cbd5e1; }
+    .footer { margin-top:24px; border-top:1px solid var(--line); padding-top:18px; color:var(--muted); font-size:13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>IronPage Vault Backend Test UI</h1>
+      <p>This browser page is a manual and automated backend API testing aid. It is intentionally not a production frontend deliverable.</p>
+    </div>
+    <div class="badge" data-testid="health-badge"><span id="health-dot" class="dot"></span><span id="health-text">checking /healthz</span></div>
+  </header>
+
+  <section class="grid">
+    <article class="card">
+      <h2>Authentication Probe</h2>
+      <p>Uses the seeded local users to request a JWT from <code>/api/auth/login</code>.</p>
+      <label for="role">Role</label>
+      <select id="role">
+        <option value="admin">Admin</option>
+        <option value="editor">Editor</option>
+        <option value="reviewer">Reviewer</option>
+      </select>
+      <button id="login-button" type="button">Run login probe</button>
+      <div id="login-output" class="output" data-testid="login-output">not run</div>
+    </article>
+
+    <article class="card">
+      <h2>API Surface</h2>
+      <p>Common acceptance endpoints used by scripts:</p>
+      <ul>
+        <li><code>/api/documents</code></li>
+        <li><code>/api/audit-logs</code></li>
+        <li><code>/api/notifications</code></li>
+        <li><code>/swagger/index.html</code></li>
+      </ul>
+    </article>
+
+    <article class="card">
+      <h2>Screenshot Contract</h2>
+      <p>The local acceptance script opens this page in headless Chrome/Chromium and writes screenshot evidence under <code>artifacts/local-acceptance/ui/</code>.</p>
+      <div class="output" data-testid="screenshot-contract">expected artifact: ironpage-ui.png</div>
+    </article>
+  </section>
+
+  <div class="footer">Generated for backend acceptance evidence only. Static assets are served from <code>/ui/</code>.</div>
+</main>
+<script>
+const passwords = { admin: 'Admin123!', editor: 'Editor123!', reviewer: 'Reviewer123!' };
+async function health() {
+  const dot = document.getElementById('health-dot');
+  const text = document.getElementById('health-text');
+  try {
+    const res = await fetch('/healthz');
+    const json = await res.json();
+    if (res.ok && json.status === 'ok') {
+      dot.classList.add('ok');
+      text.textContent = 'healthy';
+    } else {
+      text.textContent = 'health degraded';
+    }
+  } catch (err) {
+    text.textContent = 'health unavailable';
+  }
+}
+async function loginProbe() {
+  const role = document.getElementById('role').value;
+  const output = document.getElementById('login-output');
+  output.textContent = 'running...';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-Request-ID':'ui-'+Date.now()},
+      body: JSON.stringify({username: role, password: passwords[role]})
+    });
+    const json = await res.json();
+    output.textContent = JSON.stringify({status: res.status, role: json.user && json.user.role, token_type: json.token_type}, null, 2);
+  } catch (err) {
+    output.textContent = String(err);
+  }
+}
+document.getElementById('login-button').addEventListener('click', loginProbe);
+health();
+</script>
+</body>
+</html>
