@@ -66,7 +66,11 @@ func EnsureSeedUsers(ctx context.Context, db *sqlx.DB, cfg Config) error {
 		if err != nil {
 			return err
 		}
-		_, err = db.ExecContext(ctx, `INSERT INTO users(id, username, display_name, role, password_hash, created_at) VALUES($1,$2,$3,$4,$5,NOW())`, id, s.Username, s.Display, s.Role, string(hash))
+		storedHash, err := sealPasswordHash(cfg.AESKey, hash)
+		if err != nil {
+			return err
+		}
+		_, err = db.ExecContext(ctx, `INSERT INTO users(id, username, display_name, role, password_hash, created_at) VALUES($1,$2,$3,$4,$5,NOW())`, id, s.Username, s.Display, s.Role, storedHash)
 		if err != nil {
 			return err
 		}

@@ -32,7 +32,11 @@ func (a *App) login(c echo.Context) error {
 	if u.LockedUntil != nil && time.Now().Before(*u.LockedUntil) {
 		return apiErr(c, http.StatusLocked, "ACCOUNT_LOCKED", "account is temporarily locked")
 	}
-	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
+	storedHash, err := openPasswordHash(a.cfg.AESKey, u.PasswordHash)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "DB_READ_ERROR", "could not read user")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(req.Password)) != nil {
 		a.db.ExecContext(c.Request().Context(), `UPDATE users SET failed_attempts=failed_attempts+1, locked_until=CASE WHEN failed_attempts+1 >= 5 THEN NOW()+INTERVAL '15 minutes' ELSE locked_until END WHERE id=$1`, u.ID)
 		return apiErr(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid username or password")
 	}

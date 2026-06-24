@@ -78,8 +78,12 @@ func (a *App) createUser(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "PASSWORD_HASH_ERROR", "could not hash password")
 	}
+	storedHash, err := sealPasswordHash(a.cfg.AESKey, hash)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PASSWORD_HASH_ERROR", "could not hash password")
+	}
 	id := makeIdentifier("usr")
-	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO users(id,username,display_name,role,password_hash,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, id, req.Username, req.DisplayName, req.Role, string(hash))
+	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO users(id,username,display_name,role,password_hash,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, id, req.Username, req.DisplayName, req.Role, storedHash)
 	if err != nil {
 		return apiErr(c, http.StatusConflict, "USER_CREATE_ERROR", "could not create user")
 	}

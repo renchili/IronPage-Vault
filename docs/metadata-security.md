@@ -6,6 +6,7 @@ This matrix records which stored metadata is protected by encrypted storage and 
 
 | Area | Field | Storage behavior | API behavior |
 |---|---|---|---|
+| Password hash verifier | `users.password_hash` | bcrypt verifier is AES-256-GCM sealed before insert using `enc:v1:` storage | login opens the sealed verifier before bcrypt comparison; legacy unsealed bcrypt rows remain readable for migration compatibility |
 | Redaction geometry | `x`, `y`, `width`, `height` | numeric columns are compatibility placeholders; ciphertext columns hold the source-of-truth values | list responses omit geometry |
 | Redaction reason | `reason` | encrypted before insert | list responses omit reason |
 | Annotation comment | `comment` | encrypted before insert | stored value is never request plaintext |
