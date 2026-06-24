@@ -1,109 +1,92 @@
 # Prompt-Driven Project Generation Workflow
 
-Use this workflow to generate or repair a software project from an original product prompt. The file is English-only and contains process rules, not conversation history.
+Use this skill to generate or repair a software project from user-provided input. The skill is variable-driven. Do not store conversation text in this file.
 
-## Main loop
+## Input slots
 
-1. Use the user-provided original prompt input, such as uploaded metadata, issue text, README requirements, or a supplied prompt.
-2. Extract the prompt into requirements.
-3. Convert the requirements into a delivery plan.
-4. Generate the project structure from the plan.
-5. Generate runtime code, schema, tests, CI, and reports.
-6. Compare the generated project back to the prompt.
-7. Turn review feedback into new ledger items.
-8. Patch the plan and code until every required item is verified.
+- `{{PROJECT_PROMPT}}`: required. The original user-provided prompt, uploaded metadata, issue text, README text, or equivalent requirement source.
+- `{{PROJECT_NAME}}`: optional. Use when provided; otherwise infer from `{{PROJECT_PROMPT}}` and confirm only if blocking.
+- `{{TARGET_REPO}}`: optional. Repository to create or modify.
+- `{{USER_GOAL}}`: required. What the user wants done now: generate, repair, validate, package, or review.
+- `{{CONSTRAINTS}}`: optional. Language, framework, database, CI, deployment, security, and non-goal constraints.
+- `{{USER_FEEDBACK}}`: optional. Latest correction or requested change from the user.
 
-## Requirement ledger
+## Working state slots
 
-Track every prompt item with this table:
+Maintain these internal artifacts while working:
 
-| Requirement | Plan | Code evidence | Test evidence | CI evidence | Artifact evidence | Status |
-|---|---|---|---|---|---|---|
+- `{{REQUIREMENT_LEDGER}}`: prompt requirements mapped to plan, code, tests, CI, artifacts, and status.
+- `{{DELIVERY_PLAN}}`: implementation plan derived from `{{PROJECT_PROMPT}}`.
+- `{{ASSUMPTIONS}}`: assumptions made because the prompt does not specify something.
+- `{{OPEN_QUESTIONS}}`: only questions that block correct implementation.
+- `{{CHANGE_SET}}`: files and behavior changed in the current iteration.
+- `{{EVIDENCE_MAP}}`: proof for each requirement, including code, tests, CI, artifacts, and reports.
 
-Statuses:
+## Interaction contract
 
-- Unknown
-- Planned
-- Implemented
-- Partial
-- Missing
-- CI pending
-- Artifact missing
-- Verified
+If a required slot is missing and cannot be inferred safely, ask the user for that slot. Ask only the smallest blocking question.
 
-## Plan generation
+If `{{USER_FEEDBACK}}` contradicts `{{DELIVERY_PLAN}}` or `{{REQUIREMENT_LEDGER}}`, update the plan and ledger first, then modify code or docs.
 
-Before coding, produce a plan with these sections:
+Do not continue from an outdated interpretation after the user corrects the requirement.
 
-1. Product goal.
-2. Actors and roles.
-3. Core workflows.
-4. Data model and migrations.
-5. API endpoints and error model.
-6. Security, privacy, and access-control rules.
-7. UI or evidence UI requirements.
-8. Test and regression strategy.
-9. CI and artifact strategy.
-10. Acceptance checklist.
+## Generation algorithm
 
-The plan is the bridge between the prompt and generated code. If the plan misses a prompt requirement, the generated project will be incomplete.
+1. Read `{{PROJECT_PROMPT}}`.
+2. Extract requirements into `{{REQUIREMENT_LEDGER}}`.
+3. Build `{{DELIVERY_PLAN}}` with product goal, roles, workflows, data model, API surface, security rules, tests, CI, artifacts, and acceptance checklist.
+4. Generate or modify the repository according to `{{DELIVERY_PLAN}}`.
+5. Add tests and contract checks for the ledger items.
+6. Add CI and durable artifacts when evidence is required.
+7. Compare code and evidence back to `{{REQUIREMENT_LEDGER}}`.
+8. Apply `{{USER_FEEDBACK}}` as new or corrected ledger items.
+9. Repeat until all required items are verified or explicitly marked pending.
 
-## Project generation
+## Requirement ledger schema
 
-Generate a complete repository, not isolated snippets. A backend project normally needs:
+Use this schema:
 
-- module and dependency files;
-- server entrypoint;
-- router and handlers;
-- domain models;
-- database migrations;
-- auth and authorization middleware;
-- validation and error handling;
-- storage and security helpers;
-- unit tests;
-- API tests;
-- contract checks;
-- local test runner;
-- Docker files;
-- CI workflows;
-- acceptance reports or artifacts.
+| Requirement | Source | Plan | Code evidence | Test evidence | CI evidence | Artifact evidence | Status |
+|---|---|---|---|---|---|---|---|
 
-For this repository, regenerate the concrete product by using the user-provided original prompt input first, then deriving the document workflow, roles, APIs, storage model, security requirements, tests, and CI evidence from that prompt.
+Status values:
 
-## Self-check
+- `unknown`
+- `planned`
+- `implemented`
+- `partial`
+- `missing`
+- `ci_pending`
+- `artifact_missing`
+- `verified`
 
-After generation, inspect the repository again. For every ledger row, check:
+## Evidence rules
 
-- the code path exists;
-- the schema supports the behavior;
-- all roles and edge cases are covered;
-- tests or contracts prove the behavior;
-- CI runs the relevant checks for the exact commit;
-- reports or artifacts are durable when evidence is required.
+Never mark a requirement as `verified` only because code exists. Verification needs the evidence required by the prompt.
 
-A generated file inside a CI workspace is not durable evidence unless uploaded or committed.
+Distinguish:
 
-## Review iteration
+- code exists;
+- test exists;
+- test ran;
+- CI passed for the exact commit;
+- report exists inside a CI workspace;
+- report was uploaded or committed;
+- full acceptance suite ran.
 
-When review feedback finds a mismatch, update the ledger and plan. Then patch code, tests, docs, CI, or artifact handling. Do not mark the item verified until evidence exists.
+## Final response contract
 
-## Final answer
+Report using current slot values:
 
-Report completion like this:
+Conclusion: `<verified | partially_verified | implemented_but_evidence_missing | not_fixed>`
 
-Conclusion: <Verified / Partially verified / Implemented but evidence missing / Not fixed>
-
-Acceptance ledger:
-1. <Requirement>: <Status>. Evidence: <code/test/CI/artifact>.
-2. <Requirement>: <Status>. Evidence: <code/test/CI/artifact>.
-3. <Requirement>: <Status>. Evidence: <code/test/CI/artifact>.
+Ledger summary:
+1. `{{REQUIREMENT}}`: `{{STATUS}}`. Evidence: `{{EVIDENCE}}`.
+2. `{{REQUIREMENT}}`: `{{STATUS}}`. Evidence: `{{EVIDENCE}}`.
+3. `{{REQUIREMENT}}`: `{{STATUS}}`. Evidence: `{{EVIDENCE}}`.
 
 Still pending:
-- <missing code, CI, artifact, post-merge, or full-suite proof>
+- `{{PENDING_ITEM}}`
 
 Do not claim yet:
-- <anything not proven by current evidence>
-
-## Done definition
-
-The work is done only when the prompt ledger, plan, generated code, tests, CI, artifacts, and final answer are aligned.
+- `{{UNPROVEN_CLAIM}}`
