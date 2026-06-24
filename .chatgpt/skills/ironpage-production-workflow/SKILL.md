@@ -1,76 +1,96 @@
-# Production Prompt-to-Delivery Workflow
+# Prompt-Driven Project Generation Workflow
 
-Use this workflow for software projects that start from a product prompt and must end with working code, tests, CI results, artifacts, and a clear acceptance report.
+Use this workflow to generate or repair a software project from an original product prompt. The file is English-only and contains process rules, not conversation history.
 
-## Goal
+## Main loop
 
-Turn the user's requested outcome into a traceable delivery loop:
+1. Find the original prompt source, such as metadata, issue text, README requirements, or a supplied prompt.
+2. Extract the prompt into requirements.
+3. Convert the requirements into a delivery plan.
+4. Generate the project structure from the plan.
+5. Generate runtime code, schema, tests, CI, and reports.
+6. Compare the generated project back to the prompt.
+7. Turn review feedback into new ledger items.
+8. Patch the plan and code until every required item is verified.
 
-1. Extract requirements from the prompt.
-2. Build an acceptance ledger.
-3. Inspect the repository before making claims.
-4. Implement changes in small increments.
-5. Add tests and CI coverage.
-6. Preserve durable evidence such as reports or workflow artifacts.
-7. Reconcile the result against the original prompt.
-8. Incorporate review feedback and iterate until the ledger is closed.
+## Requirement ledger
 
-## Acceptance ledger
+Track every prompt item with this table:
 
-Track requirements with this table:
+| Requirement | Plan | Code evidence | Test evidence | CI evidence | Artifact evidence | Status |
+|---|---|---|---|---|---|---|
 
-| Requirement | Code evidence | Test evidence | CI evidence | Artifact evidence | Status |
-|---|---|---|---|---|---|
-
-Use conservative statuses:
+Statuses:
 
 - Unknown
-- Missing
-- Partial
+- Planned
 - Implemented
-- Implemented with CI pending
-- Implemented with artifact missing
+- Partial
+- Missing
+- CI pending
+- Artifact missing
 - Verified
 
-## Repository inspection
+## Plan generation
 
-Check the files that can prove the requirement. Typical evidence includes runtime code, migrations, API handlers, authorization logic, tests, documentation, CI workflows, workflow artifacts, committed reports, and failure logs.
+Before coding, produce a plan with these sections:
 
-Do not rely on memory, PR titles, broad CI badges, or previous summaries when current repository evidence is available.
+1. Product goal.
+2. Actors and roles.
+3. Core workflows.
+4. Data model and migrations.
+5. API endpoints and error model.
+6. Security, privacy, and access-control rules.
+7. UI or evidence UI requirements.
+8. Test and regression strategy.
+9. CI and artifact strategy.
+10. Acceptance checklist.
 
-## Implementation loop
+The plan is the bridge between the prompt and generated code. If the plan misses a prompt requirement, the generated project will be incomplete.
 
-For each acceptance gap:
+## Project generation
 
-1. Make the smallest coherent code change.
-2. Add a regression test or contract check.
-3. Update documentation when the requirement is policy-like.
-4. Update CI if the proof would otherwise not run.
-5. Upload or commit reports when the proof must remain visible after CI finishes.
+Generate a complete repository, not isolated snippets. A backend project normally needs:
 
-## Evidence rules
+- module and dependency files;
+- server entrypoint;
+- router and handlers;
+- domain models;
+- database migrations;
+- auth and authorization middleware;
+- validation and error handling;
+- storage and security helpers;
+- unit tests;
+- API tests;
+- contract checks;
+- local test runner;
+- Docker files;
+- CI workflows;
+- acceptance reports or artifacts.
 
-Distinguish these states:
+For this repository, regenerate the concrete product by reading the original prompt source first, then deriving the document workflow, roles, APIs, storage model, security requirements, tests, and CI evidence from that prompt.
 
-- Code exists.
-- A test exists.
-- The test ran in CI.
-- CI passed for the exact commit.
-- A report was generated in the CI workspace.
-- A report was uploaded as a downloadable artifact.
-- A full suite ran rather than a lightweight probe.
+## Self-check
 
-Only call a requirement verified when the required implementation and evidence both exist.
+After generation, inspect the repository again. For every ledger row, check:
 
-## Feedback loop
+- the code path exists;
+- the schema supports the behavior;
+- all roles and edge cases are covered;
+- tests or contracts prove the behavior;
+- CI runs the relevant checks for the exact commit;
+- reports or artifacts are durable when evidence is required.
 
-When review feedback identifies a mismatch, update the acceptance ledger and re-check the repository. Patch code, tests, docs, CI, or artifact handling as needed. Report the new status without repeating unsupported claims.
+A generated file inside a CI workspace is not durable evidence unless uploaded or committed.
 
-## Final report
+## Review iteration
 
-Use this structure:
+When review feedback finds a mismatch, update the ledger and plan. Then patch code, tests, docs, CI, or artifact handling. Do not mark the item verified until evidence exists.
 
-```text
+## Final answer
+
+Report completion like this:
+
 Conclusion: <Verified / Partially verified / Implemented but evidence missing / Not fixed>
 
 Acceptance ledger:
@@ -79,12 +99,11 @@ Acceptance ledger:
 3. <Requirement>: <Status>. Evidence: <code/test/CI/artifact>.
 
 Still pending:
-- <missing CI, artifact, post-merge, or full-suite proof>
+- <missing code, CI, artifact, post-merge, or full-suite proof>
 
 Do not claim yet:
 - <anything not proven by current evidence>
-```
 
 ## Done definition
 
-The work is done only when required ledger items are implemented, tested, run in CI, and supported by durable evidence when evidence is required.
+The work is done only when the prompt ledger, plan, generated code, tests, CI, artifacts, and final answer are aligned.
