@@ -1,560 +1,338 @@
 ---
-name: ironpage-full-project-acceptance
-description: Reproduce the full IronPage Vault project acceptance review from the entire validation conversation: original prompt completion, all feature dimensions, security/PII, RBAC, tests, CI, run_tests artifacts, full regression artifacts, manual UI, documentation, Swagger, and final acceptance decision.
+name: full-project-acceptance-methodology
+description: Methodology for accepting a complete software project from original requirement to final pass, conditional pass, or fail decision.
 ---
 
-# IronPage Vault Full Project Acceptance Skill
+# Full Project Acceptance Methodology
 
-Use this skill when the user asks for **complete full-project acceptance** of `IronPage-Vault`, not just one test, one PR, or one final snapshot.
+Use this skill when the user wants to know **how to perform full-project acceptance**.
 
-This skill captures the full validation conversation pattern: repeated audits, corrections, stale conclusions, test evidence confusion, `run_tests.sh` vs `run_full_regression.sh`, PR/post-PR evidence, local acceptance artifacts, and final full-project acceptance.
+This is not a record of one previous project result. It is a reusable acceptance method.
 
-The core principle:
+## Goal
 
-> Re-run the entire acceptance against the current repository state and current workflow evidence. Do not defend a previous report. Do not reuse stale findings. Do not confuse assistant-generated reports with test-generated artifacts.
+Given an original requirement and a current repository, determine:
 
-## Repository
+1. what must be checked;
+2. where each requirement is implemented;
+3. what evidence proves it;
+4. which tests or workflows validate it;
+5. what artifacts were generated;
+6. what gaps remain;
+7. whether the project is pass, conditional pass, or fail.
 
-- Repository: `renchili/IronPage-Vault`
-- Default branch: `main`
-- Important recent PR sequence from the acceptance conversation:
-  - PR #71: run product contracts in full regression.
-  - PR #72: generate visual local acceptance report from `run_tests.sh`.
-  - PR #73: seal password hashes at rest.
-  - PR #74: seal PII metadata storage and add role visibility matrix.
-  - PR #75: add UI screenshot acceptance evidence to `run_tests`.
-  - PR #76: fix post-merge Docker acceptance upload/audit ordering.
-  - PR #77: upload local acceptance report artifact from PR CI.
-  - PR #78: add this skill.
+## Evidence order
 
-Always check latest PRs first because the repository changes rapidly.
+Prefer evidence in this order:
 
-## What “full project acceptance” means
+1. executed test logs and generated artifacts;
+2. CI workflow runs and uploaded artifacts;
+3. generated summaries committed by automation;
+4. source code and schema inspection;
+5. static contract scripts;
+6. API and product documentation;
+7. manual smoke UI;
+8. user claims;
+9. assistant-written summary.
 
-Full project acceptance is broader than “did tests pass?” It must cover all of these dimensions:
+Assistant-written reports are review summaries only. They are not test artifacts.
 
-1. Original prompt completion.
-2. Architecture/technology stack.
-3. Data model and persistence.
-4. Security and authentication.
-5. AES-256 protected metadata/PII storage.
-6. RBAC and role-based response visibility.
-7. Document lifecycle and immutability.
-8. PDF handling and local storage.
-9. Redaction workflow and burn-in.
-10. Bates numbering.
-11. Versioning/rollback/revision limits.
-12. Document comparison.
-13. Audit trail coverage.
-14. Notification queue and read/mention behavior.
-15. Config dictionaries, workflow definitions, notification templates.
-16. Pagination and uniform error envelope.
-17. Backup, scheduled backup, restore/PITR documentation.
-18. Docker/single-container/air-gapped posture.
-19. Swagger/OpenAPI quality and route coverage.
-20. `run_tests.sh` local acceptance evidence.
-21. Full regression evidence.
-22. Simple manual validation UI.
-23. Documentation completeness.
-24. Generated reports/artifacts and their provenance.
-25. Final acceptance decision with caveats.
+## Acceptance workflow
 
-## Conversation lessons that must be preserved
+### 1. Build the requirement matrix
 
-The original validation conversation contained several corrections. This skill must preserve those lessons.
+Read the original spec or prompt. Split it into atomic requirements.
 
-### Lesson 1: `full regression` is not `run_tests.sh`
-
-Do not confuse these two:
+Use this table:
 
 ```text
-ci/run_full_regression.sh -> artifacts/regression/** -> reports/regression/**
-run_tests.sh              -> artifacts/local-acceptance/**
+ID | Requirement | Category | Expected behavior | Implementation | Evidence | Status | Gap
 ```
 
-Full regression evidence may show `Overall: PASSED`, but that is not the same as a complete local `run_tests.sh` artifact.
-
-### Lesson 2: `run_tests.sh` probe mode is not full local API acceptance
-
-This command:
-
-```bash
-IRONPAGE_RUN_TESTS_CONTRACT_PROBE=1 bash run_tests.sh
-```
-
-verifies the fresh-checkout local entrypoint contract and report generation. It does not run the full API acceptance suite.
-
-A report generated from this probe is valid evidence for:
-
-- Swagger generation from a clean checkout;
-- `run_tests.sh` report-generation behavior;
-- local acceptance artifact shape;
-- PR CI artifact upload behavior.
-
-It is not valid evidence for full `./run_tests.sh` API acceptance.
-
-### Lesson 3: Assistant-generated reports are not test results
-
-A Markdown/HTML report generated by the assistant is a review artifact. It is not a test-generated artifact.
-
-Test-generated artifacts are things like:
+Categories:
 
 ```text
-artifacts/local-acceptance/report.html
-artifacts/local-acceptance/summary.md
-artifacts/local-acceptance/summary.json
-artifacts/regression/summary.md
-artifacts/regression/summary.json
-reports/regression/**/summary.md
-reports/regression/**/summary.json
+architecture
+functionality
+data model
+workflow
+access control
+API contract
+runtime/deployment
+storage
+observability/audit
+backup/restore
+UI/manual validation
+documentation
+testing/CI
 ```
 
-### Lesson 4: Reports committed to git are not the only evidence
+### 2. Map requirements to implementation
 
-The full regression workflow may upload artifacts or commit summaries under `reports/regression/**`. Do not assume absence of one form proves the run did not happen. Check:
-
-- workflow runs;
-- job status;
-- workflow artifacts;
-- committed `reports/regression/**` summaries;
-- logs;
-- downloaded zip artifacts.
-
-### Lesson 5: Re-check current code before making security claims
-
-An earlier audit concluded password hashes and broad PII metadata were not AES sealed. That became stale after later PRs.
-
-Current acceptance must re-read:
-
-- `docs/metadata-security.md`
-- `migrations/001_schema.sql`
-- `internal/platform/crypto.go`
-- `internal/app/credential_storage.go`
-- `internal/app/pii_storage.go`
-- `internal/app/auth.go`
-- `internal/app/admin.go`
-- `ci/metadata_storage_check.sh`
-- `docs/role-field-visibility.md`
-
-Do not repeat an old finding unless current code still supports it.
-
-## Required evidence collection order
-
-### 1. Start with current repository state
-
-Fetch latest PRs and identify recent changes. Do this before forming any conclusion.
-
-At minimum inspect recent PR titles and statuses. In the acceptance conversation, later PRs changed the conclusion:
-
-- password hash encryption was added after an earlier gap was found;
-- PII storage matrix was expanded after an earlier gap was found;
-- local acceptance artifact upload was added after the generated report was initially unavailable.
-
-### 2. Reconstruct original prompt requirements
-
-Read `metadata.json` and build a checklist. The checklist must include:
-
-- air-gapped legal document lifecycle system;
-- Go + Echo REST API;
-- sqlx + PostgreSQL as metadata persistence;
-- local filesystem PDF storage;
-- Admin / Editor / Reviewer RBAC;
-- Admin user/config/template/workflow management;
-- Editor upload, batch import, rollback, redaction confirmation, Bates, finalization;
-- Reviewer retrieval, annotations, dispositions, workflow advancement;
-- Draft -> Under Review -> Redaction Pending -> Approved -> Finalized;
-- Finalized records immutable;
-- two-phase forensic redaction with coordinate staging and burn-in;
-- Bates numbering with prefix/suffix/zero padding/sequential batch behavior;
-- structured comparison with added/removed/modified text, pages, coordinates;
-- bcrypt auth;
-- five failed attempts and fifteen-minute lockout;
-- local JWT, 8-hour inactivity expiration;
-- jti blacklist;
-- request timestamp freshness/replay protection;
-- AES-256 protection for password hashes, PII metadata, redaction coordinates;
-- contextual role-based response masking;
-- audit log for mutating actions;
-- workflow/mention notifications and read acknowledgement;
-- notification templates and workflow definitions editable by Admin;
-- pagination default 25, hard max 100;
-- uniform error envelope;
-- PDF max 500 pages / 200 MB;
-- scheduled PostgreSQL logical dumps and filesystem snapshots;
-- PITR documentation;
-- single Docker container / standalone / no external network dependencies.
-
-### 3. Check implementation by area
-
-For each area, collect code/doc/test evidence. Do not only cite docs.
-
-#### Architecture and persistence
-
-Inspect:
-
-- `go.mod`
-- `internal/app/server.go`
-- `migrations/001_schema.sql`
-- document repository/service files
-- Dockerfile and docker-compose files
-
-Confirm Go/Echo/sqlx/PostgreSQL/local filesystem storage posture.
-
-#### RBAC and workflow
-
-Inspect:
-
-- role constants and route registration;
-- middleware/authorization helpers;
-- workflow transition code;
-- Finalized immutability tests or static rules.
-
-Confirm Admin/Editor/Reviewer capability boundaries and workflow chain.
-
-#### Authentication and replay protection
-
-Inspect:
-
-- `internal/app/auth.go`
-- session table schema;
-- `jwt_blacklist` and `request_replay_guard` schema;
-- request timestamp middleware/validation;
-- tests covering lockout/replay/timestamp if available.
-
-Confirm bcrypt, lockout, JWT TTL, blacklist, replay guard, and timestamp age.
-
-#### AES-256 protected metadata/PII
-
-Inspect current code, not old notes:
-
-- `internal/platform/crypto.go`
-- `internal/app/credential_storage.go`
-- `internal/app/pii_storage.go`
-- `internal/app/admin.go`
-- `internal/app/auth.go`
-- `internal/app/documents.go`
-- `internal/app/notifications.go`
-- `internal/app/domain_events.go`
-- `internal/app/review.go`
-- `migrations/001_schema.sql`
-- `docs/metadata-security.md`
-- `ci/metadata_storage_check.sh`
-
-Expected current behavior:
-
-- AES-GCM helper uses `enc:v1:`;
-- password hash verifier is bcrypt first, then AES sealed with `sealPasswordHash`;
-- login opens sealed verifier with `openPasswordHash` before bcrypt compare;
-- username uses deterministic `lookup:v1:` key plus `username_ciphertext`;
-- display name uses ciphertext;
-- document title uses ciphertext;
-- notification message uses ciphertext;
-- audit source IP and audit metadata use ciphertext;
-- redaction geometry ciphertext columns are source of truth;
-- redaction reason is encrypted;
-- annotation comment is encrypted;
-- plaintext exists only in request memory for validation, lookup key derivation, mention extraction, PDF processing, or encryption.
-
-#### Role-based visibility/masking
-
-Inspect:
-
-- `docs/role-field-visibility.md`
-- JSON tags on response structs;
-- handler-level selectors and response transformations.
-
-Confirm:
-
-- password hashes hidden from all roles;
-- ciphertext companion columns hidden;
-- notification message recipient-only;
-- audit source IP/metadata Admin-only;
-- document title opened only after access checks;
-- redaction coordinates/reasons hidden from list responses;
-- Reviewer/Editor/Admin boundaries remain enforced.
-
-#### PDF, redaction, Bates, comparison
-
-Inspect service and tests for:
-
-- strict PDF inspection;
-- PDF file size/page count checks;
-- redaction staging and burn-in;
-- redaction acceptance/content checks;
-- Bates sequence and visible overlay acceptance;
-- compare test asserting added/removed/modified text.
-
-#### Audit and notifications
-
-Inspect:
-
-- `internal/app/domain_events.go`
-- audit insert helpers;
-- notification creation helpers;
-- notification list/read handlers;
-- tests for mention side effects and workflow notifications.
-
-Check whether audit metadata is sealed and opened only on Admin audit paths.
-
-#### Backup/restore/PITR
-
-Inspect:
-
-- backup scheduler;
-- backup/restore handlers;
-- scheduled backup contract;
-- full regression inclusion;
-- PITR docs/config-center docs if present.
-
-Confirm scheduled PostgreSQL logical dumps and filesystem snapshots are covered by code and tests/contracts.
-
-#### Swagger/OpenAPI
-
-Inspect:
-
-- route annotations under `internal/app/swagger_*.go`;
-- Swagger generation script;
-- `ci/swagger_contract_check.sh`;
-- `unit_tests/test_swagger_route_coverage.sh`.
-
-Report whether Swagger is full typed-schema quality or route/status contract quality.
-
-#### Manual UI
-
-Inspect:
-
-- `public/manual-test.html`
-- `internal/app/server.go`
-- `Dockerfile`
-
-Confirm:
-
-- `/ui/manual-test.html` is exposed;
-- Docker copies `public`;
-- UI supports manual smoke of login, upload/list documents, annotations, redactions, Bates, workflow, audit, notifications, backup, and Swagger.
-
-Call it a manual backend API testing aid, not a production frontend.
-
-## Test and artifact evidence requirements
-
-### Full regression evidence
-
-Inspect `ci/run_full_regression.sh` and latest regression summaries.
-
-Expected stages:
+For each requirement, inspect:
 
 ```text
-prepare_workspace
-swagger_contract
-swagger_route_coverage
-scheduled_backup_contract
-metadata_storage_contract
-gofmt
-go_vet
-go_test_race
-shell_syntax
-docker_build
-docker_acceptance
+routes
+handlers
+services
+repositories
+migrations
+configuration
+middleware
+scripts
+Docker/deployment files
+documentation
 ```
 
-Valid conclusion requires summary evidence such as:
+Mark each item as:
 
 ```text
-Overall: PASSED
+Implemented
+Partially implemented
+Documented only
+Missing
+Cannot verify
 ```
 
-or JSON:
+### 3. Verify critical controls separately
 
-```json
-"overall_status": "passed"
-```
+Do not hide critical controls inside general feature checks.
 
-State exact run path or artifact name, for example:
+Check identity, permissions, sensitive data handling, session behavior, auditability, and configuration behavior as separate sections.
+
+For any protected-data claim, verify:
 
 ```text
-reports/regression/<sha>/run-<run_id>-attempt-<n>/summary.md
+helper exists
+write path stores protected value
+read path opens it only where allowed
+plain compatibility fields are not source of truth
+tests or static checks guard the behavior
 ```
 
-### `run_tests.sh` evidence
+### 4. Verify roles and denied paths
 
-Read `run_tests.sh` and `ci/run_tests_contract_check.sh`.
-
-Expected `run_tests.sh` report outputs:
+Build a role matrix:
 
 ```text
-artifacts/local-acceptance/results.tsv
-artifacts/local-acceptance/summary.json
-artifacts/local-acceptance/summary.md
-artifacts/local-acceptance/report.html
-artifacts/local-acceptance/logs/*
+Role | Allowed actions | Forbidden actions | Visible fields | Hidden fields | Positive evidence | Negative evidence
 ```
 
-If a PR CI artifact exists, download it. A valid PR CI artifact may look like:
+A project is not fully accepted if only allowed paths are tested and denied paths are ignored.
+
+### 5. Verify state machine and business rules
+
+Check:
 
 ```text
-local-acceptance-<run_id>-<sha>.zip
+required states
+valid transitions
+invalid transition rejection
+terminal-state immutability
+history rows
+audit rows
+positive tests
+negative tests
 ```
 
-After downloading, inspect that it contains at least:
+### 6. Verify test entrypoints
+
+For every test script or command, identify:
 
 ```text
-report.html
-summary.json
-summary.md
-results.tsv
-logs/prepare_swagger.log
-logs/local_entrypoint_contract.log
+command
+normal mode
+probe mode
+required services
+output directory
+generated reports
+logs
+skipped stages
+exit behavior
 ```
 
-Then parse summary JSON. If it only has two stages, report it as probe-only evidence:
+Never confuse probe evidence with full-suite evidence.
+
+Example:
 
 ```text
-overall_status: passed
-total_stages: 2
-passed: 2
-failed: 0
-skipped: 0
+./run_tests.sh                  = full local test entrypoint
+PROBE=1 ./run_tests.sh          = lightweight probe
+ci/run_full_regression.sh <dir> = full regression entrypoint
 ```
 
-Do not claim full local API acceptance from this probe artifact.
+### 7. Verify CI workflows
 
-### Complete `./run_tests.sh` full-suite evidence
-
-Only claim full local acceptance if the artifact/result came from running:
-
-```bash
-./run_tests.sh
-```
-
-without `IRONPAGE_RUN_TESTS_CONTRACT_PROBE=1`.
-
-A full run should include stages such as:
+Read workflow files. Check:
 
 ```text
-prepare_swagger
-unit_rules
-go_test_all
-api_flow
-api_contracts
-static_review_reject_flows
-acceptance_denials
-compare_acceptance
-finalized_immutability
-redaction_coordinate_ciphertext
-pdf_content_acceptance
-notification_mention_side_effect
-structure_rules
-strict_dependency_failures
-bates_sequence_multi_doc
+trigger
+path filters
+jobs
+conditions
+skipped jobs
+commands
+artifact upload
+retention
+failure artifact behavior
 ```
 
-If only probe evidence exists, the final report may still pass full project acceptance when full regression covers runtime/Docker/API paths, but it must state this caveat.
+A green workflow is not enough if the relevant job was skipped.
 
-## Full project acceptance report format
+### 8. Verify generated artifacts
 
-Generate one comprehensive report, not a narrow final note.
+For every generated artifact, record:
 
-Required sections:
+```text
+artifact path/name
+source command/workflow
+commit or run id
+full-suite or probe
+summary status
+stage count
+failed stages
+skipped stages
+logs
+```
 
-1. Scope, timestamp, repository, commit/branch/PR context.
-2. Current merged PR timeline relevant to acceptance.
-3. Original prompt checklist.
-4. Implementation checklist by module.
-5. Security/PII/password-hash encryption evidence.
-6. Role-based visibility/masking evidence.
-7. Test and CI evidence:
-   - PR CI;
-   - `run_tests.sh` probe or full artifact;
-   - full regression;
-   - Docker acceptance;
-   - static contracts.
-8. Manual UI validation evidence.
-9. Documentation and Swagger evidence.
-10. Artifact provenance table:
-   - artifact/report path;
-   - source command/workflow;
-   - probe/full distinction;
-   - result.
-11. Remaining caveats, if any.
-12. Final acceptance decision.
+Download artifacts when available. Parse summary files. Do not infer pass from artifact existence alone.
+
+### 9. Verify API, docs, deployment, and manual UI
+
+Check:
+
+```text
+API route coverage
+request/response contract
+status codes
+error envelope
+pagination
+setup docs
+operation docs
+backup/restore docs
+Docker/build packaging
+manual smoke UI if required
+```
+
+Docs support acceptance but do not replace runtime evidence.
+
+## Gap classification
+
+Classify every gap:
+
+```text
+P0 blocker: cannot accept
+P1 conditional: can accept with explicit caveat
+P2 quality issue: non-blocking improvement
+Evidence gap: implementation may exist but proof is missing
+Spec interpretation gap: requirement wording needs decision
+```
 
 ## Decision rubric
 
-### Accepted / full project accepted
+### Pass
 
-Use this when current code and current evidence show:
+Use when:
 
-- original prompt main features implemented;
-- security/PII storage is aligned with prompt;
-- role visibility matrix exists and matches code;
-- full regression passed;
-- run_tests report generation is verified and artifact behavior is understood;
-- manual UI exists and is packaged;
-- remaining caveats are only about evidence granularity, not missing core product features.
+```text
+requirements are implemented
+critical controls are verified
+full regression or equivalent evidence passed
+test artifacts are understood
+docs and deployment are adequate
+remaining caveats are non-blocking
+```
 
-Recommended wording:
+### Conditional pass
 
-> Full project engineering acceptance: passed. Current code satisfies the original prompt main requirements. Full regression passed. `run_tests.sh` local acceptance report generation is verified and downloadable as a PR CI artifact. Caveat: the downloaded local artifact is probe-only unless a separate full `./run_tests.sh` suite artifact is provided.
+Use when:
 
-### Conditional accepted
+```text
+core project works
+but one evidence source is missing or probe-only
+or a non-critical item lacks strong proof
+```
 
-Use this when implementation is complete but one evidence source is incomplete, for example:
+### Fail
 
-- full regression passed, but no downloadable `run_tests.sh` artifact;
-- security docs exist, but code evidence is incomplete;
-- a feature exists but lacks dedicated test evidence.
+Use when:
 
-### Not accepted
+```text
+core requirement missing
+critical control contradicts spec
+build/runtime/regression fails
+critical evidence missing
+conclusion depends on stale or fabricated evidence
+```
 
-Use this when:
+## Report template
 
-- full regression fails;
-- a core original prompt feature is absent;
-- current code contradicts the security requirements;
-- the report relies on old/stale assumptions;
-- test evidence is fabricated or confused.
+```markdown
+# Full Project Acceptance Report
 
-## Response behavior in conversation
+## 1. Scope
+- Repository:
+- Branch/commit:
+- Requirement source:
+- Runtime target:
+- Acceptance standard:
+- Timestamp:
 
-When the user corrects the audit, do not argue. Re-check.
+## 2. Executive decision
+- Verdict:
+- Reason:
+- Blocking gaps:
+- Caveats:
 
-Patterns from this conversation:
+## 3. Requirement coverage matrix
+| ID | Requirement | Category | Implementation | Evidence | Status | Notes |
+|---|---|---|---|---|---|---|
 
-- User: “full regression passed, check PR and post-PR.”
-  - Correct response: inspect PR runs, full regression summaries, artifacts.
-- User: “your task is prompt completion.”
-  - Correct response: return to original prompt checklist; CI is evidence only.
-- User: “simple UI implemented?”
-  - Correct response: inspect `public/manual-test.html`, server static route, Docker copy.
-- User: “not your report, run test generated report.”
-  - Correct response: find `run_tests.sh` outputs under `artifacts/local-acceptance`, not assistant-generated files.
-- User: “current code inconsistent, re-check.”
-  - Correct response: re-read current code and update conclusion; do not repeat stale password/PII findings.
-- User: “完整的全项目的验收.”
-  - Correct response: produce full-project acceptance across all dimensions, including original prompt, current code, tests, artifacts, docs, UI, and caveats.
+## 4. Implementation verification
 
-## Common failure modes to avoid
+## 5. Critical controls verification
 
-- Treating old audit files as source of truth.
-- Treating absence of committed reports as proof a workflow did not run.
-- Calling a PR CI probe “complete run_tests full suite.”
-- Saying password hashes are not AES sealed after PR #73/current code.
-- Saying PII/masking are missing after PR #74/current code without checking.
-- Forgetting PR #77 made local acceptance artifacts downloadable.
-- Generating an HTML report and presenting it as if the test generated it.
-- Ignoring whether artifact is probe-only or full-suite.
-- Giving “100%” language without listing evidence and caveats.
+## 6. Test evidence
+| Source | Command/workflow | Full/probe | Result | Artifact/log |
+|---|---|---|---|---|
 
-## Final output style
+## 7. CI and artifact evidence
 
-Use concise but explicit language. Include:
+## 8. Manual/UI evidence
 
-- “当前代码” or “current main” to avoid stale ambiguity;
-- exact artifact names and run IDs when available;
-- exact distinction between full regression and run_tests;
-- final verdict in one line;
-- caveats in one short paragraph.
+## 9. Documentation/API/deployment evidence
 
-Example final verdict:
+## 10. Gaps and risks
+| Severity | Gap | Why it matters | Required fix/evidence |
+|---|---|---|---|
 
-> Current full-project engineering acceptance: passed. The current code satisfies the original prompt main requirements, full regression is passed, local `run_tests.sh` report generation is verified with a downloadable PR CI artifact, and security/PII/role-visibility gaps identified earlier have been fixed in current code. Caveat: the downloaded local acceptance artifact is probe-only; a separate full `./run_tests.sh` full-suite artifact would be needed if the acceptance standard specifically requires that artifact.
+## 11. Final acceptance decision
+```
+
+## Anti-false-acceptance checklist
+
+```text
+[ ] Current code checked
+[ ] Original requirements reconstructed
+[ ] Requirement matrix built
+[ ] Implementation mapped
+[ ] Critical controls checked separately
+[ ] Denied paths checked
+[ ] CI skipped jobs inspected
+[ ] Artifacts downloaded or parsed when available
+[ ] Probe and full-suite distinguished
+[ ] Assistant report not treated as test artifact
+[ ] Caveats stated clearly
+```
+
+## Handling user corrections
+
+If the user says the audit is wrong:
+
+1. Stop defending the old conclusion.
+2. Identify the wrong assumption.
+3. Re-read current files or artifacts.
+4. Update the matrix and verdict.
+5. State exactly what changed.
+
+If the user asks for methodology, provide the method, not a previous result.
