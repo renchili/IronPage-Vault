@@ -42,6 +42,7 @@ PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/f
 | Sensitive metadata storage matrix | Complete | `docs/metadata-security.md` and `ci/metadata_storage_check.sh` cover redaction reason, redaction geometry, and annotation comment storage/exposure rules |
 | Compare API test chain | Complete | Self-contained compare test creates a second version before comparing |
 | Compare content accuracy | Complete | `internal/service/compare_test.go` asserts added, removed, and modified text blocks contain the expected changed text |
+| Password hash storage | Complete | `createUser` and seed users seal bcrypt verifiers with AES before writing `users.password_hash`; login opens the sealed verifier before bcrypt comparison |
 | Local visual acceptance report | Complete | `run_tests.sh` writes `results.tsv`, `summary.json`, `summary.md`, `report.html`, and per-stage logs under `artifacts/local-acceptance/` |
 | API token orchestration | Complete | `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts |
 | Mention notification test | Complete | Test uses `Sticky note` |
