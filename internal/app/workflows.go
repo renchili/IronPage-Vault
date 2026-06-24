@@ -49,7 +49,7 @@ func (a *App) transitionDocument(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_UPDATE_ERROR", "workflow transition failed")
 	}
 	_, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO document_status_history(id,document_id,from_status,to_status,changed_by,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, makeIdentifier("wfh"), d.ID, d.Status, req.Status, p.UserID)
-	_, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'WORKFLOW_TRANSITION',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, d.ID, currentRequestID(c), c.RealIP())
+	a.audit(c, p.UserID, "WORKFLOW_TRANSITION", d.ID, nil)
 	a.notifyUser(c, d.OwnerID, "workflow.transition", "Document moved to "+req.Status, d.ID)
 	return c.JSON(http.StatusOK, map[string]interface{}{"status": req.Status, "changed_at": time.Now().UTC()})
 }
@@ -73,7 +73,7 @@ func (a *App) finalizeDocument(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "FINALIZE_ERROR", "finalize failed")
 	}
-	_, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,metadata,created_at) VALUES($1,$2,$3,'DOCUMENT_FINALIZE',$4,$5,'{}'::jsonb,NOW())`, makeIdentifier("aud"), p.UserID, d.ID, currentRequestID(c), c.RealIP())
+	a.audit(c, p.UserID, "DOCUMENT_FINALIZE", d.ID, nil)
 	return c.JSON(http.StatusOK, map[string]interface{}{"status": StatusFinalized})
 }
 
