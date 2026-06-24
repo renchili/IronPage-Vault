@@ -55,7 +55,8 @@ func EnsureSeedUsers(ctx context.Context, db *sqlx.DB, cfg Config) error {
 	}
 	for _, s := range seeds {
 		var count int
-		if err := db.GetContext(ctx, &count, `SELECT COUNT(*) FROM users WHERE username=$1`, s.Username); err != nil {
+		usernameKey := piiLookupKey(cfg.AESKey, s.Username)
+		if err := db.GetContext(ctx, &count, `SELECT COUNT(*) FROM users WHERE username=$1 OR username=$2`, usernameKey, s.Username); err != nil {
 			return err
 		}
 		if count > 0 {
@@ -70,7 +71,15 @@ func EnsureSeedUsers(ctx context.Context, db *sqlx.DB, cfg Config) error {
 		if err != nil {
 			return err
 		}
-		_, err = db.ExecContext(ctx, `INSERT INTO users(id, username, display_name, role, password_hash, created_at) VALUES($1,$2,$3,$4,$5,NOW())`, id, s.Username, s.Display, s.Role, storedHash)
+		usernameCipher, err := sealPII(cfg.AESKey, s.Username)
+		if err != nil {
+			return err
+		}
+		displayCipher, err := sealPII(cfg.AESKey, s.Display)
+		if err != nil {
+			return err
+		}
+		_, err = db.ExecContext(ctx, `INSERT INTO users(id, username, username_ciphertext, display_name, display_name_ciphertext, role, password_hash, created_at) VALUES($1,$2,$3,'',$4,$5,$6,NOW())`, id, usernameKey, usernameCipher, displayCipher, s.Role, storedHash)
 		if err != nil {
 			return err
 		}
