@@ -1,7 +1,9 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
+  username_ciphertext TEXT NOT NULL DEFAULT '',
   display_name TEXT NOT NULL DEFAULT '',
+  display_name_ciphertext TEXT NOT NULL DEFAULT '',
   role TEXT NOT NULL CHECK (role IN ('Admin','Editor','Reviewer')),
   password_hash TEXT NOT NULL,
   failed_attempts INTEGER NOT NULL DEFAULT 0,
@@ -14,7 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   jti TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
   last_seen_at TIMESTAMPTZ NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ,
   revoked_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -33,7 +35,8 @@ CREATE TABLE IF NOT EXISTS request_replay_guard (
 
 CREATE TABLE IF NOT EXISTS documents (
   id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  title_ciphertext TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL,
   owner_id TEXT NOT NULL REFERENCES users(id),
   current_version INTEGER NOT NULL DEFAULT 1,
@@ -124,7 +127,9 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   action_type TEXT NOT NULL,
   request_id TEXT NOT NULL,
   source_ip TEXT NOT NULL DEFAULT '',
+  source_ip_ciphertext TEXT NOT NULL DEFAULT '',
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  metadata_ciphertext TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -133,7 +138,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   user_id TEXT NOT NULL REFERENCES users(id),
   document_id TEXT REFERENCES documents(id),
   template_key TEXT NOT NULL,
-  message TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  message_ciphertext TEXT NOT NULL DEFAULT '',
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
