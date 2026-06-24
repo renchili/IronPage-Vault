@@ -120,3 +120,55 @@ The Echo server mounts the generated Swagger UI at:
 ## Roles
 
 IronPage Vault supports only three roles:
+
+| Role | Responsibility |
+|---|---|
+| Admin | user management, configuration, workflow definitions, templates, backup metadata |
+| Editor | PDF upload, version actions, redaction confirmation, Bates numbering, finalization |
+| Reviewer | document retrieval, annotations, annotation dispositions, review workflow movement |
+
+Admin is intentionally not treated as a document editor. This keeps system administration separate from legal document manipulation.
+
+## Document Lifecycle
+
+Documents follow this required chain:
+
+```text
+Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
+```
+
+Finalized documents are treated as closed legal records. Mutation APIs should reject changes after Finalized status.
+
+## Storage Model
+
+IronPage Vault separates binary and relational data:
+
+- PostgreSQL stores users, sessions, documents, versions, audit logs, notifications, workflow history, redaction metadata, annotations, Bates jobs, config, and backup records.
+- The local filesystem stores PDF binaries.
+- Database version rows point to PDF files by path and include file hash, size, page count, and version number.
+
+This design keeps large binary assets out of ordinary relational queries while preserving traceability.
+
+## Offline Deployment Model
+
+The project is packaged for local standalone execution. The Compose setup uses one application container that includes PostgreSQL and the Go API process. Persistent data is stored through Docker volumes.
+
+The intended build path is **Docker builder**, not a local Go toolchain. The project does not require a local Go installation or a committed `go.sum` for acceptance.
+
+See:
+
+```text
+docs/docker-builder.md
+```
+
+## AWS Deployment Options
+
+AWS deployment guidance is available for both serverless-container and EKS targets:
+
+```text
+docs/aws-deployment.md
+deploy/aws/serverless/
+deploy/aws/eks/
+```
+
+Without an AWS account, use Docker/SAM validation for the serverless artifacts and kind or minikube for the EKS manifests.
