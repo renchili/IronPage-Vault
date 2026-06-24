@@ -4,7 +4,7 @@ Use this workflow to generate or repair a software project from an original prod
 
 ## Main loop
 
-1. Find the original prompt source, such as metadata, issue text, README requirements, or a supplied prompt.
+1. Use the user-provided original prompt input, such as uploaded metadata, issue text, README requirements, or a supplied prompt.
 2. Extract the prompt into requirements.
 3. Convert the requirements into a delivery plan.
 4. Generate the project structure from the plan.
@@ -68,7 +68,7 @@ Generate a complete repository, not isolated snippets. A backend project normall
 - CI workflows;
 - acceptance reports or artifacts.
 
-For this repository, regenerate the concrete product by reading the original prompt source first, then deriving the document workflow, roles, APIs, storage model, security requirements, tests, and CI evidence from that prompt.
+For this repository, regenerate the concrete product by using the user-provided original prompt input first, then deriving the document workflow, roles, APIs, storage model, security requirements, tests, and CI evidence from that prompt.
 
 ## Self-check
 
