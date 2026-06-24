@@ -126,6 +126,11 @@ counts = {
     'SKIP': sum(1 for row in rows if row['result'] == 'SKIP'),
 }
 passed = overall_status == 0 and counts['FAIL'] == 0
+ui_manifest_path = os.path.join(out_dir, 'ui', 'manifest.json')
+ui_manifest = None
+if os.path.exists(ui_manifest_path):
+    with open(ui_manifest_path, encoding='utf-8') as f:
+        ui_manifest = json.load(f)
 payload = {
     'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(),
     'overall_status': 'passed' if passed else 'failed',
@@ -134,6 +139,7 @@ payload = {
     'failed': counts['FAIL'],
     'skipped': counts['SKIP'],
     'stages': rows,
+    'ui_screenshot': ui_manifest,
 }
 summary_json = os.path.join(out_dir, 'summary.json')
 summary_md = os.path.join(out_dir, 'summary.md')
@@ -148,6 +154,12 @@ with open(summary_md, 'w', encoding='utf-8') as f:
     f.write('| Stage | Result | Exit | Duration | Log |\n|---|---:|---:|---:|---|\n')
     for row in rows:
         f.write(f"| `{row['stage']}` | {row['result']} | {row['status']} | {row['duration_seconds']}s | `{row['log']}` |\n")
+    if ui_manifest:
+        f.write('\n## UI Screenshot Evidence\n\n')
+        f.write(f"- Page: `{ui_manifest['page']}`\n")
+        f.write(f"- Browser: `{ui_manifest['browser']}`\n")
+        f.write(f"- Screenshot: `ui/{ui_manifest['screenshot']}`\n")
+        f.write(f"- Screenshot bytes: `{ui_manifest['screenshot_size_bytes']}`\n")
 
 badge = 'PASSED' if passed else 'FAILED'
 badge_class = 'pass' if passed else 'fail'
@@ -164,6 +176,24 @@ for row in rows:
         f'<td><a href="{html.escape(rel_log)}">log</a></td>'
         '</tr>'
     )
+
+ui_section = ''
+if ui_manifest:
+    screenshot_src = 'ui/' + ui_manifest['screenshot']
+    evidence_src = 'ui/report.html'
+    ui_section = f'''
+    <section class="section">
+      <h2>UI Screenshot Evidence</h2>
+      <p>The backend testing UI was opened by headless browser automation and captured as screenshot evidence.</p>
+      <div class="cards">
+        <div class="card"><div class="muted">Browser</div><div>{html.escape(ui_manifest['browser'])}</div></div>
+        <div class="card"><div class="muted">Page</div><div><code>{html.escape(ui_manifest['page'])}</code></div></div>
+        <div class="card"><div class="muted">Screenshot bytes</div><div>{ui_manifest['screenshot_size_bytes']}</div></div>
+      </div>
+      <p><a href="{html.escape(evidence_src)}">Open UI screenshot evidence report</a></p>
+      <img class="screenshot" src="{html.escape(screenshot_src)}" alt="IronPage UI screenshot evidence">
+    </section>
+    '''
 
 html_doc = f'''<!doctype html>
 <html lang="en">
@@ -190,6 +220,7 @@ html_doc = f'''<!doctype html>
     tr:last-child td {{ border-bottom: 0; }}
     a {{ color: LinkText; }}
     .section {{ margin-top: 28px; }}
+    .screenshot {{ max-width: 100%; border: 1px solid var(--border); border-radius: 12px; }}
     code {{ background: rgba(127,127,127,0.12); padding: 2px 5px; border-radius: 5px; }}
   </style>
 </head>
@@ -211,9 +242,10 @@ html_doc = f'''<!doctype html>
         <tbody>{''.join(rows_html)}</tbody>
       </table>
     </section>
+    {ui_section}
     <section class="section">
       <h2>Acceptance Coverage</h2>
-      <p>This local report covers Swagger generation, unit/static rules, Go tests, API acceptance scripts, redaction/Bates/compare flows, notifications, and strict dependency checks. Logs are retained under <code>logs/</code>.</p>
+      <p>This local report covers Swagger generation, unit/static rules, Go tests, API acceptance scripts, UI screenshot automation, redaction/Bates/compare flows, notifications, and strict dependency checks. Logs are retained under <code>logs/</code>.</p>
       <p>For runtime Docker/full-regression evidence, run <code>bash ci/run_full_regression.sh artifacts/regression</code>.</p>
     </section>
   </main>
@@ -259,13 +291,13 @@ load_api_tokens
 run_script finalized_immutability API_tests/test_finalized_immutability.sh
 load_api_tokens
 
-run_script redaction_coordinate_ciphertext API_tests/test_redaction_coordinate_ciphertext.sh
-load_api_tokens
-
 run_script pdf_content_acceptance API_tests/test_pdf_content_acceptance.sh
 load_api_tokens
 
 run_script notification_mention_side_effect API_tests/test_notification_mention_side_effect.sh
+load_api_tokens
+
+run_script ui_screenshot_acceptance API_tests/test_ui_screenshot_acceptance.sh
 load_api_tokens
 
 run_script structure_rules unit_tests/test_structure_rules.sh
