@@ -61,11 +61,27 @@ Status values:
 - `artifact_missing`
 - `verified`
 
+## Implementation acceptance rules
+
+Do not replace a required backend with a demo or proof-only implementation.
+
+If `{{PROJECT_PROMPT}}` requires a DB-backed runtime, the generated project must include persistent storage, schema or migrations, a repository/store layer, and tests that prove persisted state. In-memory state is only acceptable when the prompt explicitly asks for a prototype.
+
+If `{{PROJECT_PROMPT}}` requires a complete backend API, enumerate the required API groups in `{{REQUIREMENT_LEDGER}}` and implement each group. A small demo API must be marked `partial`.
+
+If `{{PROJECT_PROMPT}}` requires RBAC, test capability rules, workflow-state rules, object-level access, and field visibility. Capability-only tests are insufficient.
+
+If `{{PROJECT_PROMPT}}` requires document workflows, include upload/read/version behavior plus redaction, annotation, notification, audit, and workflow-transition APIs when those are in scope.
+
+If `{{PROJECT_PROMPT}}` requires CI proof, distinguish static workflow files from an actual run. A workflow file alone is not CI execution evidence.
+
+If `{{PROJECT_PROMPT}}` requires acceptance reports, generate per-stage logs as well as summary files.
+
 ## Evidence rules
 
 Do not mark a requirement as `verified` only because code exists. Verification requires the evidence requested by the prompt.
 
-Distinguish code existence, test existence, test execution, CI success for the exact commit, CI workspace reports, uploaded or committed reports, and full-suite execution.
+Distinguish code existence, test existence, test execution, CI success for the exact commit, CI workspace reports, uploaded or committed reports, per-stage logs, and full-suite execution.
 
 ## Final response contract
 
