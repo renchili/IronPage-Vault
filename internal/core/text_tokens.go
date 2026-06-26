@@ -5,6 +5,10 @@ import (
 	"unicode"
 )
 
+// ExtractMentionUsernames returns unique @mention usernames in first-seen order.
+//
+// Usernames may contain letters, digits, underscores, hyphens, and dots. The
+// boundary check avoids treating an email address or embedded token as a mention.
 func ExtractMentionUsernames(text string) []string {
 	found := map[string]bool{}
 	out := []string{}
