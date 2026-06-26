@@ -1,96 +1,122 @@
 # Prompt-Driven Project Generation Workflow
 
-Use this skill to generate or repair a software project from user-provided input. The skill is variable-driven. It describes how the assistant should transform prompt input into a plan, code, checks, evidence, and iteration.
+Use this skill to generate, repair, validate, package, or review a software project from user-provided input. When a target repository is involved, preserve repository hygiene, project structure, agent capability boundaries, and code quality.
 
-## User input slots
+## Required inputs
 
-These slots are supplied by the user or by user-uploaded material:
+- `{{PROJECT_PROMPT}}`: original prompt, issue text, uploaded metadata, README text, or equivalent requirement source.
+- `{{PROJECT_NAME}}`: optional project name when supplied.
+- `{{TARGET_REPO}}`: optional repository to create, modify, validate, or review.
+- `{{REPO_ROOT}}`: required when working in a repository; repository root for reading, writing, testing, and packaging.
+- `{{USER_GOAL}}`: generate, repair, validate, package, or review.
+- `{{CONSTRAINTS}}`: optional technical and non-goal constraints.
+- `{{USER_FEEDBACK}}`: optional latest correction or requested change.
 
-- `{{PROJECT_PROMPT}}`: required. Original prompt, uploaded metadata, issue text, README text, or equivalent requirement source.
-- `{{PROJECT_NAME}}`: optional. Project name when supplied.
-- `{{TARGET_REPO}}`: optional. Repository to create or modify.
-- `{{USER_GOAL}}`: required. Current goal: generate, repair, validate, package, or review.
-- `{{CONSTRAINTS}}`: optional. Language, framework, database, CI, deployment, security, and non-goal constraints.
-- `{{USER_FEEDBACK}}`: optional. Latest correction or requested change.
+## Repository hygiene rules
 
-## Assistant working slots
+When `{{TARGET_REPO}}` or `{{REPO_ROOT}}` is present, repository context is mandatory.
 
-These slots are produced by the assistant while working. They are not submitted by the user:
+- Treat `{{REPO_ROOT}}` as the only project root.
+- Inspect the file tree, current branch, changed files, tests, scripts, migrations, CI, Docker/deployment files, docs, and generated artifacts before planning.
+- Do not create parallel projects, sample apps, placeholder files, noop files, or unrelated generated outputs.
+- Do not place source code outside `{{REPO_ROOT}}`.
+- New files must fit existing package, directory, naming, and ownership conventions.
+- Root-level files require a clear repository-convention reason.
+- Exclude accidental files, runtime databases, caches, compiled output, temporary files, and unrelated artifacts from delivery.
 
-- `{{REQUIREMENT_LEDGER}}`: requirements extracted from `{{PROJECT_PROMPT}}`.
-- `{{DELIVERY_PLAN}}`: implementation plan generated from `{{PROJECT_PROMPT}}` and `{{CONSTRAINTS}}`.
-- `{{ASSUMPTIONS}}`: assumptions made when the prompt is incomplete.
-- `{{OPEN_QUESTIONS}}`: blocking questions only.
-- `{{CHANGE_SET}}`: files and behavior changed in the current iteration.
-- `{{EVIDENCE_MAP}}`: evidence collected by the assistant from repository files, tests, CI runs, artifacts, and reports.
+## Repository constraint rules
 
-## Interaction contract
+Before generating code for a repository, read repository constraints from existing files and structure:
 
-If a required user input slot is missing and cannot be safely inferred, ask for the smallest blocking input.
+- `AGENT.md`, when present.
+- `README.md`, when present.
+- relevant files under `docs/`, when present.
+- existing source layout, tests, scripts, migrations, CI workflows, Docker/deployment files, and artifact conventions.
 
-When `{{USER_FEEDBACK}}` changes the requirement, update `{{REQUIREMENT_LEDGER}}` and `{{DELIVERY_PLAN}}` before changing code.
+Do not replace the repository language, framework, database, build path, test runner, project layout, security model, or deployment model unless the user explicitly asks to change that direction.
 
-`{{REQUIREMENT_LEDGER}}`, `{{DELIVERY_PLAN}}`, `{{CHANGE_SET}}`, and `{{EVIDENCE_MAP}}` are assistant-owned working state. Build them from the prompt, repository, and CI evidence.
+## Development workflow rules
 
-## Generation algorithm
+For code changes inside a repository:
+
+1. Identify the base branch and current dirty state before writing.
+2. Summarize the intended file-level change set before large edits.
+3. Modify only files required by the current requirement.
+4. Keep generated code inside the existing project tree and package layout.
+5. Run repository-standard checks when available.
+6. Review the final diff for unrelated files before committing or proposing a PR.
+7. Report exact files changed, checks run, checks not run, and remaining risks.
+
+If the user asks the agent to submit code:
+
+1. Use or create a purpose-specific branch from the current base branch.
+2. Commit only the relevant project-compliant changes.
+3. Do not include unrelated cleanup, placeholder files, generated caches, local runtime state, or accidental files.
+4. Open a PR only when requested or clearly required by the task.
+5. PR body must include summary, changed files, validation, not-run checks, and known gaps.
+6. Do not merge, force-push, reset, delete branches, or publish releases without explicit user approval.
+
+## Commit message rules
+
+Use concise, reviewable commit messages:
+
+- Format: `<type>: <imperative summary>` or `<type>(<scope>): <imperative summary>`.
+- Allowed types include `feat`, `fix`, `docs`, `test`, `ci`, `refactor`, `chore`, and `skill`.
+- Summary should be specific and normally under 72 characters.
+- Use body lines when needed: `Why`, `What changed`, and `Validation`.
+- Do not use placeholder messages such as `noop`, `update`, `changes`, or `fix stuff`.
+
+## Agent operation rules
+
+- State which operations were actually executed and which were not.
+- Do not claim tests, builds, CI, container runs, deployment, commits, or PR changes succeeded without tool evidence.
+- If an environment dependency is unavailable, mark the item as `not_executed` or `ci_pending` and provide project-integrated commands or scripts.
+- Do not make repository writes that contain unrelated files, placeholder files, or cleanup noise.
+- Keep branches and commits reviewable and purpose-specific.
+- Ask before risky repository actions that rewrite or publish work.
+
+## Code generation standards
+
+- Preserve existing package boundaries and dependency direction.
+- Use existing error handling, response, logging, configuration, migration, and test conventions.
+- Add tests in the existing test layout for changed behavior.
+- Do not hard-code production secrets, local absolute paths, or machine-specific assumptions.
+- Use portable script execution such as `bash run_tests.sh` or `bash scripts/name.sh`.
+- Add comments for exported APIs, security-sensitive logic, workflow rules, non-obvious domain decisions, SQL migrations, and complex error handling.
+- Avoid comments that merely restate obvious code.
+
+## Working state
+
+- `{{REQUIREMENT_LEDGER}}`: requirements from prompt plus project and repository constraints.
+- `{{DELIVERY_PLAN}}`: plan mapped to existing project touchpoints.
+- `{{CHANGE_SET}}`: files changed in the project-compliant plan.
+- `{{EVIDENCE_MAP}}`: proof from code, tests, CI, logs, reports, and artifacts.
+
+## Algorithm
 
 1. Read `{{PROJECT_PROMPT}}`.
-2. Extract requirements into `{{REQUIREMENT_LEDGER}}`.
-3. Build `{{DELIVERY_PLAN}}`: product goal, roles, workflows, data model, API surface, security rules, tests, CI, artifacts, and acceptance checklist.
-4. Generate or modify the repository according to `{{DELIVERY_PLAN}}`.
-5. Add tests and contract checks for ledger items.
-6. Add CI and durable artifacts when evidence is required.
-7. Populate `{{EVIDENCE_MAP}}` from code, tests, CI runs, artifacts, and reports.
-8. Compare `{{EVIDENCE_MAP}}` back to `{{REQUIREMENT_LEDGER}}`.
-9. Apply `{{USER_FEEDBACK}}` as new or corrected ledger items.
-10. Repeat until required items are verified or explicitly pending.
-
-## Requirement ledger schema
-
-| Requirement | Source | Plan | Code evidence | Test evidence | CI evidence | Artifact evidence | Status |
-|---|---|---|---|---|---|---|---|
-
-Status values:
-
-- `unknown`
-- `planned`
-- `implemented`
-- `partial`
-- `missing`
-- `ci_pending`
-- `artifact_missing`
-- `verified`
-
-## Implementation acceptance rules
-
-Do not replace a required backend with a demo or proof-only implementation.
-
-If `{{PROJECT_PROMPT}}` requires a DB-backed runtime, the generated project must include persistent storage, schema or migrations, a repository/store layer, and tests that prove persisted state. In-memory state is only acceptable when the prompt explicitly asks for a prototype.
-
-If `{{PROJECT_PROMPT}}` requires a complete backend API, enumerate the required API groups in `{{REQUIREMENT_LEDGER}}` and implement each group. A small demo API must be marked `partial`.
-
-If `{{PROJECT_PROMPT}}` requires RBAC, test capability rules, workflow-state rules, object-level access, and field visibility. Capability-only tests are insufficient.
-
-If `{{PROJECT_PROMPT}}` requires document workflows, include upload/read/version behavior plus redaction, annotation, notification, audit, and workflow-transition APIs when those are in scope.
-
-If `{{PROJECT_PROMPT}}` requires CI proof, distinguish static workflow files from an actual run. A workflow file alone is not CI execution evidence.
-
-If `{{PROJECT_PROMPT}}` requires acceptance reports, generate per-stage logs as well as summary files.
+2. Resolve `{{PROJECT_NAME}}`, `{{TARGET_REPO}}`, and `{{REPO_ROOT}}` when supplied.
+3. If a repository is involved, inspect project structure, constraints, dirty state, tests, scripts, CI, deployment files, migrations, docs, and artifacts.
+4. Build `{{REQUIREMENT_LEDGER}}` with source paths and existing project touchpoints.
+5. Build `{{DELIVERY_PLAN}}` that respects project boundaries and architecture.
+6. Modify or generate only files that fit the existing project structure.
+7. Add tests using the existing test layout.
+8. Run available checks through project-standard commands.
+9. Compare evidence back to the ledger and mark anything not executed honestly.
+10. Apply `{{USER_FEEDBACK}}` as corrected ledger items and repeat until verified or explicitly pending.
 
 ## Evidence rules
 
-Do not mark a requirement as `verified` only because code exists. Verification requires the evidence requested by the prompt.
-
-Distinguish code existence, test existence, test execution, CI success for the exact commit, CI workspace reports, uploaded or committed reports, per-stage logs, and full-suite execution.
+Do not mark a requirement as `verified` only because code exists. Distinguish code existence, test existence, test execution, local acceptance, Docker build, Docker acceptance, CI for the exact commit, logs, reports, and full acceptance execution.
 
 ## Final response contract
 
 Conclusion: `<verified | partially_verified | implemented_but_evidence_missing | not_fixed>`
 
 Ledger summary:
-1. `{{REQUIREMENT}}`: `{{STATUS}}`. Evidence: `{{EVIDENCE}}`.
-2. `{{REQUIREMENT}}`: `{{STATUS}}`. Evidence: `{{EVIDENCE}}`.
-3. `{{REQUIREMENT}}`: `{{STATUS}}`. Evidence: `{{EVIDENCE}}`.
+1. `{{REQUIREMENT}}`: `{{STATUS}}`. Touchpoint: `{{EXISTING_TOUCHPOINT}}`. Evidence: `{{EVIDENCE}}`.
+2. `{{REQUIREMENT}}`: `{{STATUS}}`. Touchpoint: `{{EXISTING_TOUCHPOINT}}`. Evidence: `{{EVIDENCE}}`.
+3. `{{REQUIREMENT}}`: `{{STATUS}}`. Touchpoint: `{{EXISTING_TOUCHPOINT}}`. Evidence: `{{EVIDENCE}}`.
 
 Still pending:
 - `{{PENDING_ITEM}}`
