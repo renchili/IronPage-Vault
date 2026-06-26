@@ -6,10 +6,15 @@ import (
 	"ironpage-vault/internal/core"
 )
 
+// extractMentionUsernames keeps mention parsing centralized in core.
 func extractMentionUsernames(text string) []string {
 	return core.ExtractMentionUsernames(text)
 }
 
+// notifyMentionedUsers creates local notifications for annotation mentions.
+//
+// Missing usernames are ignored so a typo in a comment does not fail the parent
+// annotation write. The author is skipped to avoid self-notifications.
 func (a *App) notifyMentionedUsers(c echo.Context, comment string, documentID string, authorID string) {
 	for _, username := range extractMentionUsernames(comment) {
 		var user User
