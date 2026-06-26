@@ -1,12 +1,13 @@
-# Prompt-Driven Repository Generation Workflow
+# Prompt-Driven Project Generation Workflow
 
-Use this skill to generate, repair, validate, or review code inside a target repository while preserving repository hygiene, project structure, agent capability boundaries, and code quality.
+Use this skill to generate, repair, validate, package, or review a software project from user-provided input. When a target repository is involved, preserve repository hygiene, project structure, agent capability boundaries, and code quality.
 
 ## Required inputs
 
 - `{{PROJECT_PROMPT}}`: original prompt, issue text, uploaded metadata, README text, or equivalent requirement source.
-- `{{TARGET_REPO}}`: repository to generate, repair, validate, or review.
-- `{{REPO_ROOT}}`: repository root for reading, writing, testing, and packaging.
+- `{{PROJECT_NAME}}`: optional project name when supplied.
+- `{{TARGET_REPO}}`: optional repository to create, modify, validate, or review.
+- `{{REPO_ROOT}}`: required when working in a repository; repository root for reading, writing, testing, and packaging.
 - `{{USER_GOAL}}`: generate, repair, validate, package, or review.
 - `{{CONSTRAINTS}}`: optional technical and non-goal constraints.
 - `{{USER_FEEDBACK}}`: optional latest correction or requested change.
@@ -25,7 +26,7 @@ When `{{TARGET_REPO}}` or `{{REPO_ROOT}}` is present, repository context is mand
 
 ## Repository constraint rules
 
-Before generating code, read repository constraints from existing files and structure:
+Before generating code for a repository, read repository constraints from existing files and structure:
 
 - `AGENT.md`, when present.
 - `README.md`, when present.
@@ -36,7 +37,7 @@ Do not replace the repository language, framework, database, build path, test ru
 
 ## Development workflow rules
 
-For code changes inside the repository:
+For code changes inside a repository:
 
 1. Identify the base branch and current dirty state before writing.
 2. Summarize the intended file-level change set before large edits.
@@ -49,7 +50,7 @@ For code changes inside the repository:
 If the user asks the agent to submit code:
 
 1. Use or create a purpose-specific branch from the current base branch.
-2. Commit only the relevant repo-compliant changes.
+2. Commit only the relevant project-compliant changes.
 3. Do not include unrelated cleanup, placeholder files, generated caches, local runtime state, or accidental files.
 4. Open a PR only when requested or clearly required by the task.
 5. PR body must include summary, changed files, validation, not-run checks, and known gaps.
@@ -69,8 +70,8 @@ Use concise, reviewable commit messages:
 
 - State which operations were actually executed and which were not.
 - Do not claim tests, builds, CI, container runs, deployment, commits, or PR changes succeeded without tool evidence.
-- If an environment dependency is unavailable, mark the item as `not_executed` or `ci_pending` and provide repo-integrated commands or scripts.
-- Do not make repo writes that contain unrelated files, placeholder files, or cleanup noise.
+- If an environment dependency is unavailable, mark the item as `not_executed` or `ci_pending` and provide project-integrated commands or scripts.
+- Do not make repository writes that contain unrelated files, placeholder files, or cleanup noise.
 - Keep branches and commits reviewable and purpose-specific.
 - Ask before risky repository actions that rewrite or publish work.
 
@@ -86,21 +87,21 @@ Use concise, reviewable commit messages:
 
 ## Working state
 
-- `{{REQUIREMENT_LEDGER}}`: requirements from prompt plus repository constraints.
-- `{{DELIVERY_PLAN}}`: plan mapped to existing repository touchpoints.
-- `{{CHANGE_SET}}`: files changed in the repository-compliant plan.
+- `{{REQUIREMENT_LEDGER}}`: requirements from prompt plus project and repository constraints.
+- `{{DELIVERY_PLAN}}`: plan mapped to existing project touchpoints.
+- `{{CHANGE_SET}}`: files changed in the project-compliant plan.
 - `{{EVIDENCE_MAP}}`: proof from code, tests, CI, logs, reports, and artifacts.
 
 ## Algorithm
 
 1. Read `{{PROJECT_PROMPT}}`.
-2. Resolve `{{TARGET_REPO}}` and `{{REPO_ROOT}}`.
-3. Inspect repository structure, constraints, dirty state, tests, scripts, CI, deployment files, migrations, docs, and artifacts.
-4. Build `{{REQUIREMENT_LEDGER}}` with source paths and existing touchpoints.
-5. Build `{{DELIVERY_PLAN}}` that respects repository path boundaries and architecture.
-6. Modify or generate only files that fit the existing repository structure.
+2. Resolve `{{PROJECT_NAME}}`, `{{TARGET_REPO}}`, and `{{REPO_ROOT}}` when supplied.
+3. If a repository is involved, inspect project structure, constraints, dirty state, tests, scripts, CI, deployment files, migrations, docs, and artifacts.
+4. Build `{{REQUIREMENT_LEDGER}}` with source paths and existing project touchpoints.
+5. Build `{{DELIVERY_PLAN}}` that respects project boundaries and architecture.
+6. Modify or generate only files that fit the existing project structure.
 7. Add tests using the existing test layout.
-8. Run available checks through repository-standard commands.
+8. Run available checks through project-standard commands.
 9. Compare evidence back to the ledger and mark anything not executed honestly.
 10. Apply `{{USER_FEEDBACK}}` as corrected ledger items and repeat until verified or explicitly pending.
 
