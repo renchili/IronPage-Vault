@@ -35,6 +35,28 @@ Generated documents and artifacts must use names derived from the request or fro
 - When replacing or updating an existing document, preserve its file name and path unless the user explicitly requests a rename.
 - Report the final artifact path or file name exactly; do not describe a generated artifact with a different display name from the actual file.
 
+## Documentation file rules
+
+Documentation files are project artifacts and must follow repository purpose, naming, and evidence rules.
+
+- Update an existing documentation file before creating a new one when the topic already has a home.
+- Create a new documentation file only when the user asks for it, the task requires a durable record, or the repository has a matching docs convention.
+- Place documentation under the repository's existing docs path, artifact path, or requested path; do not create loose root documents without a repository-convention reason.
+- Documentation file names must follow the generated artifact naming rules and repository naming style.
+- Project documentation must distinguish requirements, implementation notes, validation evidence, checks not run, and pending items.
+- Do not use documentation to claim completion that is not backed by code, tests, CI, logs, reports, or artifacts.
+
+## Conversation record rules
+
+For multi-turn work, maintain a current working record before changing files or reporting completion.
+
+- Track user corrections, confirmed decisions, merged PRs, branch state, failed operations, successful operations, user-provided commands, and pending items.
+- Treat the latest user feedback as a constraint that overrides earlier assumptions.
+- Carry unresolved feedback forward until it is fixed, explicitly declined by the user, or marked pending with a reason.
+- If a required step must be executed by the user locally, provide exact commands and wait for the result before claiming the step is complete.
+- If correct implementation needs missing user input, ask one direct question for that input and wait before changing files or artifacts.
+- Do not offer alternate edits or scope changes for that feedback while the required user input is missing.
+
 ## Repository constraint rules
 
 Before generating code for a repository, read repository constraints from existing files and structure:
