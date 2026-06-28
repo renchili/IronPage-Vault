@@ -85,6 +85,8 @@ Use concise, reviewable commit messages:
 - Do not make repository writes that contain unrelated files, placeholder files, or cleanup noise.
 - Keep branches and commits reviewable and purpose-specific.
 - Ask before risky repository actions that rewrite or publish work.
+- When user feedback requires missing input to fix correctly, ask one direct clarification question and wait before changing files or artifacts.
+- Do not propose alternate edits or continue with a different scope while that required input is missing.
 
 ## Code generation standards
 
