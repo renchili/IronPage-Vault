@@ -24,6 +24,17 @@ When `{{TARGET_REPO}}` or `{{REPO_ROOT}}` is present, repository context is mand
 - Root-level files require a clear repository-convention reason.
 - Exclude accidental files, runtime databases, caches, compiled output, temporary files, and unrelated artifacts from delivery.
 
+## Generated artifact naming rules
+
+Generated documents and artifacts must use names derived from the request or from existing project conventions.
+
+- Do not invent arbitrary names for generated documents, reports, exports, ZIP files, PDFs, DOCX files, spreadsheets, slides, screenshots, or evidence bundles.
+- Prefer the user-provided title, project name, repository name, existing document name, task identifier, PR/issue number, or established repository artifact naming pattern.
+- If no stable name is available, use a plain descriptive fallback based on the exact deliverable type, such as `project-report.md`, `acceptance-evidence.zip`, or `api-summary.docx`.
+- Keep generated file names lowercase or repository-conventional, portable across filesystems, and free of local machine names, personal guesses, timestamps, random IDs, or marketing-style names unless explicitly requested.
+- When replacing or updating an existing document, preserve its file name and path unless the user explicitly requests a rename.
+- Report the final artifact path or file name exactly; do not describe a generated artifact with a different display name from the actual file.
+
 ## Repository constraint rules
 
 Before generating code for a repository, read repository constraints from existing files and structure:
