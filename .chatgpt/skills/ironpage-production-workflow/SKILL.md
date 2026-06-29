@@ -46,6 +46,40 @@ Documentation files are project artifacts and must follow repository purpose, na
 - Project documentation must distinguish requirements, implementation notes, validation evidence, checks not run, and pending items.
 - Do not use documentation to claim completion that is not backed by code, tests, CI, logs, reports, or artifacts.
 
+## Documentation output contract
+
+When writing or updating a documentation file, the agent must produce a reviewable project record, not a loose summary.
+
+Before writing the document:
+
+1. Resolve the exact target path from the user request, existing documentation home, repository convention, or generated artifact naming rules.
+2. If the target path cannot be resolved, ask the user for the path or document name before writing.
+3. State whether the task updates an existing document or creates a new one.
+
+A project documentation file must use this structure unless the repository already has a stricter template:
+
+1. `# {{TITLE}}`
+2. `## Purpose`
+3. `## Source inputs`
+4. `## Requirement ledger`
+5. `## Decisions and constraints`
+6. `## Implementation notes`
+7. `## Validation evidence`
+8. `## Checks not run`
+9. `## Pending items`
+10. `## Conversation record`
+
+Section rules:
+
+- `Source inputs` must list the prompt, issue, PR, existing file, uploaded file, or user message source used for the document.
+- `Requirement ledger` must map each requirement to status and evidence.
+- `Validation evidence` must cite concrete tests, CI, logs, generated artifacts, screenshots, reports, or file paths.
+- `Checks not run` must be explicit when local tests, Docker acceptance, CI, or manual checks were not executed.
+- `Pending items` must carry unresolved user feedback and missing evidence forward.
+- `Conversation record` must record only operational facts: user corrections, decisions, commands given to the user, merged PRs, failed operations, successful operations, and remaining blockers.
+
+Final response after writing a document must include the exact document path, whether it was created or updated, checks run, checks not run, and pending items.
+
 ## Conversation record rules
 
 For multi-turn work, maintain a current working record before changing files or reporting completion.
