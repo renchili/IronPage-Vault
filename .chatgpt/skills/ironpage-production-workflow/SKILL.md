@@ -46,6 +46,16 @@ Documentation files are project artifacts and must follow repository purpose, na
 - Project documentation must distinguish requirements, implementation notes, validation evidence, checks not run, and pending items.
 - Do not use documentation to claim completion that is not backed by code, tests, CI, logs, reports, or artifacts.
 
+## Default documentation outputs
+
+For project generation or repair work, use these fixed documentation targets when the repository does not define a stricter documentation convention:
+
+- `docs/api-spec.md`: API usage specification. It documents endpoints, methods, auth model, request fields, response fields, error behavior, examples, command examples, and API acceptance checks.
+- `docs/design.md`: project design and requirement implementation record. It explains the whole project design, how requirements are implemented, architecture, modules, data flow, security boundaries, workflow rules, storage model, constraints, and validation strategy.
+- `docs/questions.md`: rationale and waiting-state record. It is not a FAQ and must not be written as a question-and-answer log. It records why a decision or pause exists, what problem the choice solves, why work cannot continue yet, what user input is missing, what product or requirement point needs confirmation, and what is currently waiting.
+
+Do not merge these three document purposes into one file unless the user explicitly asks for a single document. If one of these files already exists, update it in place. If a required section has no content yet, write `None currently known` rather than inventing content. Do not record tool, platform, or agent capability failures in `docs/questions.md` unless the limitation requires user action or changes the project delivery decision.
+
 ## Documentation output contract
 
 When writing or updating a documentation file, the agent must produce a reviewable project record, not a loose summary.
