@@ -52,30 +52,41 @@ For project generation or repair work, use these fixed documentation targets whe
 
 - `docs/api-spec.md`: API usage specification. It documents endpoints, methods, auth model, request fields, response fields, error behavior, examples, command examples, and API acceptance checks.
 - `docs/design.md`: project design and requirement implementation record. It explains the whole project design, how requirements are implemented, architecture, modules, data flow, security boundaries, workflow rules, storage model, constraints, and validation strategy.
-- `docs/questions.md`: rationale and waiting-state record. It is not a FAQ and must not be written as a question-and-answer log. It records why a decision or pause exists, what problem the choice solves, why work cannot continue yet, what user input is missing, what product or requirement point needs confirmation, and what is currently waiting.
+- `docs/questions.md`: clarification answer record. It answers unclear process, acceptance, testing, runtime, delivery, usage, and verification points. It explains what the unclear point means in this project, why the answer is reasonable, and how the answer follows from user feedback, requirements, repository constraints, existing implementation, and validation goals.
 
-Do not merge these three document purposes into one file unless the user explicitly asks for a single document. If one of these files already exists, update it in place. If a required section has no content yet, write `None currently known` rather than inventing content. Do not record tool, platform, or agent capability failures in `docs/questions.md` unless the limitation requires user action or changes the project delivery decision.
+Do not merge these three document purposes into one file unless the user explicitly asks for a single document. If one of these files already exists, update it in place. If a required section has no content yet, write `None currently known` rather than inventing content. Do not record agent execution failures, tool failures, PR creation failures, or platform capability limits in `docs/questions.md`; those belong in the final response or working record, not in project clarification documentation.
 
-## Questions document quality gate
+## Questions document clarification-answer contract
 
-`docs/questions.md` must be useful to a project owner, not a low-quality list of loose questions.
+`docs/questions.md` is not a FAQ, not a question-and-answer transcript, not a discussion record, not a decision log, not an agent error log, and not a generic TODO list. It is a project clarification answer record.
 
-Each entry must include:
+A record belongs in `docs/questions.md` only when it explains a project-relevant unclear point, such as:
 
-1. `Context`: what requirement, design area, API, workflow, or delivery step this item affects.
-2. `Why this matters`: why the decision or missing input matters.
-3. `Problem it solves`: what risk, ambiguity, wrong implementation, or blocked decision it prevents.
-4. `Current position`: what is currently assumed, paused, or intentionally left open.
-5. `Needed user input`: the exact user decision, missing value, source file, approval, or command result needed.
-6. `Impact if unresolved`: what cannot be safely implemented, documented, tested, or claimed.
-7. `Next action`: who must act next and what result is expected.
+- how a process should work.
+- how acceptance should be judged.
+- how tests should prove the requirement.
+- how local, Docker, CI, or manual verification should be interpreted.
+- how an API behavior, error behavior, permission rule, workflow rule, data rule, or runtime rule should be understood.
+- how user feedback changes the correct interpretation of a requirement.
+- how an implementation detail should be understood when the repository or prompt leaves it ambiguous.
+
+Each entry must be written as an explanation, not as a question. Use this structure:
+
+1. `Clarification area`: the process, acceptance point, test point, API behavior, workflow, runtime behavior, or delivery concern being clarified.
+2. `Unclear point`: what was unclear or previously easy to misinterpret.
+3. `Clarification`: the project-specific answer.
+4. `Reasoning`: why this answer is reasonable based on user feedback, prompt requirements, repository constraints, existing implementation, security model, or validation goals.
+5. `What this resolves`: what ambiguity, incorrect implementation path, weak test, or weak acceptance claim this clarification prevents.
+6. `Effect on project`: what code behavior, documentation section, test case, acceptance evidence, or delivery claim this clarification affects.
 
 Rules:
 
-- Do not write generic items such as `Need confirmation` without explaining the affected project decision.
-- Do not write yes/no questions without rationale.
-- Do not include agent tool failures, blocked tool calls, PR creation failures, or platform limitations unless they require user action or change the project delivery decision.
-- Remove or close entries when the user provides the missing input and the item is resolved.
+- Do not write entries as questions.
+- Do not write entries as yes/no items.
+- Do not include `Next action` sections.
+- Do not include agent tool failures, blocked tool calls, PR creation failures, or platform limitations.
+- Do not copy the full chat history; summarize only the project-relevant clarification trail.
+- If the answer cannot be derived from available context, do not invent it in `docs/questions.md`; ask the user directly and wait.
 
 ## Documentation output contract
 
