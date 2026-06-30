@@ -56,6 +56,27 @@ For project generation or repair work, use these fixed documentation targets whe
 
 Do not merge these three document purposes into one file unless the user explicitly asks for a single document. If one of these files already exists, update it in place. If a required section has no content yet, write `None currently known` rather than inventing content. Do not record tool, platform, or agent capability failures in `docs/questions.md` unless the limitation requires user action or changes the project delivery decision.
 
+## Questions document quality gate
+
+`docs/questions.md` must be useful to a project owner, not a low-quality list of loose questions.
+
+Each entry must include:
+
+1. `Context`: what requirement, design area, API, workflow, or delivery step this item affects.
+2. `Why this matters`: why the decision or missing input matters.
+3. `Problem it solves`: what risk, ambiguity, wrong implementation, or blocked decision it prevents.
+4. `Current position`: what is currently assumed, paused, or intentionally left open.
+5. `Needed user input`: the exact user decision, missing value, source file, approval, or command result needed.
+6. `Impact if unresolved`: what cannot be safely implemented, documented, tested, or claimed.
+7. `Next action`: who must act next and what result is expected.
+
+Rules:
+
+- Do not write generic items such as `Need confirmation` without explaining the affected project decision.
+- Do not write yes/no questions without rationale.
+- Do not include agent tool failures, blocked tool calls, PR creation failures, or platform limitations unless they require user action or change the project delivery decision.
+- Remove or close entries when the user provides the missing input and the item is resolved.
+
 ## Documentation output contract
 
 When writing or updating a documentation file, the agent must produce a reviewable project record, not a loose summary.
@@ -153,6 +174,45 @@ Use concise, reviewable commit messages:
 - Ask before risky repository actions that rewrite or publish work.
 - When user feedback requires missing input to fix correctly, ask one direct clarification question and wait before changing files or artifacts.
 - Do not propose alternate edits or continue with a different scope while that required input is missing.
+
+## Code annotation and schema contract
+
+Code comments and API schemas are part of the deliverable, not optional cleanup.
+
+- Comments must explain intent, invariants, constraints, data contracts, error semantics, or non-obvious domain decisions.
+- Do not add comments that only restate what the next line of code already says.
+- Exported APIs, public handlers, domain rules, migrations, security-sensitive code, workflow transitions, and complex validation logic must have useful comments or annotations.
+- Go exported identifiers must follow Go documentation comment conventions, starting with the identifier name where appropriate.
+- Go HTTP API handlers must use swaggo-compatible annotations when the project exposes HTTP APIs.
+- Go swaggo annotations should include `@Summary`, `@Description`, `@Tags`, `@Accept`, `@Produce`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` when applicable.
+- Go request and response structs used by HTTP APIs must include JSON tags and field comments suitable for generated API documentation.
+- Python request, response, configuration, and persisted data contracts must use Pydantic models instead of raw untyped dictionaries when validation or external interface shape matters.
+- Python API projects must expose an OpenAPI schema and a Swagger-like documentation UI using the convention appropriate for the chosen framework.
+- For FastAPI, use its native OpenAPI generation and keep `/docs` or an equivalent Swagger UI available.
+- For Flask, use a compatible OpenAPI stack such as flask-smorest, flask-restx, apispec, or flasgger when the project does not already define a stricter convention.
+- For Django REST Framework, use a compatible OpenAPI stack such as drf-spectacular or drf-yasg when the project does not already define a stricter convention.
+- For other Python API frameworks, select the framework-compatible OpenAPI documentation approach instead of forcing FastAPI-specific assumptions.
+- Python API documentation must connect the Pydantic models, route definitions, response models, error models, examples, and generated OpenAPI schema.
+- If a repository already has a stricter OpenAPI, swaggo, Pydantic, or schema generation convention, follow the existing convention and preserve compatibility.
+
+## Logging contract
+
+Service logging is part of the deliverable. Logs must be simple to view, reasonable by default, and configurable for local, container, and production use.
+
+- Do not use ad-hoc print statements as the primary logging system.
+- Use the repository's existing logger when present.
+- Go projects should use `slog`, `zap`, `zerolog`, or the existing project logger.
+- Python projects should use `logging`, `structlog`, `loguru`, or the existing project logger.
+- Logs must support levels such as debug, info, warn, and error.
+- Log format must be configurable, with human-readable output for local development and structured JSON output for containers or production when appropriate.
+- Log destination must be configurable, with stdout or stderr as the default for container-friendly operation.
+- Runtime configuration should control log level, format, and destination through config files, flags, or environment variables.
+- Logs must include useful context such as operation, request ID, actor ID, resource ID, component, dependency name, and duration when available.
+- Logs must avoid private values, credentials, full request bodies, file contents, and other sensitive data.
+- Important lifecycle and workflow events should be logged: startup, shutdown, configuration load, request entry, auth failure, permission denial, validation failure, state transition, external dependency failure, database failure, background job start, background job completion, and background job failure.
+- Error logs must include enough context to debug the failure without exposing sensitive data.
+- `docs/design.md` must describe the logging strategy when logging behavior is added or changed.
+- `docs/api-spec.md` must document request ID, trace ID, or correlation header behavior when the API exposes or accepts those fields.
 
 ## Code generation standards
 
