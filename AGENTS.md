@@ -52,11 +52,11 @@ Do not merge those document purposes into one loose summary.
 
 Agent execution problems such as tool failures, blocked PR creation, platform limits, or failed agent actions belong in the final response or PR notes, not in `docs/questions.md`.
 
-## Python project generation contract
+## Language-neutral generation contract
 
-Python projects must be generated as a small, reviewable, runnable project, not as scattered scripts.
+The same generation constraints apply no matter which programming language or framework is used. Do not rely on Go-only, Python-only, or framework-specific assumptions unless the repository or user explicitly selects that stack.
 
-Before writing Python code, the agent must identify and state the project type:
+Before writing code, identify and state the project type:
 
 - API service
 - CLI tool
@@ -67,66 +67,95 @@ Before writing Python code, the agent must identify and state the project type:
 
 If the project type cannot be determined from the user request or repository context, ask one direct clarification question before writing files.
 
-### Python layout
+## Production, test, demo, and fixture boundaries
 
-Use the existing repository layout when present. For a new Python project, prefer a simple layout such as:
+Generated projects must keep production code, tests, examples, demos, mocks, and fixtures clearly separated.
 
-```text
-src/<package_name>/
-tests/
-pyproject.toml
-README.md
-docs/api-spec.md
-docs/design.md
-docs/questions.md
-```
+- Production runtime code must live in the repository's existing source layout or a conventional source directory.
+- Tests must live in the repository's existing test layout or a conventional test directory.
+- Test fixtures, mock data, sample files, and fake credentials must live under test, fixture, example, or docs paths, not inside production runtime paths.
+- Demo entry points must be marked as demo/example code and must not be required for production startup.
+- Do not make production behavior depend on test helpers, mocks, random sample data, or demo-only configuration.
+- Do not include test dependencies as runtime dependencies unless the ecosystem requires it and the reason is documented.
+- Do not mix acceptance scripts, manual probes, browser demo pages, or screenshot helpers into the product scope unless the user explicitly asks.
+- When a browser UI or script exists only for acceptance probing, document it as an acceptance/testing aid, not as a product frontend.
 
-Do not create multiple competing entry points or framework variants.
+## Project layout contract
 
-### Python API requirements
+Use the existing repository layout when present. For a new project, choose the smallest conventional layout for the selected language and project type.
 
-For Python API projects:
+A generated project must have clear locations for:
 
-- Use typed request, response, configuration, and persisted data contracts.
-- Use Pydantic models when validation or external interface shape matters.
-- Expose an OpenAPI schema and a Swagger-like documentation UI using the selected framework's convention.
-- For FastAPI, use native OpenAPI and keep `/docs` or an equivalent Swagger UI available.
-- For Flask, use a compatible OpenAPI stack such as flask-smorest, flask-restx, apispec, or flasgger unless the repo already has a stricter convention.
-- For Django REST Framework, use drf-spectacular or drf-yasg unless the repo already has a stricter convention.
-- For other Python API frameworks, use that framework's compatible OpenAPI documentation approach. Do not force FastAPI assumptions onto another framework.
+- production source code
+- tests
+- configuration
+- migrations or schema files, when applicable
+- scripts or task runners, when applicable
+- documentation
+- examples or fixtures, only when needed
+
+Do not create multiple competing entry points, package roots, framework variants, or parallel sample applications.
+
+## API contract across languages
+
+For API services in any language, the agent must provide a typed or schema-backed external contract appropriate for the selected ecosystem.
+
+- API routes must have documented methods, paths, auth behavior, request fields, response fields, error responses, and examples.
+- API projects must expose an OpenAPI schema or ecosystem-equivalent API schema when the framework supports it.
+- API projects should expose a Swagger-like or Redoc-like documentation UI when practical for the selected framework.
+- Request, response, error, and configuration shapes must be represented with the selected ecosystem's normal schema/model mechanism.
 - Document endpoint behavior in `docs/api-spec.md`.
 
-### Python configuration and logging
+Examples of acceptable ecosystem-specific mechanisms:
 
-Python services must have simple, visible, configurable logging:
+- Go HTTP APIs: swaggo-compatible annotations and JSON-tagged request/response structs.
+- Python APIs: Pydantic models plus framework-appropriate OpenAPI/Swagger UI, such as FastAPI native docs, flask-smorest/flask-restx/apispec/flasgger, or drf-spectacular/drf-yasg.
+- TypeScript/Node APIs: TypeScript types plus Zod, TypeBox, OpenAPI decorators, tRPC schema, or framework-supported OpenAPI generation.
+- Java/Kotlin APIs: typed DTOs plus Springdoc/OpenAPI, Swagger annotations, or framework-supported schema generation.
+- .NET APIs: typed request/response models plus Swashbuckle, NSwag, or built-in OpenAPI support.
+- Ruby APIs: typed/request validation and OpenAPI generation compatible with the chosen framework when available.
 
-- Do not use ad-hoc `print()` as the primary logging system.
-- Use `logging`, `structlog`, `loguru`, or the repository's existing logger.
-- Support log levels such as debug, info, warning, and error.
+If the framework lacks a mature OpenAPI toolchain, document the limitation in `docs/api-spec.md` and provide a manual API contract with examples.
+
+## Configuration and logging contract
+
+Services in any language must have simple, visible, configurable logging and explicit runtime configuration.
+
+- Do not use ad-hoc print statements as the primary logging system.
+- Use the selected ecosystem's standard logger or the repository's existing logger.
+- Support log levels such as debug, info, warning/warn, and error.
 - Support configurable log format, preferably human-readable locally and JSON for container or production use when appropriate.
-- Default to stdout or stderr for container-friendly operation.
-- Control log level and format through configuration or environment variables.
+- Default logs to stdout or stderr for container-friendly operation.
+- Control log level and format through configuration, flags, or environment variables.
 - Do not log secrets, tokens, private values, full request bodies, file contents, or sensitive data.
+- Configuration must be explicit and testable.
+- Prefer typed configuration models or schemas when the ecosystem supports them.
 
-Configuration must be explicit and testable. Prefer typed settings models when the project uses Pydantic or a compatible settings library.
+Document logging and configuration behavior in `docs/design.md`. Document request ID, trace ID, or correlation header behavior in `docs/api-spec.md` when the API exposes or accepts those fields.
 
-### Python validation and tests
+## Validation and test contract
 
-Python deliverables must include project-standard validation:
+Generated code must include tests and runnable validation appropriate to the selected language and project type.
 
-- unit tests for changed behavior
-- API tests for API routes when applicable
-- model validation tests for Pydantic models when applicable
-- documented commands to run tests and the app
-- clear `checks not run` when commands were not executed
+- Use the repository's existing test framework when present.
+- Add unit tests for changed behavior.
+- Add API tests for API routes when applicable.
+- Add schema/model validation tests when external contracts are modeled.
+- Add configuration tests when configuration parsing or defaults are introduced.
+- Keep tests deterministic and independent from production runtime data.
+- Document commands to run tests and start the app.
+- Clearly report checks not run when commands were not executed.
 
-Do not claim runnable status unless commands were executed or CI evidence exists.
+Do not claim runnable status unless commands were executed locally or CI evidence exists.
 
-## Go API contract
+## Language-specific minimums
 
-For Go HTTP APIs, use swaggo-compatible annotations when the project exposes HTTP handlers. Include `@Summary`, `@Description`, `@Tags`, `@Accept`, `@Produce`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` when applicable.
+Language-specific rules are examples of the language-neutral contract, not replacements for it.
 
-Go request and response structs used by HTTP APIs must include JSON tags and useful comments suitable for generated API documentation.
+- Go HTTP APIs must use swaggo-compatible annotations when the project exposes HTTP handlers. Include `@Summary`, `@Description`, `@Tags`, `@Accept`, `@Produce`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` when applicable.
+- Go request and response structs used by HTTP APIs must include JSON tags and useful comments suitable for generated API documentation.
+- Python projects must use Pydantic or an equivalent typed schema layer when validation or external interface shape matters.
+- Python API projects must use framework-appropriate OpenAPI documentation instead of forcing FastAPI assumptions onto other frameworks.
 
 ## Final response requirements
 
