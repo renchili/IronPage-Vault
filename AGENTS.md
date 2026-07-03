@@ -1,170 +1,88 @@
-# IronPage Vault Agent Bootstrap Guardrails
+# Agent Execution Bootstrap
 
-These instructions are repository-level guardrails for any agent working in this repository. They exist because project-specific Skill instructions may not be loaded automatically and may be lost after context compaction.
+This file is the repository entrypoint for agents. It tells agents what to read first, what rule sources must be respected, what may be generated or updated, and how to continue safely after context loss.
 
-## Mandatory bootstrap
+`AGENTS.md` does not replace `AGENT.md` and does not replace `.chatgpt/skills/ironpage-production-workflow/SKILL.md`.
 
-Before planning, editing, generating files, reviewing, or reporting completion, the agent must read:
+## Rule source roles
 
-1. `.chatgpt/skills/ironpage-production-workflow/SKILL.md`
-2. `README.md`, when present
-3. existing files under `docs/`, when present
-4. existing source layout, tests, scripts, CI, Docker/deployment files, migrations, and configuration files
+The rule sources have different jobs:
 
-If the Skill file cannot be read, stop and ask the user for instructions. Do not continue with guessed project rules.
+- `AGENT.md` is the IronPage Vault project-adapted agent file. It is generated from the project constraints and the referenced Skill, then specialized for this repository. It controls what IronPage Vault is and what the implementation must enforce.
+- `.chatgpt/skills/ironpage-production-workflow/SKILL.md` is the reusable workflow Skill. It controls how agents must perform repository work, including repository hygiene, documentation output, evidence, validation, branch/PR behavior, final responses, and compact-safe working records.
+- `AGENTS.md` is only the bootstrap entrypoint. It tells agents to read and obey `AGENT.md`, then apply the Skill workflow. It must not duplicate the full project specification or copy the full Skill.
 
-## Context survival after compaction
+## Required reading order
 
-After any context compaction, model switch, long pause, or new continuation, the agent must re-read this file and the Skill file before continuing repository work.
+Before planning, editing, generating files, reviewing, or reporting completion, agents must read and apply these files in order:
 
-The agent must preserve a compact working record in user-visible updates or PR notes when work spans multiple turns. The record must include:
+1. `AGENTS.md` — this bootstrap entrypoint.
+2. `AGENT.md` — IronPage Vault project rules, including product scope, domain model, architecture, security, RBAC, workflow, audit, PDF lifecycle, database, backup, API behavior, and required tests.
+3. `.chatgpt/skills/ironpage-production-workflow/SKILL.md` — agent workflow rules for repository hygiene, documentation output, evidence, validation, branch/PR behavior, final responses, and compact-safe working records.
+4. `README.md`, when present.
+5. Existing `docs/` files, when present.
+6. Existing source layout, tests, scripts, CI, Docker/deployment files, migrations, and configuration files.
 
-- current branch and base branch
-- files changed
-- user corrections that changed the requirement
-- checks run
-- checks not run
-- open risks or evidence gaps
-- user-local commands that were given and whether results were received
+If a required rule source cannot be read, stop and ask the user. Do not continue from memory or guess missing rules.
 
-Do not rely on memory alone after compaction.
+## What agents must generate or update
 
-## Repository write rules
+For repository work, generate or update only the artifacts required by the current user request, `AGENT.md`, the Skill, and existing repository conventions.
 
-- Do not write directly to `main` unless the user explicitly asks.
-- Use a purpose-specific branch for every change.
-- Do not create placeholder files, noop files, dummy files, sample projects, or unrelated artifacts.
-- Modify only files required by the current requirement.
-- Report exact file paths changed.
-- Do not claim tests, builds, CI, Docker runs, or acceptance checks passed without evidence.
+Allowed output categories are:
 
-## Documentation output contract
+- production code in the existing source layout.
+- tests in the existing test layout.
+- migrations or schema files when data shape changes.
+- configuration files when runtime behavior requires configuration.
+- scripts only when they fit the existing repository workflow or are required for validation.
+- `docs/api-spec.md` when API usage or behavior changes.
+- `docs/design.md` when architecture, implementation strategy, runtime behavior, configuration, logging, validation, or requirement mapping changes.
+- `docs/questions.md` only for clarification answers about unclear process, acceptance, testing, runtime, delivery, usage, or verification points.
+- PR notes and final responses containing evidence, checks run, checks not run, and remaining gaps.
 
-For project generation or repair work, use these documentation targets unless a stricter repository convention is already present:
+Do not generate duplicate project roots, sample applications, placeholder files, noop files, arbitrary reports, unrelated demos, or artifacts outside repository convention.
 
-- `docs/api-spec.md`: API usage specification.
-- `docs/design.md`: project design and requirement implementation explanation.
-- `docs/questions.md`: clarification answer record for unclear process, acceptance, testing, runtime, delivery, usage, and verification points.
+## What agents must obey
 
-Do not merge those document purposes into one loose summary.
+- Respect `AGENT.md` as the project-specific controlling rule source.
+- Use the Skill as the controlling workflow rule source.
+- Use existing repository structure to decide where files belong.
+- Treat the latest user feedback as the current correction or narrowed scope.
 
-`docs/questions.md` is not a FAQ, not a question-and-answer transcript, not a discussion record, not a decision log, not an agent execution log, and not a TODO list. Entries must explain unclear project-relevant points and their impact on implementation or verification.
+If these sources appear to conflict, stop and ask the user which rule controls. Do not silently choose one.
 
-Agent execution problems such as tool failures, blocked PR creation, platform limits, or failed agent actions belong in the final response or PR notes, not in `docs/questions.md`.
+## Boundary requirements
 
-## Language-neutral generation contract
+Agents must keep implementation, tests, demos, fixtures, and acceptance aids separate.
 
-The same generation constraints apply no matter which programming language or framework is used. Do not rely on Go-only, Python-only, or framework-specific assumptions unless the repository or user explicitly selects that stack.
+- Production code must not depend on test helpers, mocks, random sample data, or demo-only configuration.
+- Tests, fixtures, mocks, and sample data must stay in test, fixture, example, or docs paths.
+- Acceptance probing aids must be documented as testing aids, not product frontend scope.
+- Documentation must describe implemented behavior and verified evidence, not desired behavior without code or proof.
 
-Before writing code, identify and state the project type:
+## Context continuation
 
-- API service
-- CLI tool
-- background worker
-- library/package
-- data-processing job
-- test/demo utility
+After compaction, model switch, long pause, or a new continuation, agents must re-read this file, `AGENT.md`, and the Skill before continuing repository work.
 
-If the project type cannot be determined from the user request or repository context, ask one direct clarification question before writing files.
+A compact working record must preserve:
 
-## Production, test, demo, and fixture boundaries
-
-Generated projects must keep production code, tests, examples, demos, mocks, and fixtures clearly separated.
-
-- Production runtime code must live in the repository's existing source layout or a conventional source directory.
-- Tests must live in the repository's existing test layout or a conventional test directory.
-- Test fixtures, mock data, sample files, and fake credentials must live under test, fixture, example, or docs paths, not inside production runtime paths.
-- Demo entry points must be marked as demo/example code and must not be required for production startup.
-- Do not make production behavior depend on test helpers, mocks, random sample data, or demo-only configuration.
-- Do not include test dependencies as runtime dependencies unless the ecosystem requires it and the reason is documented.
-- Do not mix acceptance scripts, manual probes, browser demo pages, or screenshot helpers into the product scope unless the user explicitly asks.
-- When a browser UI or script exists only for acceptance probing, document it as an acceptance/testing aid, not as a product frontend.
-
-## Project layout contract
-
-Use the existing repository layout when present. For a new project, choose the smallest conventional layout for the selected language and project type.
-
-A generated project must have clear locations for:
-
-- production source code
-- tests
-- configuration
-- migrations or schema files, when applicable
-- scripts or task runners, when applicable
-- documentation
-- examples or fixtures, only when needed
-
-Do not create multiple competing entry points, package roots, framework variants, or parallel sample applications.
-
-## API contract across languages
-
-For API services in any language, the agent must provide a typed or schema-backed external contract appropriate for the selected ecosystem.
-
-- API routes must have documented methods, paths, auth behavior, request fields, response fields, error responses, and examples.
-- API projects must expose an OpenAPI schema or ecosystem-equivalent API schema when the framework supports it.
-- API projects should expose a Swagger-like or Redoc-like documentation UI when practical for the selected framework.
-- Request, response, error, and configuration shapes must be represented with the selected ecosystem's normal schema/model mechanism.
-- Document endpoint behavior in `docs/api-spec.md`.
-
-Examples of acceptable ecosystem-specific mechanisms:
-
-- Go HTTP APIs: swaggo-compatible annotations and JSON-tagged request/response structs.
-- Python APIs: Pydantic models plus framework-appropriate OpenAPI/Swagger UI, such as FastAPI native docs, flask-smorest/flask-restx/apispec/flasgger, or drf-spectacular/drf-yasg.
-- TypeScript/Node APIs: TypeScript types plus Zod, TypeBox, OpenAPI decorators, tRPC schema, or framework-supported OpenAPI generation.
-- Java/Kotlin APIs: typed DTOs plus Springdoc/OpenAPI, Swagger annotations, or framework-supported schema generation.
-- .NET APIs: typed request/response models plus Swashbuckle, NSwag, or built-in OpenAPI support.
-- Ruby APIs: typed/request validation and OpenAPI generation compatible with the chosen framework when available.
-
-If the framework lacks a mature OpenAPI toolchain, document the limitation in `docs/api-spec.md` and provide a manual API contract with examples.
-
-## Configuration and logging contract
-
-Services in any language must have simple, visible, configurable logging and explicit runtime configuration.
-
-- Do not use ad-hoc print statements as the primary logging system.
-- Use the selected ecosystem's standard logger or the repository's existing logger.
-- Support log levels such as debug, info, warning/warn, and error.
-- Support configurable log format, preferably human-readable locally and JSON for container or production use when appropriate.
-- Default logs to stdout or stderr for container-friendly operation.
-- Control log level and format through configuration, flags, or environment variables.
-- Do not log secrets, tokens, private values, full request bodies, file contents, or sensitive data.
-- Configuration must be explicit and testable.
-- Prefer typed configuration models or schemas when the ecosystem supports them.
-
-Document logging and configuration behavior in `docs/design.md`. Document request ID, trace ID, or correlation header behavior in `docs/api-spec.md` when the API exposes or accepts those fields.
-
-## Validation and test contract
-
-Generated code must include tests and runnable validation appropriate to the selected language and project type.
-
-- Use the repository's existing test framework when present.
-- Add unit tests for changed behavior.
-- Add API tests for API routes when applicable.
-- Add schema/model validation tests when external contracts are modeled.
-- Add configuration tests when configuration parsing or defaults are introduced.
-- Keep tests deterministic and independent from production runtime data.
-- Document commands to run tests and start the app.
-- Clearly report checks not run when commands were not executed.
-
-Do not claim runnable status unless commands were executed locally or CI evidence exists.
-
-## Language-specific minimums
-
-Language-specific rules are examples of the language-neutral contract, not replacements for it.
-
-- Go HTTP APIs must use swaggo-compatible annotations when the project exposes HTTP handlers. Include `@Summary`, `@Description`, `@Tags`, `@Accept`, `@Produce`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` when applicable.
-- Go request and response structs used by HTTP APIs must include JSON tags and useful comments suitable for generated API documentation.
-- Python projects must use Pydantic or an equivalent typed schema layer when validation or external interface shape matters.
-- Python API projects must use framework-appropriate OpenAPI documentation instead of forcing FastAPI assumptions onto other frameworks.
+- current branch and base branch.
+- files changed.
+- user corrections that changed the requirement.
+- checks run.
+- checks not run.
+- open risks or evidence gaps.
+- user-local commands given and whether results were received.
 
 ## Final response requirements
 
 Every final response for repository work must include:
 
-- exact files changed
-- branch name and PR number when created
-- checks run
-- checks not run
-- remaining evidence gaps or risks
+- exact files changed.
+- branch name and PR number when created.
+- checks run.
+- checks not run.
+- remaining evidence gaps or risks.
 
 Do not present generated artifacts or documentation under names different from their actual file paths.
