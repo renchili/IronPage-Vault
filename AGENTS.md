@@ -1,18 +1,27 @@
 # Agent Execution Bootstrap
 
-This file is the repository entrypoint for agents. It tells agents what to read, what to generate or update, and which rule sources control repository work.
+This file is the repository entrypoint for agents. It tells agents what to read first, what rule sources must be respected, what may be generated or updated, and how to continue safely after context loss.
 
-This file does not replace `AGENT.md` and does not replace `.chatgpt/skills/ironpage-production-workflow/SKILL.md`.
+`AGENTS.md` does not replace `AGENT.md` and does not replace `.chatgpt/skills/ironpage-production-workflow/SKILL.md`.
 
-## Rule sources
+## Rule source roles
 
-Agents must read and apply these files before planning, editing, generating files, reviewing, or reporting completion:
+The rule sources have different jobs:
 
-1. `AGENT.md` — IronPage Vault project rules. This controls the product scope, domain model, architecture, security, RBAC, workflow, audit, PDF lifecycle, database, backup, API behavior, and required tests.
-2. `.chatgpt/skills/ironpage-production-workflow/SKILL.md` — agent workflow rules. This controls repository hygiene, documentation output, evidence, validation, branch/PR behavior, final responses, and compact-safe working records.
-3. `README.md`, when present.
-4. Existing `docs/` files, when present.
-5. Existing source layout, tests, scripts, CI, Docker/deployment files, migrations, and configuration files.
+- `AGENT.md` is the IronPage Vault project-adapted agent file. It is generated from the project constraints and the referenced Skill, then specialized for this repository. It controls what IronPage Vault is and what the implementation must enforce.
+- `.chatgpt/skills/ironpage-production-workflow/SKILL.md` is the reusable workflow Skill. It controls how agents must perform repository work, including repository hygiene, documentation output, evidence, validation, branch/PR behavior, final responses, and compact-safe working records.
+- `AGENTS.md` is only the bootstrap entrypoint. It tells agents to read and obey `AGENT.md`, then apply the Skill workflow. It must not duplicate the full project specification or copy the full Skill.
+
+## Required reading order
+
+Before planning, editing, generating files, reviewing, or reporting completion, agents must read and apply these files in order:
+
+1. `AGENTS.md` — this bootstrap entrypoint.
+2. `AGENT.md` — IronPage Vault project rules, including product scope, domain model, architecture, security, RBAC, workflow, audit, PDF lifecycle, database, backup, API behavior, and required tests.
+3. `.chatgpt/skills/ironpage-production-workflow/SKILL.md` — agent workflow rules for repository hygiene, documentation output, evidence, validation, branch/PR behavior, final responses, and compact-safe working records.
+4. `README.md`, when present.
+5. Existing `docs/` files, when present.
+6. Existing source layout, tests, scripts, CI, Docker/deployment files, migrations, and configuration files.
 
 If a required rule source cannot be read, stop and ask the user. Do not continue from memory or guess missing rules.
 
@@ -36,10 +45,10 @@ Do not generate duplicate project roots, sample applications, placeholder files,
 
 ## What agents must obey
 
-- `AGENT.md` controls what IronPage Vault is and what the implementation must enforce.
-- The Skill controls how repository work is performed, documented, validated, and reported.
-- Existing repository structure controls where files belong.
-- Latest user feedback controls the current correction or narrowed scope.
+- Respect `AGENT.md` as the project-specific controlling rule source.
+- Use the Skill as the controlling workflow rule source.
+- Use existing repository structure to decide where files belong.
+- Treat the latest user feedback as the current correction or narrowed scope.
 
 If these sources appear to conflict, stop and ask the user which rule controls. Do not silently choose one.
 
