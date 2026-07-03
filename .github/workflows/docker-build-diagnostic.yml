@@ -9,7 +9,8 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'scripts/**'
-      - 'docs/**'
+      - 'migrations/**'
+      - 'public/**'
 
 permissions:
   contents: read
