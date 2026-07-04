@@ -1,6 +1,6 @@
 # Agent Execution Bootstrap
 
-This file is the mandatory repository entrypoint for agents.
+This file is the repository entrypoint for agents. It tells agents what to read first, which rule sources must be respected, what may be generated or updated, and how to continue safely after context loss.
 
 It does not define product requirements. Project-adapted rules belong in `AGENT.md`.
 It does not define reusable workflow details. Reusable workflow rules belong in `skills/**/SKILL.md`.
@@ -9,20 +9,41 @@ It does not define reusable workflow details. Reusable workflow rules belong in 
 
 Before planning, editing, generating files, reviewing, committing, opening a PR, or reporting completion, the agent must load the repository rules in this order:
 
-1. `AGENTS.md`
-2. `AGENT.md`
-3. relevant `skills/**/SKILL.md`
-4. `README.md`, when present
-5. existing `docs/`, tests, scripts, CI, deployment files, configuration files, and source layout
+- `AGENT.md` is the committed project-adapted agent rule file. It is an input rule source for downstream agents, not something they should generate during normal repository work. It controls the project-specific product, architecture, implementation, testing, and delivery constraints.
+- `.chatgpt/skills/ironpage-production-workflow/SKILL.md` is the reusable workflow Skill. It controls how agents must perform repository work, including repository hygiene, documentation output, evidence, validation, branch/PR behavior, final responses, and compact-safe working records.
+- `AGENTS.md` is only the bootstrap entrypoint. It tells agents to read and obey `AGENT.md`, then apply the Skill workflow. It must not duplicate the full project specification or copy the full Skill.
 
 `AGENT.md` is mandatory for ordinary repository work in this repository.
 
 At least one relevant Skill under `skills/**/SKILL.md` must be read when the task involves project generation, repair, validation, documentation, repository hygiene, PR creation, or final delivery.
 
-Do not use `.chatgpt/skills/...` as a repository Skill path.
-Do not hard-code a concrete Skill path in `AGENTS.md`.
+1. `AGENTS.md` — this bootstrap entrypoint.
+2. `AGENT.md` — project-adapted rules for this repository.
+3. `.chatgpt/skills/ironpage-production-workflow/SKILL.md` — reusable workflow rules for repository operations.
+4. `README.md`, when present.
+5. Existing `docs/` files, when present.
+6. Existing source layout, tests, scripts, CI, Docker/deployment files, migrations, and configuration files.
 
-## Missing `AGENT.md` behavior
+If a required rule source cannot be read, stop and ask the user. Do not continue from memory or guess missing rules. Do not return a raw tool error such as `404` as the final answer; report the missing path and wait for user confirmation.
+
+## AGENT.md handling rule
+
+Agents must treat `AGENT.md` as a checked-in project rule file.
+
+- Read and obey the existing `AGENT.md`.
+- Do not generate, regenerate, replace, summarize over, or synthesize `AGENT.md` during ordinary implementation or repair work.
+- Do not create an alternate agent rules file when `AGENT.md` is missing or unreadable.
+- If `AGENT.md` is missing or unreadable, stop and report the exact path that could not be read.
+- Modify `AGENT.md` only when the user explicitly asks to change the project-adapted agent rules.
+
+## Skill handling rule
+
+Agents must treat the Skill as a checked-in workflow rule source.
+
+- Read and apply `.chatgpt/skills/ironpage-production-workflow/SKILL.md` when available.
+- Do not generate a replacement Skill when the Skill path is missing or unreadable.
+- If the Skill path is missing or unreadable, stop and report the exact path that could not be read.
+- Modify the Skill only when the user explicitly asks to change workflow, documentation, evidence, validation, or repository-operation rules.
 
 `AGENT.md` is a checked-in project-adapted rule source. The agent must not silently continue without it.
 
