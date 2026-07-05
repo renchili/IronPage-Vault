@@ -1,13 +1,13 @@
 ---
 name: full-project-acceptance-hard-gates
-description: Generic hard-gated methodology for accepting a complete software project by deriving requirements from a spec, mapping implementation, validating repository/package hygiene, collecting test/CI/artifact evidence, classifying gaps, and issuing a pass/conditional/fail decision.
+description: Generic hard-gated methodology for accepting a complete software project by deriving requirements from a spec, mapping implementation, validating repository/package hygiene, code/document consistency, idiomatic code quality, comments, test/CI/artifact evidence, and issuing a pass/conditional/fail decision.
 ---
 
 # Full Project Acceptance Hard Gates
 
 Use this skill when the user asks for a reusable capability to accept a complete software project, generated project, ZIP package, repository, or PR output.
 
-This skill must stay project-agnostic. Do not encode project names, repository names, PR numbers, or domain-specific implementation facts into the skill. Apply the gates to the target project at runtime by reading that project's current requirements, code, tests, workflows, artifacts, docs, and package layout.
+This skill must stay project-agnostic. Do not encode project names, repository names, PR numbers, or domain-specific implementation facts into the skill. Apply the gates to the target project at runtime by reading that project's current requirements, code, tests, workflows, artifacts, docs, comments, and package layout.
 
 ## Core rule
 
@@ -18,11 +18,14 @@ A project passes only when:
 1. the original requirement is converted into a requirement matrix;
 2. every major requirement is mapped to current implementation;
 3. repository/package structure, file formats, and paths are validated;
-4. critical security and access-control behavior is verified separately;
-5. test and CI evidence is tied to the target revision or package hash;
-6. generated artifacts are inspected rather than assumed;
-7. probe runs are not confused with full-suite runs;
-8. no blocking gate fails.
+4. documentation claims are reconciled against actual implementation;
+5. code is readable, idiomatic for its language, and maintainable;
+6. comments explain non-obvious behavior and do not contradict code or docs;
+7. critical security and access-control behavior is verified separately;
+8. test and CI evidence is tied to the target revision or package hash;
+9. generated artifacts are inspected rather than assumed;
+10. probe runs are not confused with full-suite runs;
+11. no blocking gate fails.
 
 ## Evidence hierarchy
 
@@ -31,9 +34,9 @@ Prefer evidence in this order:
 1. Executed test logs and generated artifacts for the target commit/package hash.
 2. CI workflow runs, job status, and uploaded artifacts.
 3. Generated summaries committed or bundled by automation.
-4. Source code, migrations, configuration, manifests, and scripts.
+4. Source code, migrations, configuration, manifests, comments, and scripts.
 5. Static or contract guard scripts.
-6. Product, API, and operations documentation.
+6. Product, API, security, operations, and developer documentation.
 7. Manual smoke UI or manual validation surface.
 8. User-provided claim.
 9. Assistant-written summary.
@@ -55,6 +58,9 @@ source path evidence table
 test evidence table
 artifact provenance table
 repo/package hygiene table
+documentation-code consistency table
+code readability and naming table
+comment consistency table
 gap table
 final verdict
 caveats
@@ -67,7 +73,7 @@ Use only:
 ```text
 PASS          Requirement is implemented and evidence supports it.
 CONDITIONAL   Mostly acceptable, but evidence is incomplete, indirect, probe-only, or environment-limited.
-FAIL          Required behavior is missing, contradicted, or packaged incorrectly.
+FAIL          Required behavior is missing, contradicted, misleading, packaged incorrectly, or non-reproducible.
 NOT VERIFIED  Evidence was unavailable or not checked.
 N/A           Not required by the original requirement; must include reason.
 ```
@@ -81,6 +87,8 @@ P2 quality      Non-blocking improvement.
 Evidence gap    Implementation may exist, but proof is missing.
 Spec gap        Requirement wording needs clarification.
 Packaging gap   File/path/format/permission issue affects reproducibility.
+Doc-code gap    Documentation, comments, or reports contradict implementation.
+Code-quality gap Naming, structure, idiom, or comment quality harms maintainability.
 ```
 
 Any P0 blocker prevents a final PASS.
@@ -168,6 +176,7 @@ UI or manual validation, if required
 documentation
 tests, CI, and artifacts
 repository/package hygiene
+code readability and maintainability
 ```
 
 PASS requires a requirement matrix with evidence for each major item.
@@ -414,21 +423,29 @@ If a manual validation surface is required, check:
 
 FAIL if a user-facing or manual validation surface is required but neither implemented nor explicitly out of scope.
 
-## Gate 16: Documentation
+## Gate 16: Documentation and implementation consistency
+
+Documentation must describe the implementation exactly as it exists now.
 
 Must check:
 
-- setup/run docs;
-- configuration docs;
-- API docs;
-- backup/restore/operation docs;
-- security model docs;
-- test/acceptance docs;
-- known limitations;
-- docs reference paths and commands that exist;
-- docs do not claim unexecuted checks as executed evidence.
+- setup/run docs match actual commands, paths, env vars, and required services;
+- API docs match actual routes, request fields, response envelopes, status codes, auth rules, and pagination behavior;
+- security docs match actual credential handling, encryption/protection helpers, key management, masking, and audit behavior;
+- backup/restore/operation docs match actual runnable mechanisms and limitations;
+- docs do not claim tests, CI, deployment, or artifact generation that was not executed or produced;
+- known limitations are stated where behavior is proof-grade or environment-limited;
+- docs reference paths and commands that exist.
 
-FAIL if docs contradict current code on critical behavior.
+Required table:
+
+```text
+Doc claim | Document path | Implementation path | Test/artifact path | Match? | Gap
+```
+
+FAIL if documentation contradicts current code on critical behavior, overstates implemented behavior, claims unexecuted evidence as executed, or references nonexistent paths.
+
+CONDITIONAL is allowed only for minor wording drift that does not affect user-visible behavior, security, data integrity, deployment, or acceptance evidence.
 
 ## Gate 17: Repository and package layout hygiene
 
@@ -491,21 +508,59 @@ Claim | Implementation path | Test path | Artifact/log path | Exists? | Notes
 
 FAIL if material evidence depends on nonexistent, stale, or unresolved paths.
 
-## Gate 20: Source readability, comments, and generated-code boundaries
+## Gate 20: Idiomatic code readability and naming
+
+Code must be readable and idiomatic for the language/framework being used.
 
 Must check:
 
-- code has clear names and structure;
-- comments explain non-obvious security, workflow, storage, or deployment decisions;
-- comments do not contradict implementation;
-- TODO/FIXME/HACK comments are reviewed and classified;
-- generated code is identified as generated;
-- hand-written code is not hidden behind generated-output claims;
-- large copied or generated sections are not counted as design evidence without source/command.
+- variable, function, type, module, package, file, and test names follow common language conventions;
+- names describe domain intent rather than vague implementation mechanics;
+- security-sensitive names are precise and not misleading;
+- functions/classes/modules have coherent responsibility boundaries;
+- complex conditionals or workflows are decomposed into readable units;
+- tests use clear arrange/act/assert style or the idiomatic equivalent;
+- public API DTOs, config keys, env vars, and route names are consistent across code and docs;
+- generated code is separated from hand-written code and not used to hide unclear design.
 
-FAIL if comments/documentation falsely claim behavior that code does not implement, or if critical security/workflow logic is opaque and untested.
+Examples of blockers:
 
-## Gate 21: Script permissions and portable execution
+```text
+misleading variable names in security or workflow code
+ambiguous abbreviations that change meaning across files
+language-foreign naming style throughout the codebase
+large functions whose intent cannot be verified against docs/tests
+public fields named differently from docs or API contracts
+```
+
+FAIL if non-idiomatic or misleading names make critical behavior difficult to verify or contradict documented/API names.
+
+CONDITIONAL is allowed for localized naming issues that do not affect security, workflow, API contracts, persistence, or acceptance evidence.
+
+## Gate 21: Comment quality and comment-doc-code consistency
+
+Comments must be useful, accurate, and aligned with documentation and implementation.
+
+Must check:
+
+- comments explain non-obvious security, workflow, storage, deployment, compatibility, or operational decisions;
+- comments do not restate obvious code instead of explaining intent;
+- comments do not contradict code;
+- comments do not contradict docs;
+- docs do not contradict comments;
+- TODO/FIXME/HACK/XXX comments are enumerated, classified, and tied to gap severity;
+- stale comments are not treated as evidence;
+- generated files include generated markers when applicable.
+
+Required table:
+
+```text
+Comment/topic | Source path | Related doc path | Related implementation | Consistent? | Gap
+```
+
+FAIL if comments or docs falsely claim behavior that code does not implement, if stale comments hide missing behavior, or if critical security/workflow/storage logic lacks enough explanation to validate safely.
+
+## Gate 22: Script permissions and portable execution
 
 Must check every executable script:
 
@@ -522,7 +577,7 @@ FAIL if required local/regression/deployment scripts fail due to packaging permi
 
 CONDITIONAL is allowed only when the issue is caused by the review environment and the original package metadata is correct, and the report must state both facts.
 
-## Gate 22: Generated artifacts and source package contamination
+## Gate 23: Generated artifacts and source package contamination
 
 Must check source package for generated/runtime contamination:
 
@@ -547,7 +602,7 @@ Also check whether generated acceptance artifacts are intentionally bundled or n
 
 FAIL if runtime databases, caches, secrets, or misleading generated artifacts are bundled as source and could change test results or hide missing implementation.
 
-## Gate 23: Report schema and rendering quality
+## Gate 24: Report schema and rendering quality
 
 The produced acceptance report itself must be validated.
 
@@ -564,7 +619,7 @@ Must check:
 
 FAIL if the report format is malformed, unrendered, missing required tables, or internally inconsistent.
 
-## Gate 24: Final verdict
+## Gate 25: Final verdict
 
 Before final verdict, produce:
 
@@ -575,6 +630,9 @@ source path evidence table
 test evidence table
 artifact provenance table
 repo/package hygiene table
+documentation-code consistency table
+code readability and naming table
+comment consistency table
 gap severity table
 final pass, conditional, or fail statement
 ```
@@ -615,6 +673,18 @@ Final PASS is allowed only if all P0 gates pass and no required gate is NOT VERI
 | Claim | Implementation path | Test path | Artifact/log path | Exists? | Notes |
 |---|---|---|---|---|---|
 
+## Documentation-code consistency
+| Doc claim | Document path | Implementation path | Test/artifact path | Match? | Gap |
+|---|---|---|---|---|---|
+
+## Code readability and naming
+| Area | Source path | Naming/style finding | Status | Gap |
+|---|---|---|---|---|
+
+## Comment consistency
+| Comment/topic | Source path | Related doc path | Related implementation | Consistent? | Gap |
+|---|---|---|---|---|---|
+
 ## Test and artifact evidence
 | Source | Command/workflow | Full/probe | Result | Artifact/log |
 |---|---|---|---|---|
@@ -644,6 +714,9 @@ Final PASS is allowed only if all P0 gates pass and no required gate is NOT VERI
 [ ] Hard gates evaluated
 [ ] Security checked separately
 [ ] RBAC denied paths checked
+[ ] Documentation-code consistency checked
+[ ] Idiomatic naming and readability checked
+[ ] Comments checked against code and docs
 [ ] File formats checked
 [ ] Source/test/artifact paths verified
 [ ] Script permissions and nested invocations checked
