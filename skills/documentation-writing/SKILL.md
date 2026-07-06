@@ -55,6 +55,20 @@ Documentation must be evidence-backed.
 - Do not claim code, tests, Docker, CI, deployment, or acceptance checks ran unless they actually ran and evidence was captured.
 - Documentation must distinguish implemented behavior, intended requirement, validation evidence, checks not run, pending items, and risks.
 
+## Documentation evidence ledger
+
+Before writing or updating documentation, build a documentation evidence ledger. The ledger may be a working record, PR body section, or document-internal evidence section depending on the task.
+
+Each non-trivial documentation claim must map to evidence:
+
+- claim or section.
+- evidence source path, user input, command output, CI output, log, report, or artifact.
+- stable identifier when available: blob SHA, commit SHA, checksum, branch, ref, command, or run ID.
+- confidence status: verified, partially verified, not executed, unavailable, or pending user input.
+- notes about any limitation, dynamic behavior, generated source, or missing proof.
+
+Do not publish broad claims such as `secure`, `production-ready`, `fully tested`, `cloud-native`, `offline`, `encrypted`, or `role-based` unless the evidence ledger contains proof from project rules, implementation, tests, and validation output.
+
 ## Safe scan rules
 
 Scan only files needed for the documentation task.
@@ -92,6 +106,15 @@ If a target file already exists:
 - update it in place when the task is an explicit repair, merge, or repository-maintenance task and the loaded Skill says to update existing documentation.
 - ask before overwriting when the user asks to generate a standalone README or replacement document and has not granted overwrite permission.
 - preserve the file name and path unless the user explicitly requests a rename.
+
+## README target selection
+
+For README-specific work, resolve the target explicitly before writing.
+
+- Chinese only: use `README.md` when the repository uses Chinese as the primary README, unless the user requests `README.zh-CN.md`.
+- English only: use `README.md` when the repository uses English as the primary README, unless the user requests `README.en.md`.
+- Bilingual: use separate files such as `README.zh-CN.md` and `README.en.md`; create a short `README.md` index only when the repository convention supports it or the user approves.
+- Existing README: do not overwrite a standalone README generation target without permission. For repair or maintenance work, update the existing target in place when the user request and loaded Skills require it.
 
 ## README handling
 
@@ -184,6 +207,19 @@ Include Mermaid only when repository evidence shows multiple components or layer
 - Omit diagrams when evidence is weak.
 - Keep diagrams small, normally 5 to 9 nodes.
 
+## Output length control
+
+Keep generated documentation practical and reviewable.
+
+- Normal README target: 120 to 220 lines.
+- Hard README limit: 300 lines unless the user asks for exhaustive documentation.
+- Feature list: normally no more than 8 items.
+- Tech stack table: normally no more than 12 rows.
+- Directory tree: normally no more than 35 lines.
+- API table: normally no more than 20 rows; group or point to the source when larger.
+- Command list: normally no more than 8 install, run, test, build, or deploy commands unless the project requires more.
+- Do not paste long generated documents into chat unless the user explicitly asks.
+
 ## Bilingual documentation
 
 When generating both Chinese and English:
@@ -201,11 +237,13 @@ Before finalizing, verify:
 - rule metadata was captured according to `AGENTS.md`.
 - no excluded private files were read, summarized, or exposed.
 - target paths were resolved and existing-file handling was respected.
+- README target language and overwrite behavior were resolved when relevant.
 - language and project type were detected before generation.
 - commands come from manifests, scripts, docs, or clear framework conventions.
 - API entries are backed by explicit route, schema, OpenAPI, docs, or test evidence.
 - architecture and deployment claims are backed by repository evidence.
 - directory tree matches real files and excludes generated, private, dependency, and build output.
+- documentation evidence ledger covers non-trivial claims.
 - security and license notes avoid invented claims and use maintainer voice.
 - bilingual documents are factually aligned when both are generated.
 - documentation contains no placeholders.
