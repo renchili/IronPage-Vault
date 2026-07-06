@@ -1,73 +1,48 @@
 # Agent Execution Bootstrap
 
-This file is the repository entrypoint for agents. It tells agents what to read first, which rule sources must be respected, what may be generated or updated, and how to continue safely after context loss.
+This file is the mandatory repository entrypoint for agents.
 
 It does not define product requirements. Project-adapted rules belong in `AGENT.md`.
 It does not define reusable workflow details. Reusable workflow rules belong in `skills/**/SKILL.md`.
 
 ## Mandatory rule loading
 
-Before planning, editing, generating files, reviewing, committing, opening a PR, or reporting completion, the agent must load the repository rules in this order:
+Before planning, editing, generating files, reviewing, committing, opening a PR, or reporting completion, the agent must load rule sources in this order:
 
-- `AGENT.md` is the committed project-adapted agent rule file. It is an input rule source for downstream agents, not something they should generate during normal repository work. It controls the project-specific product, architecture, implementation, testing, and delivery constraints.
-- `.chatgpt/skills/ironpage-production-workflow/SKILL.md` is the reusable workflow Skill. It controls how agents must perform repository work, including repository hygiene, documentation output, evidence, validation, branch/PR behavior, final responses, and compact-safe working records.
-- `AGENTS.md` is only the bootstrap entrypoint. It tells agents to read and obey `AGENT.md`, then apply the Skill workflow. It must not duplicate the full project specification or copy the full Skill.
+1. `AGENTS.md`.
+2. `AGENT.md`.
+3. relevant `skills/**/SKILL.md`.
+4. `README.md`, when present.
+5. existing docs, tests, scripts, CI, deployment files, configuration files, and source layout.
 
 `AGENT.md` is mandatory for ordinary repository work in this repository.
 
 At least one relevant Skill under `skills/**/SKILL.md` must be read when the task involves project generation, repair, validation, documentation, repository hygiene, PR creation, or final delivery.
 
-1. `AGENTS.md` — this bootstrap entrypoint.
-2. `AGENT.md` — project-adapted rules for this repository.
-3. `.chatgpt/skills/ironpage-production-workflow/SKILL.md` — reusable workflow rules for repository operations.
-4. `README.md`, when present.
-5. Existing `docs/` files, when present.
-6. Existing source layout, tests, scripts, CI, Docker/deployment files, migrations, and configuration files.
+Do not use `.chatgpt/skills/...` as a repository Skill path.
+Do not hard-code a concrete Skill path in `AGENTS.md`.
 
-If a required rule source cannot be read, stop and ask the user. Do not continue from memory or guess missing rules. Do not return a raw tool error such as `404` as the final answer; report the missing path and wait for user confirmation.
-
-## AGENT.md handling rule
-
-Agents must treat `AGENT.md` as a checked-in project rule file.
-
-- Read and obey the existing `AGENT.md`.
-- Do not generate, regenerate, replace, summarize over, or synthesize `AGENT.md` during ordinary implementation or repair work.
-- Do not create an alternate agent rules file when `AGENT.md` is missing or unreadable.
-- If `AGENT.md` is missing or unreadable, stop and report the exact path that could not be read.
-- Modify `AGENT.md` only when the user explicitly asks to change the project-adapted agent rules.
-
-## Skill handling rule
-
-Agents must treat the Skill as a checked-in workflow rule source.
-
-- Read and apply `.chatgpt/skills/ironpage-production-workflow/SKILL.md` when available.
-- Do not generate a replacement Skill when the Skill path is missing or unreadable.
-- If the Skill path is missing or unreadable, stop and report the exact path that could not be read.
-- Modify the Skill only when the user explicitly asks to change workflow, documentation, evidence, validation, or repository-operation rules.
-
-`AGENT.md` is a checked-in project-adapted rule source. The agent must not silently continue without it.
+## Missing `AGENT.md` behavior
 
 If `AGENT.md` is missing or unreadable during ordinary implementation, repair, validation, documentation, or PR work:
 
 - stop before editing files.
 - report the exact missing or unreadable path.
-- report which operation failed, such as read, fetch, open, or parse.
+- report which operation failed.
 - ask the user whether to restore `AGENT.md`, provide the correct path, or explicitly proceed without project-adapted rules.
 - do not generate, regenerate, replace, summarize over, or synthesize `AGENT.md`.
 - do not create an alternate project rule file.
 - do not return a raw tool error such as `404` as the final answer.
 
-The only exception is when the user explicitly asks to create or modify `AGENT.md`. In that case, the agent must treat the task as rule-file work, use available user-provided project constraints and loaded Skills, and clearly mark any missing project constraints as unresolved instead of inventing them.
+The only exception is when the user explicitly asks to create or modify `AGENT.md`. In that case, treat the task as rule-file work and mark missing project constraints as unresolved instead of inventing them.
 
 ## Missing Skill behavior
 
-Repository Skills are checked-in reusable workflow rule sources under `skills/**/SKILL.md`.
-
-If the task requires a Skill and no relevant Skill can be found:
+If the task requires a Skill and no relevant Skill can be found under `skills/**/SKILL.md`:
 
 - stop before editing files.
 - report the searched path pattern: `skills/**/SKILL.md`.
-- report any candidate Skill files that were found and why they were not selected.
+- report candidate Skill files if any, and why they were not selected.
 - ask the user which Skill applies or whether a Skill should be created.
 - do not fall back to `.chatgpt/skills/...`.
 - do not invent a Skill path.
@@ -76,32 +51,28 @@ If the task requires a Skill and no relevant Skill can be found:
 If `AGENT.md` references a specific Skill path and that path is missing or unreadable:
 
 - stop before editing files.
-- report the exact referenced Skill path.
-- report the source that referenced it, such as `AGENT.md`.
+- report the exact referenced path.
+- report that `AGENT.md` referenced it.
 - ask the user to restore the Skill, correct the reference, or explicitly change the rule source.
 
-If the user explicitly asks to create, move, or modify a Skill, the agent may edit Skill files, but must keep reusable workflow rules under `skills/**/SKILL.md` and must not place reusable Skills under `.chatgpt/skills/...`.
+Reusable workflow Skills must stay under `skills/**/SKILL.md`.
 
 ## Rule metadata integrity
 
 The agent must prove which rules were loaded. A bare statement such as `read the rules` is not enough.
 
-Before editing files, the working record must include rule metadata for every loaded or missing rule source:
+Before editing files, the working record must include rule metadata for every loaded, missing, unreadable, skipped, or blocked rule source:
 
 - path.
-- role: bootstrap, project-adapted rules, reusable Skill, documentation, source layout, CI, tests, or deployment.
-- required status: required, relevant, optional, missing, unreadable, or not applicable.
-- read status: loaded, missing, unreadable, skipped with reason, or blocked with reason.
-- stable identifier when available: commit SHA, blob SHA, file checksum, or exact branch/ref.
+- role.
+- required status.
+- read status.
+- stable identifier when available: commit SHA, blob SHA, checksum, branch, or ref.
 - reason the rule source applies to the current task.
 
-The final response and PR body must include the loaded rule file paths and any missing or unreadable rule sources. If the agent cannot obtain a stable identifier for a loaded rule source, it must say so and include the branch/ref or command output used instead.
-
-Do not claim that metadata is verified unless the file was actually read and the identifier was captured from a tool response or local command.
+The final response and PR body must include loaded rule file paths and any missing, unreadable, skipped, or blocked rule sources. Do not claim metadata is verified unless the file was actually read and the identifier was captured from tool output or a local command.
 
 ## Rule source hierarchy
-
-The rule sources have different roles:
 
 - `AGENT.md` controls project-adapted constraints for this repository.
 - `skills/**/SKILL.md` controls reusable workflow behavior.
@@ -117,62 +88,59 @@ Agents must not generate, regenerate, replace, summarize over, or synthesize rep
 
 Forbidden unless the user explicitly asks to modify rule files:
 
-- generating `AGENT.md`
-- replacing `AGENT.md`
-- creating an alternate project rule file
-- generating a replacement Skill
-- inventing a Skill path
-- copying Skill content into `AGENTS.md`
-- copying project-specific content into `AGENTS.md`
-
-If `AGENT.md` or a referenced Skill is missing or unreadable, report the exact missing path and stop. Do not return a raw tool error such as `404`.
+- generating or replacing `AGENT.md`.
+- creating an alternate project rule file.
+- generating a replacement Skill.
+- inventing a Skill path.
+- copying Skill content into `AGENTS.md`.
+- copying project-specific content into `AGENTS.md`.
 
 ## Required pre-work record
 
 Before making repository changes, the agent must establish a working record containing:
 
-- current branch
-- base branch
-- loaded rule files
-- rule metadata for loaded, missing, unreadable, skipped, or blocked rule sources
-- files expected to change
-- checks expected to run
-- checks that cannot be run locally
-- open user feedback that constrains the task
+- current branch.
+- base branch.
+- loaded rule files.
+- rule metadata.
+- files expected to change.
+- checks expected to run.
+- checks that cannot be run locally.
+- open user feedback that constrains the task.
 
 If this working record cannot be established, stop before editing files.
 
 ## Allowed output boundary
 
-For repository work, the agent may only generate or update files that are required by the user request, `AGENT.md`, loaded Skills, or existing repository convention.
+For repository work, the agent may only generate or update files required by the user request, `AGENT.md`, loaded Skills, or existing repository convention.
 
 Allowed output categories:
 
-- production code in the existing source layout
-- tests in the existing test layout
-- migrations or schema files when data shape changes
-- configuration files when runtime behavior requires them
-- scripts only when they fit the existing repository workflow or are required for validation
-- documentation files required by the loaded Skill
-- PR notes and final response evidence
+- production code in the existing source layout.
+- tests in the existing test layout.
+- migrations or schema files when data shape changes.
+- configuration files when runtime behavior requires them.
+- scripts only when they fit existing repository workflow or validation needs.
+- documentation files required by loaded Skills.
+- PR notes and final response evidence.
 
 Forbidden output unless explicitly requested:
 
-- duplicate project roots
-- sample applications
-- placeholder files
-- noop files
-- arbitrary reports
-- unrelated demos
-- generated artifacts outside repository convention
-- test helpers required by production runtime
-- fixture, mock, sample, or demo data inside production runtime paths
+- duplicate project roots.
+- sample applications.
+- placeholder files.
+- noop files.
+- arbitrary reports.
+- unrelated demos.
+- generated artifacts outside repository convention.
+- test helpers required by production runtime.
+- fixture, mock, sample, or demo data inside production runtime paths.
 
 ## Documentation boundary
 
-Documentation must follow the loaded Skill and existing repository convention.
+Documentation must follow loaded Skills and existing repository convention.
 
-Do not invent documentation names when the Skill defines fixed targets.
+Do not invent documentation names when a loaded Skill defines fixed targets.
 Do not merge separate document purposes into one loose summary.
 Do not claim implemented or verified behavior unless backed by code, tests, CI, logs, reports, or artifacts.
 
@@ -182,10 +150,10 @@ After compaction, model switch, long pause, new continuation, or loss of working
 
 The agent must re-read:
 
-1. `AGENTS.md`
-2. `AGENT.md`
-3. relevant `skills/**/SKILL.md`
-4. current branch and changed files
+1. `AGENTS.md`.
+2. `AGENT.md`.
+3. relevant `skills/**/SKILL.md`.
+4. current branch and changed files.
 
 Then rebuild the working record, including rule metadata, before editing or reporting completion.
 
@@ -193,12 +161,12 @@ Then rebuild the working record, including rule metadata, before editing or repo
 
 Every final response for repository work must include:
 
-- exact files changed
-- branch name and PR number when created
-- loaded rule files with metadata identifiers when available
-- missing, unreadable, skipped, or blocked rule sources
-- checks run
-- checks not run
-- remaining evidence gaps or risks
+- exact files changed.
+- branch name and PR number when created.
+- loaded rule files with metadata identifiers when available.
+- missing, unreadable, skipped, or blocked rule sources.
+- checks run.
+- checks not run.
+- remaining evidence gaps or risks.
 
 Do not present generated artifacts or documentation under names different from their actual file paths.
