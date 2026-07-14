@@ -4,7 +4,7 @@ This document contains startup, operation, manual backend testing, and acceptanc
 
 IronPage Vault is a pure backend API project. The UI mentioned here is only a manual backend testing aid.
 
-## Start the Backend System
+## Start the backend system
 
 ```bash
 docker compose up --build
@@ -22,67 +22,39 @@ Health check:
 curl http://localhost:8080/healthz
 ```
 
-## Seed Users
+A successful local startup is not just a running process. It should also prove that the configured database connection, storage directory, and required runtime settings are available.
 
-The application creates local acceptance users on startup if they do not already exist.
+## Runtime-sensitive values
 
-| Role | Username | Password |
-|---|---|---|
-| Admin | admin | Admin123! |
-| Editor | editor | Editor123! |
-| Reviewer | reviewer | Reviewer123! |
+Do not publish reusable authentication material, signing material, encryption material, or deployment-only values in documentation.
 
-## Backend Test UI
+For secure operation, sensitive runtime values must be supplied externally through the deployment environment. Local acceptance fixture values must be treated as acceptance-only and must not be documented as safe deployment defaults.
 
-The repository includes a lightweight backend test page at:
+If the current code or Compose configuration still provides predictable local fixtures, that is a security remediation item, not a recommended usage pattern.
 
-```text
-public/manual-test.html
-```
+## Backend test UI
 
-Runtime route:
+The repository includes a lightweight backend test page served at:
 
 ```text
-http://localhost:8080/ui/manual-test.html
+http://localhost:8080/ui/
 ```
 
 This page is only for manual acceptance of backend APIs. It is not a production frontend, not a formal UI requirement, and not a separate fullstack deliverable.
 
-The page documents the main manual backend flow:
+The screenshot acceptance script verifies that `/ui/` loads and can be rendered by a headless browser. It does not prove full login interaction, retry behavior, accessibility, or API state transitions from UI clicks.
 
-1. log in as Editor
-2. upload a sample PDF
-3. list documents
-4. log in as Reviewer
-5. create annotations
-6. update annotation disposition
-7. log in as Editor
-8. stage redaction
-9. confirm redaction
-10. apply Bates numbering
-11. transition workflow
-12. finalize the document
-13. verify mutation rejection after Finalized
-14. view audit logs
-15. view notifications
-16. create backup job metadata as Admin
+## API authentication flow
 
-## Login with Curl
+Use a local acceptance identity only in an explicit acceptance environment. Do not copy fixture values into production or shared documentation.
 
-```bash
-curl -s http://localhost:8080/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -H "X-Request-ID: req_login_$(date +%s)" \
-  -d '{"username":"editor","password":"Editor123!"}'
-```
-
-Store the returned token:
+The login request returns a bearer token. Store that token locally for subsequent API calls:
 
 ```bash
 TOKEN="paste_token_here"
 ```
 
-## Authenticated Request Headers
+## Authenticated request headers
 
 Authenticated endpoints require:
 
@@ -101,7 +73,7 @@ curl -s http://localhost:8080/api/auth/me \
   -H "X-Request-Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-## Upload Sample PDF
+## Upload sample PDF
 
 ```bash
 curl -s http://localhost:8080/api/documents \
@@ -112,7 +84,7 @@ curl -s http://localhost:8080/api/documents \
   -F "file=@testdata/pdfs/sample_contract.pdf"
 ```
 
-## List Documents
+## List documents
 
 ```bash
 curl -s http://localhost:8080/api/documents \
@@ -121,7 +93,7 @@ curl -s http://localhost:8080/api/documents \
   -H "X-Request-Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-## Workflow Transition
+## Workflow transition
 
 ```bash
 curl -s http://localhost:8080/api/documents/$DOC_ID/workflow/transition \
@@ -132,22 +104,15 @@ curl -s http://localhost:8080/api/documents/$DOC_ID/workflow/transition \
   -d '{"status":"Under Review"}'
 ```
 
-## Run Tests
+## Run tests
 
 ```bash
 ./run_tests.sh
 ```
 
-The test runner should execute:
+The test runner should execute local unit/static checks and API acceptance checks, then print a summary with total, passed, and failed counts.
 
-```text
-unit_tests/
-API_tests/
-```
-
-and print a summary with total, passed, and failed counts.
-
-## Local Data Locations
+## Local data locations
 
 Inside the container:
 
@@ -159,7 +124,7 @@ Inside the container:
 
 Docker volumes are declared in `docker-compose.yml`.
 
-## Stop the System
+## Stop the system
 
 ```bash
 docker compose down
@@ -170,3 +135,7 @@ To remove local volumes during a clean re-test:
 ```bash
 docker compose down -v
 ```
+
+## Evidence boundary
+
+The usage commands above describe the intended local acceptance path. They are not a replacement for a current-HEAD full regression. When reporting validation, include the exact commit SHA, run ID, and artifact digest when available.
