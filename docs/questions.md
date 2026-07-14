@@ -1,249 +1,119 @@
 # Questions and Implementation Answers
 
-This document records practical project questions and implementation answers. It focuses on what was built, what tradeoff was made, what remains incomplete, and how the result should be reviewed.
+This document is a current project clarification-answer record. It explains how ambiguous project behavior should be understood from the current repository rules, implementation, and available validation evidence.
 
-## Q1. What is the real project scope?
+It is not a work log, not an agent-process diary, not a future cleanup checklist, and not a substitute for tests or CI evidence.
 
-IronPage Vault is a backend-first legal PDF lifecycle API. The deliverable is a local Go service with PostgreSQL metadata, filesystem PDF storage, workflow, versioning, annotations, redaction metadata, Bates processing records, audit logs, notifications, and backup records.
+## Source inputs
 
-The manual HTML page under `public/` is only a backend testing aid. It is not a production frontend and should not change the acceptance scope.
+- `AGENT.md`: project-specific product and documentation rules.
+- `README.md`: current backend scope and package map.
+- `docs/requirement-check.md`: current requirement status summary.
+- `docs/api-spec.md`: API surface documentation.
+- Current source paths under `cmd/`, `internal/`, `migrations/`, `API_tests/`, and `unit_tests/`.
+- Full project re-audit report uploaded on 2026-07-13.
 
-## Q2. What does the Docker-based delivery model mean?
+## Evidence boundary
 
-The intended build path is Docker builder. The service should be evaluated through the Docker build and compose path instead of a developer's local Go installation. This keeps acceptance isolated from local machine state.
+The strongest historical runtime evidence is the full regression run recorded in the re-audit report: GitHub Actions run `28109623265` at SHA `3522a9dfed8e38556c0cc4d4e147be14fe405a95`.
 
-The project still needs runtime verification through Docker. The code was edited but commands were not executed during these changes.
+That evidence supports the behavior captured by that run, but it is not the same as a fresh full-regression run at the current `main` HEAD. Documentation must state exact SHAs and run IDs when claiming validation evidence.
 
-## Q3. What is the difference between role access and document object access?
+## Current project scope
 
-Role access decides whether a role can call a category of endpoint. Object access decides whether that user can access that particular document.
+IronPage Vault is a backend-first legal PDF lifecycle API. The deliverable is a local Go/Echo service with PostgreSQL metadata, filesystem PDF storage, workflow, versioning, annotations, redaction metadata, Bates processing records, audit logs, notifications, and backup records.
 
-The implementation now separates these concerns. Admin has broad read access, document owners can read their own records, Reviewers can read non-Draft documents, Editors can mutate owned non-Finalized documents, and Reviewers can review non-Draft non-Finalized documents.
+The browser UI under `public/` is a backend testing aid for manual API probing and screenshot evidence. It is not a production frontend and must not expand the acceptance scope into a fullstack product.
 
-The remaining task is to keep testing every mutation route with both allowed and denied cases.
+## Docker delivery model
 
-## Q4. How should the document lifecycle be reviewed?
+The intended local acceptance path is Docker-based. The repository provides a Docker/Compose path so acceptance does not depend on a developer's local Go installation.
 
-The lifecycle is:
+The re-audit report records successful Docker build and stateful API acceptance evidence for a historical behavior-equivalent SHA. Current-HEAD acceptance still requires an exact run tied to the current default-branch SHA before documentation may claim fresh current-HEAD full regression.
+
+## Role access and object access
+
+Role access decides whether a role may call a category of endpoint. Object access decides whether that user may access a specific document.
+
+Admin, Editor, and Reviewer are the only supported roles. Admin is not automatically a document editor. Editors own document mutation flows such as upload, redaction confirmation, Bates numbering, finalization, and version actions. Reviewers retrieve non-Draft records, annotate, set dispositions, and move workflow where allowed.
+
+Documentation must not collapse role access and object access into one generic RBAC claim.
+
+## Document lifecycle
+
+The required document lifecycle is:
 
 ```text
 Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
 ```
 
-The implementation enforces ordered transitions and treats Finalized as the immutable end state. Reviewers should test the happy path, invalid transitions, finalization, and post-finalization rejection across mutating APIs.
+Finalized is the terminal immutable state. Mutating operations after Finalized must be rejected, including replacement upload, rollback, redaction, annotation changes, Bates numbering, workflow transition, and metadata mutation.
 
-## Q5. What is now complete about batch upload?
+## Batch upload
 
-Batch upload now uses the same persistence path as single upload. Each file creates a document, a version, a stored PDF file, and audit output.
+Batch upload is part of the document intake model. It must use the same persistence path as single upload: document record, version record, stored PDF file, and audit output per accepted file.
 
-It is no longer an accepted-count placeholder. The missing part is API coverage: tests should upload multiple sample files and verify the returned count and resulting document records.
+Documentation must not describe batch upload as a placeholder if current source and acceptance evidence prove persisted document/version/file side effects.
 
-## Q6. What is the current encryption status?
+## Protected data and deployment status
 
-The code includes AES-GCM helpers and unit tests. Annotation comments and redaction reasons are encrypted before storage.
+The repository contains encrypted metadata paths for sensitive annotation and redaction fields. This implementation detail is not the same as secure deployment acceptance.
 
-This is partial column-level protection, not full sensitive-field encryption. Coordinates remain numeric database columns, so the feature should not be marked complete if coordinates are considered sensitive.
+The re-audit report still blocks acceptance on unsafe runtime defaults. Documentation must not describe the project as production-ready or security-accepted until those defaults are removed or gated behind an explicit acceptance-only mode.
 
-## Q7. What is still missing from redaction?
+## Redaction status
 
-The redaction flow can stage regions, confirm a redaction, create a new version, and record audit.
+Redaction is a two-phase workflow: proposed coordinate-bound metadata is staged, then an authorized Editor confirms burn-in.
 
-It still does not perform forensic content removal. The current PDF marker helper only appends metadata-like marker bytes to a copied PDF file; it does not rewrite content streams, remove text, or prove unrecoverability.
+Current documentation must not claim marker-only redaction when the current strict PDF path and recorded Docker acceptance evidence show strict burn-in behavior and target-text removal. If a document still states marker-only behavior, that document is stale and must be rewritten or removed.
 
-Final acceptance requires a real PDF content removal engine and tests proving the removed content cannot be extracted.
+## Bates status
 
-## Q8. What does Bates processing currently provide?
+Bates processing is not metadata-only in the current implementation record. Current documentation must describe visible Bates processing and sequence allocation only when backed by strict adapter code and runtime evidence.
 
-Bates processing now creates a new document version and records the job. That is an improvement over metadata-only behavior.
+Documentation must not keep obsolete statements that Bates numbers are not visible if current strict Bates evidence says otherwise.
 
-It still does not draw visible Bates numbers on each PDF page and does not allocate cross-document batch sequences. The current PDF marker helper only appends marker bytes to the copied PDF file. The correct status is Partial until page-visible numbering exists.
+## Document comparison status
 
-## Q9. What does document comparison currently provide?
+Comparison must be described from current service behavior and evidence. Documentation must not call comparison binary-only if current code and tests expose structured text and coordinate-aware comparison behavior.
 
-Comparison now reads real version files and reports metadata and binary-level differences. It also checks that both versions are within the caller's readable document scope.
+When static source assembly prevents a complete route or field inventory, documentation must say what is directly verified and point to the source or API documentation home.
 
-It does not perform text extraction, real added/removed segment detection, page-level text comparison, or bounding-box reporting. It should remain Partial.
+## Audit and notifications
 
-## Q10. What changed in audit logging?
+Audit logs are required for material mutations and must support filtering by user, document, action type, and date range.
 
-Audit writes are no longer only direct per-handler inserts. A shared audit helper exists, and the audit list route has a filtered implementation for actor, document, action, request, source, and time-range review.
+Notifications are local in-app records. Workflow updates and annotation mentions can create notifications. Documentation must distinguish notification persistence and read acknowledgement from external delivery, which is out of scope.
 
-The audit list route must remain Admin-only. Non-Admin users should receive 403 when calling `/api/audit-logs`.
+## Backup and restore status
 
-The feature still needs API tests that create known events and then verify the filters return the expected records.
+Backup is not metadata-only in the current implementation record. The Admin backup path calls strict artifact creation and requires a PostgreSQL custom dump and tar snapshot before it reports restore support.
 
-## Q11. What changed in notifications?
+Documentation must not say that a future worker is still needed for full local backup if the current implementation already runs strict local artifacts. It may still document operational prerequisites, local backup volume access, and consistent database/filesystem recovery boundaries.
 
-Notifications remain local in PostgreSQL. Workflow updates create notifications. The helper also enforces an unread ceiling.
+## PITR status
 
-Annotation mention support was added through local username parsing. When a comment mentions another local user, the system can create an in-app notification for that user.
+The project requires point-in-time recovery documentation, but full automated WAL archiving and restore orchestration are not proven as current implementation.
 
-The remaining work is API validation of mention creation and read acknowledgement.
+PITR documentation must state the supported scope clearly: local recovery strategy and required consistency model are documented; automated physical PITR orchestration must not be claimed unless implemented and validated.
 
-## Q12. What does backup currently do?
+## API and acceptance evidence
 
-The backup run endpoint currently creates a metadata snapshot JSON file and records a completed backup job with `kind=metadata_snapshot`.
+The repository contains broad API acceptance coverage, including authentication, RBAC denials, workflow/finalization, redaction, Bates, comparison, audit, notifications, backup, restore, and UI screenshot evidence.
 
-This metadata snapshot is not a restore-capable backup. The response explicitly reports `restore_supported=false`. Final acceptance still requires a real database dump, a filesystem artifact or snapshot for stored PDFs, and a restore-oriented verification path.
+Documentation must still distinguish historical successful runs from exact current-HEAD runs. A passing historical artifact is evidence, but it is not fresh verification for a later commit.
 
-## Q13. What API coverage is still missing?
+## Manual backend UI scope
 
-Current API tests cover only part of the system. The remaining high-value coverage includes batch upload, rollback, workflow transitions, invalid transitions, finalization, redaction, annotation, Bates version creation, comparison, audit filters, notification read acknowledgement, backup execution, and finalization immutability.
+The manual UI is served at `/ui/` and is only a backend testing aid.
 
-The important point is that a missing flow should not appear as a passing suite.
+Current screenshot acceptance proves page load and screenshot generation. It does not prove login clicks, retry behavior, accessibility, keyboard focus, or full operator recovery flow. Documentation must not describe screenshot evidence as full UI E2E coverage.
 
-## Q14. How should documentation stay honest?
+## Documentation status
 
-`requirement-check.md` should describe actual status, not intended status. A handler that only creates a marker or partial artifact must not be described as complete.
+The current re-audit verdict is `FAIL` until the blocking P0 issues are fixed:
 
-Current honest statuses include:
+- unsafe runtime defaults.
+- official documentation contradictions.
 
-- Redaction: incomplete for forensic removal.
-- Bates: partial because version creation exists but visible page numbering does not.
-- Backup: partial because a metadata snapshot exists but no full dump, filesystem snapshot, or restore path exists.
-- Compare: partial because it is not text and bounding-box aware.
-- API coverage: partial because many mutating routes are not fully exercised.
-
-## Q15. What kind of tests are still needed?
-
-Helper-level unit tests are useful but insufficient. The project needs handler or API integration tests that assert database and filesystem side effects.
-
-Important side effects include document version creation, audit row creation, notification creation, object-access denial, backup job creation, workflow history creation, and Finalized immutability.
-
-## Q16. What is the current delivery status?
-
-The current delivery is stronger than a skeleton but still not final-complete.
-
-A fair label is:
-
-```text
-Partial backend implementation with improved persistence, access control, audit, notifications, and tests, but still missing compliance-grade PDF processing and sufficient E2E coverage.
-```
-
-## Q17. Why move rules and access policy out of internal/app?
-
-`internal/app` is the API adapter layer. It should own Echo routes, middleware, request binding, and response mapping. It should not own the domain policy that decides whether a role may mutate a document, whether a workflow state is final, or whether a particular principal can access a particular document.
-
-Moving pure rules and object-access policy into `internal/core` makes those decisions deterministic, framework-free, and testable without Echo or a database.
-
-## Q18. Why keep app wrapper functions temporarily?
-
-The migration is intentionally incremental. Existing handlers already call functions such as `canReadDocumentObject` and `IsValidBatesPadding` from the app package. Rewriting every handler in the same PR would create a large risky diff.
-
-The temporary wrapper strategy is:
-
-```text
-handler -> internal/app compatibility wrapper -> internal/core policy
-```
-
-The next cleanup step is:
-
-```text
-handler/service -> internal/core policy
-```
-
-After callers are moved, the app wrappers can be deleted.
-
-## Q19. Why does documentListWhereClause move to internal/store?
-
-A SQL WHERE clause is not domain policy. It is persistence/query adapter behavior. It includes database column names and SQL placeholder syntax, so `internal/core` should not emit it.
-
-It also should not remain owned by `internal/app`, because API handlers should not own query construction. The real implementation now belongs in `internal/store` as `DocumentListWhereClause`.
-
-The app package keeps a temporary wrapper only to preserve existing handler calls while larger repository functions are extracted later.
-
-## Q20. Why move crypto and digest helpers into internal/platform?
-
-Crypto and digest helpers are implementation adapters. They provide AES-GCM encryption and SHA-256 digest capabilities, but they do not decide domain policy and they do not map HTTP requests.
-
-Keeping them inside `internal/app` made the API package look like it owned encryption and file hashing. Moving the real implementations to `internal/platform` separates low-level infrastructure capability from API handling.
-
-## Q21. Why keep app crypto/digest wrappers temporarily?
-
-Existing code still calls `encryptString`, `decryptString`, and `fileDigest` from the app package. Rewriting all callers in the same PR would mix infrastructure migration with handler/service changes.
-
-The temporary wrapper strategy is:
-
-```text
-app caller -> internal/app compatibility wrapper -> internal/platform implementation
-```
-
-The follow-up cleanup is:
-
-```text
-app/service caller -> internal/platform implementation
-```
-
-Then the app wrappers can be deleted.
-
-## Q22. Why move PDF helpers into internal/platform?
-
-PDF inspection and PDF marker helpers are filesystem/PDF adapter code. They read files, validate PDF headers, count page markers, compute file digests, and write copied PDF artifacts.
-
-That is not API handler responsibility and not domain policy. The real implementation belongs in `internal/platform`.
-
-The temporary compatibility path is:
-
-```text
-app caller -> internal/app PDF wrapper -> internal/platform PDF implementation
-```
-
-The cleanup path is:
-
-```text
-app/service caller -> internal/platform PDF implementation
-```
-
-After callers move, the app wrapper can be deleted.
-
-## Q23. Why move workflow chain rules into internal/core?
-
-The workflow chain is pure domain policy:
-
-```text
-Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
-```
-
-It does not need Echo, SQL, filesystem access, or request/response mapping. Moving `NextWorkflowStatus` and `WorkflowStatusChain` into `internal/core` makes the lifecycle rule testable without API handlers.
-
-The temporary wrapper strategy is:
-
-```text
-handler -> internal/app compatibility wrapper -> internal/core workflow rule
-```
-
-The follow-up cleanup is:
-
-```text
-handler/service -> internal/core workflow rule
-```
-
-## Q24. Why move notification unread-cap policy into internal/core?
-
-The rule that decides how many unread notifications must be trimmed is deterministic domain policy:
-
-```text
-trim = unread - limit + 1 when unread >= limit
-```
-
-It does not need Echo, SQL, or HTTP response formatting. It belongs in `internal/core`.
-
-The database update that marks rows as read remains outside core because SQL and persistence side effects belong in the app/store migration path.
-
-## Q25. Why move mention parsing into internal/core?
-
-Mention parsing is pure text policy. It takes an annotation comment and returns candidate usernames. It does not need Echo, SQL, or notification persistence.
-
-The database lookup for users and the creation of notification rows remain outside core. Those side effects should later move through service/store boundaries.
-
-The temporary wrapper strategy is:
-
-```text
-annotation handler -> internal/app wrapper -> internal/core text parser
-```
-
-The follow-up cleanup is:
-
-```text
-annotation service -> internal/core text parser
-```
+This document removes stale contradictions from the clarification record, but it does not fix runtime configuration safety and does not replace a current-HEAD full regression.
