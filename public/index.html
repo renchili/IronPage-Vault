@@ -19,9 +19,8 @@
     .card h2 { margin:0 0 10px; font-size:18px; }
     code { background:rgba(148,163,184,.15); padding:2px 6px; border-radius:6px; color:#bae6fd; }
     label { display:block; color:var(--muted); margin:12px 0 6px; font-size:13px; }
-    input, select, button { width:100%; box-sizing:border-box; border-radius:10px; border:1px solid var(--line); background:#020617; color:var(--text); padding:10px 12px; }
+    input, button { width:100%; box-sizing:border-box; border-radius:10px; border:1px solid var(--line); background:#020617; color:var(--text); padding:10px 12px; }
     button { margin-top:12px; background:linear-gradient(135deg,#0284c7,#2563eb); border:0; font-weight:700; cursor:pointer; }
-    .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .output { min-height:70px; white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; background:#020617; border:1px solid var(--line); border-radius:12px; padding:12px; color:#cbd5e1; }
     .footer { margin-top:24px; border-top:1px solid var(--line); padding-top:18px; color:var(--muted); font-size:13px; }
   </style>
@@ -31,7 +30,7 @@
   <header>
     <div>
       <h1>IronPage Vault Backend Test UI</h1>
-      <p>This browser page is a manual and automated backend API testing aid. It is intentionally not a production frontend deliverable.</p>
+      <p>This browser page is an acceptance-only backend API testing aid. It is not served unless acceptance mode is explicitly enabled.</p>
     </div>
     <div class="badge" data-testid="health-badge"><span id="health-dot" class="dot"></span><span id="health-text">checking /healthz</span></div>
   </header>
@@ -39,13 +38,11 @@
   <section class="grid">
     <article class="card">
       <h2>Authentication Probe</h2>
-      <p>Uses the seeded local users to request a JWT from <code>/api/auth/login</code>.</p>
-      <label for="role">Role</label>
-      <select id="role">
-        <option value="admin">Admin</option>
-        <option value="editor">Editor</option>
-        <option value="reviewer">Reviewer</option>
-      </select>
+      <p>Enter an acceptance identity supplied by the current test environment. No credentials are embedded in this page.</p>
+      <label for="username">Username</label>
+      <input id="username" autocomplete="username" placeholder="acceptance username">
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="acceptance password">
       <button id="login-button" type="button">Run login probe</button>
       <div id="login-output" class="output" data-testid="login-output">not run</div>
     </article>
@@ -68,10 +65,9 @@
     </article>
   </section>
 
-  <div class="footer">Generated for backend acceptance evidence only. Static assets are served from <code>/ui/</code>.</div>
+  <div class="footer">Acceptance evidence only. Static assets are served from <code>/ui/</code> only in explicit acceptance mode.</div>
 </main>
 <script>
-const passwords = { admin: 'Admin123!', editor: 'Editor123!', reviewer: 'Reviewer123!' };
 async function health() {
   const dot = document.getElementById('health-dot');
   const text = document.getElementById('health-text');
@@ -89,19 +85,24 @@ async function health() {
   }
 }
 async function loginProbe() {
-  const role = document.getElementById('role').value;
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
   const output = document.getElementById('login-output');
+  if (!username || !password) {
+    output.textContent = 'enter an acceptance username and password';
+    return;
+  }
   output.textContent = 'running...';
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'X-Request-ID':'ui-'+Date.now()},
-      body: JSON.stringify({username: role, password: passwords[role]})
+      body: JSON.stringify({username, password})
     });
     const json = await res.json();
     output.textContent = JSON.stringify({status: res.status, role: json.user && json.user.role, token_type: json.token_type}, null, 2);
   } catch (err) {
-    output.textContent = String(err);
+    output.textContent = 'request failed';
   }
 }
 document.getElementById('login-button').addEventListener('click', loginProbe);
