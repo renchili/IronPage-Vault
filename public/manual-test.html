@@ -11,9 +11,9 @@ body{font-family:Arial,sans-serif;margin:0;background:#f6f7fb;color:#1f2937}.wra
 <body>
 <div class="wrap">
 <h1>IronPage Vault Backend Test UI</h1>
-<p class="note">This page is only a manual backend API testing aid. It is not a production frontend and not part of the product UI scope.</p>
+<p class="note">This page is an acceptance-only backend API testing aid. It contains no built-in credentials and is not served unless acceptance mode is enabled.</p>
 <div class="grid">
-<div class="card"><h2>Login</h2><select id="role"><option value="admin">admin</option><option value="editor" selected>editor</option><option value="reviewer">reviewer</option></select><input id="secret" type="password" value="Editor123!"><button onclick="login()">Login</button><button onclick="me()">GET /api/auth/me</button></div>
+<div class="card"><h2>Login</h2><input id="username" autocomplete="username" placeholder="acceptance username"><input id="secret" type="password" autocomplete="current-password" placeholder="acceptance password"><button onclick="login()">Login</button><button onclick="me()">GET /api/auth/me</button></div>
 <div class="card"><h2>Document</h2><input id="title" value="Manual Test Contract"><input id="pdf" type="file" accept="application/pdf"><button onclick="upload()">Upload PDF</button><button onclick="listDocs()">List Documents</button><input id="docId" placeholder="document id"></div>
 <div class="card"><h2>Annotation</h2><textarea id="comment">Manual reviewer note</textarea><button onclick="annotate()">Create Annotation</button><input id="annotationId" placeholder="annotation id"><button onclick="approveAnnotation()">Approve Annotation</button></div>
 <div class="card"><h2>Redaction / Bates</h2><div class="row"><input id="rx" value="10"><input id="ry" value="20"></div><div class="row"><input id="rw" value="100"><input id="rh" value="40"></div><button onclick="stageRedaction()">Stage Redaction</button><input id="redactionId" placeholder="redaction id"><button onclick="confirmRedaction()">Confirm Redaction</button><button onclick="bates()">Create Bates Job</button></div>
@@ -29,7 +29,7 @@ function ts(){return new Date().toISOString()}
 function h(json=true){let x={'X-Request-ID':rid(),'X-Request-Timestamp':ts()}; if(token)x.Authorization='Bearer '+token; if(json)x['Content-Type']='application/json'; return x}
 function show(v){out.textContent=typeof v==='string'?v:JSON.stringify(v,null,2)}
 async function call(path,opt={}){let r=await fetch(path,opt); let t=await r.text(); try{let j=JSON.parse(t); show({status:r.status,body:j}); return j}catch(e){show({status:r.status,body:t}); return {}}}
-async function login(){let user=role.value; let body={username:user,password:secret.value}; let j=await call('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json','X-Request-ID':rid()},body:JSON.stringify(body)}); token=j.token||''}
+async function login(){if(!username.value||!secret.value){show('enter an acceptance username and password');return}let body={username:username.value,password:secret.value};let j=await call('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json','X-Request-ID':rid()},body:JSON.stringify(body)});token=j.token||''}
 async function me(){return call('/api/auth/me',{headers:h(false)})}
 async function upload(){let f=pdf.files[0]; if(!f){show('choose a PDF first'); return} let fd=new FormData(); fd.append('title',title.value); fd.append('file',f); let j=await call('/api/documents',{method:'POST',headers:h(false),body:fd}); if(j.data&&j.data.id)docId.value=j.data.id}
 async function listDocs(){return call('/api/documents',{headers:h(false)})}

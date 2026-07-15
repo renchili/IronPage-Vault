@@ -6,6 +6,20 @@ ACCEPTANCE_IMAGE=${ACCEPTANCE_IMAGE:-ironpage-vault-ci-acceptance}
 HOST_HEALTH_URL=${HOST_HEALTH_URL:-http://localhost:8080/healthz}
 CONTAINER_BASE_URL=${CONTAINER_BASE_URL:-http://ironpage:8080}
 
+random_hex() {
+  od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
+}
+
+# Acceptance identities and runtime secrets are generated for this execution.
+# They are not application defaults and are not persisted in the repository.
+export DB_PASSWORD=${DB_PASSWORD:-$(random_hex)}
+export JWT_SECRET=${JWT_SECRET:-$(random_hex)}
+export AES_KEY=${AES_KEY:-$(random_hex)}
+export ACCEPTANCE_MODE=true
+export SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-$(random_hex)}
+export SEED_EDITOR_PASSWORD=${SEED_EDITOR_PASSWORD:-$(random_hex)}
+export SEED_REVIEWER_PASSWORD=${SEED_REVIEWER_PASSWORD:-$(random_hex)}
+
 docker compose build "$APP_SERVICE"
 docker compose up -d "$APP_SERVICE"
 
@@ -43,7 +57,12 @@ fi
 
 docker build -f ci/Dockerfile.acceptance -t "$ACCEPTANCE_IMAGE" .
 
-if ! docker run --rm --network "$network" -e BASE_URL="$CONTAINER_BASE_URL" "$ACCEPTANCE_IMAGE"; then
+if ! docker run --rm --network "$network" \
+  -e BASE_URL="$CONTAINER_BASE_URL" \
+  -e SEED_ADMIN_PASSWORD="$SEED_ADMIN_PASSWORD" \
+  -e SEED_EDITOR_PASSWORD="$SEED_EDITOR_PASSWORD" \
+  -e SEED_REVIEWER_PASSWORD="$SEED_REVIEWER_PASSWORD" \
+  "$ACCEPTANCE_IMAGE"; then
   echo "Docker acceptance failed; dumping compose logs"
   docker compose logs --no-color || true
   exit 1

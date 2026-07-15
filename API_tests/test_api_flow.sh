@@ -6,6 +6,10 @@ FAIL=0
 
 . API_tests/lib.sh
 
+: "${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD is required for acceptance tests}"
+: "${SEED_EDITOR_PASSWORD:?SEED_EDITOR_PASSWORD is required for acceptance tests}"
+: "${SEED_REVIEWER_PASSWORD:?SEED_REVIEWER_PASSWORD is required for acceptance tests}"
+
 login_and_store() {
   local user="$1"
   local secret="$2"
@@ -20,14 +24,13 @@ login_and_store() {
   json_field token > "$out"
 }
 
-login_and_store admin 'Admin123!' /tmp/ironpage_admin_token.out
-login_and_store editor 'Editor123!' /tmp/ironpage_editor_token.out
-login_and_store reviewer 'Reviewer123!' /tmp/ironpage_reviewer_token.out
+login_and_store admin "$SEED_ADMIN_PASSWORD" /tmp/ironpage_admin_token.out
+login_and_store editor "$SEED_EDITOR_PASSWORD" /tmp/ironpage_editor_token.out
+login_and_store reviewer "$SEED_REVIEWER_PASSWORD" /tmp/ironpage_reviewer_token.out
 
 export ADMIN_TOKEN="$(cat /tmp/ironpage_admin_token.out)"
 export EDITOR_TOKEN="$(cat /tmp/ironpage_editor_token.out)"
 export REVIEWER_TOKEN="$(cat /tmp/ironpage_reviewer_token.out)"
-
 
 run_case() {
   local name="$1"

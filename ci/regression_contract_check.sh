@@ -48,6 +48,18 @@ PY
 
 grep -q 'Overall: \*\*FAILED\*\*' "$probe_dir/summary.md"
 
+# The Docker acceptance runner must generate execution-scoped runtime values,
+# explicitly enable acceptance mode, and pass fixture values into the test
+# container instead of depending on application defaults.
+grep -q 'random_hex' ci/docker_acceptance.sh
+grep -q 'export ACCEPTANCE_MODE=true' ci/docker_acceptance.sh
+grep -q 'export DB_PASSWORD=' ci/docker_acceptance.sh
+grep -q 'export JWT_SECRET=' ci/docker_acceptance.sh
+grep -q 'export AES_KEY=' ci/docker_acceptance.sh
+grep -q -- '-e SEED_ADMIN_PASSWORD=' ci/docker_acceptance.sh
+grep -q -- '-e SEED_EDITOR_PASSWORD=' ci/docker_acceptance.sh
+grep -q -- '-e SEED_REVIEWER_PASSWORD=' ci/docker_acceptance.sh
+
 docker build -f ci/Dockerfile.acceptance -t ironpage-vault-ci-acceptance-contract .
 docker run --rm --entrypoint bash ironpage-vault-ci-acceptance-contract -lc '
   test -f internal/service/pdf.go
