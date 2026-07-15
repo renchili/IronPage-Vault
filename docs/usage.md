@@ -1,8 +1,18 @@
 # Usage and Acceptance Guide
 
-This document contains startup, operation, manual backend testing, and acceptance commands. The README focuses on project purpose and implementation.
+This document contains startup, operation, manual backend testing, and acceptance commands. IronPage Vault is a pure backend API project. The browser UI is an acceptance-only backend testing aid.
 
-IronPage Vault is a pure backend API project. The UI mentioned here is only a manual backend testing aid.
+## Supply required runtime values
+
+The service does not provide fallback database, signing, or encryption values. Supply them externally before startup:
+
+```bash
+export DB_PASSWORD='<strong local database password>'
+export JWT_SECRET='<at least 32 characters of local signing material>'
+export AES_KEY='<at least 32 characters of local encryption material>'
+```
+
+Do not commit or publish the actual values.
 
 ## Start the backend system
 
@@ -22,36 +32,44 @@ Health check:
 curl http://localhost:8080/healthz
 ```
 
-A successful local startup is not just a running process. It should also prove that the configured database connection, storage directory, and required runtime settings are available.
+A successful local startup proves that configuration validation passed, PostgreSQL is reachable, the storage and backup directories are available, and the health endpoint returns an OK status.
 
-## Runtime-sensitive values
+## Default operating mode
 
-Do not publish reusable authentication material, signing material, encryption material, or deployment-only values in documentation.
+Default mode does not create acceptance identities and does not serve the backend test UI. Seed-user variables are not accepted unless acceptance mode is explicitly enabled.
 
-For secure operation, sensitive runtime values must be supplied externally through the deployment environment. Local acceptance fixture values must be treated as acceptance-only and must not be documented as safe deployment defaults.
+## Explicit acceptance mode
 
-If the current code or Compose configuration still provides predictable local fixtures, that is a security remediation item, not a recommended usage pattern.
+For an isolated acceptance run, supply temporary fixture values and explicitly enable the mode:
+
+```bash
+export ACCEPTANCE_MODE=true
+export SEED_ADMIN_PASSWORD='<acceptance-only value>'
+export SEED_EDITOR_PASSWORD='<acceptance-only value>'
+export SEED_REVIEWER_PASSWORD='<acceptance-only value>'
+docker compose up --build
+```
+
+The CI acceptance script generates these values for each execution. They are not stored in the repository.
 
 ## Backend test UI
 
-The repository includes a lightweight backend test page served at:
+When acceptance mode is enabled, the backend test page is served at:
 
 ```text
 http://localhost:8080/ui/
 ```
 
-This page is only for manual acceptance of backend APIs. It is not a production frontend, not a formal UI requirement, and not a separate fullstack deliverable.
+The page contains blank username and password fields. It does not embed acceptance credentials.
 
 The screenshot acceptance script verifies that `/ui/` loads and can be rendered by a headless browser. It does not prove full login interaction, retry behavior, accessibility, or API state transitions from UI clicks.
 
 ## API authentication flow
 
-Use a local acceptance identity only in an explicit acceptance environment. Do not copy fixture values into production or shared documentation.
-
-The login request returns a bearer token. Store that token locally for subsequent API calls:
+Use a local identity supplied by the current deployment or acceptance environment. The login response returns a bearer token. Store it locally for subsequent requests:
 
 ```bash
-TOKEN="paste_token_here"
+TOKEN='paste_token_here'
 ```
 
 ## Authenticated request headers
@@ -106,11 +124,18 @@ curl -s http://localhost:8080/api/documents/$DOC_ID/workflow/transition \
 
 ## Run tests
 
+Local unit and static checks:
+
 ```bash
-./run_tests.sh
+go test ./...
+bash unit_tests/test_rules.sh
 ```
 
-The test runner should execute local unit/static checks and API acceptance checks, then print a summary with total, passed, and failed counts.
+Docker/API acceptance, including generated temporary runtime and fixture values:
+
+```bash
+bash ci/docker_acceptance.sh
+```
 
 ## Local data locations
 
@@ -138,4 +163,4 @@ docker compose down -v
 
 ## Evidence boundary
 
-The usage commands above describe the intended local acceptance path. They are not a replacement for a current-HEAD full regression. When reporting validation, include the exact commit SHA, run ID, and artifact digest when available.
+These commands describe the supported local path. They are not a replacement for a current-HEAD full regression. Validation reports must include the exact commit SHA, run ID, and artifact digest when available.
