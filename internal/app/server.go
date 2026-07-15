@@ -28,6 +28,9 @@ func MustRun(cfg Config) {
 }
 
 func Run(cfg Config) error {
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid runtime configuration: %w", err)
+	}
 	if err := os.MkdirAll(cfg.StorageDir, 0750); err != nil {
 		return err
 	}
@@ -41,8 +44,10 @@ func Run(cfg Config) error {
 	if err := RunMigrations(db, cfg.MigrationsDir); err != nil {
 		return err
 	}
-	if err := EnsureSeedUsers(context.Background(), db, cfg); err != nil {
-		return err
+	if cfg.AcceptanceMode {
+		if err := EnsureSeedUsers(context.Background(), db, cfg); err != nil {
+			return err
+		}
 	}
 	a := &App{cfg: cfg, db: db}
 	a.startBackupScheduler()
@@ -52,7 +57,9 @@ func Run(cfg Config) error {
 	e.Use(middleware.Recover())
 	e.Use(a.requestIDMiddleware)
 	e.GET("/healthz", a.health)
-	e.Static("/ui", cfg.PublicDir)
+	if cfg.AcceptanceMode {
+		e.Static("/ui", cfg.PublicDir)
+	}
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 	e.POST("/api/auth/login", a.login)
 
