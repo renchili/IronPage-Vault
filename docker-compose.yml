@@ -6,17 +6,23 @@ services:
       - "8080:8080"
     environment:
       POSTGRES_USER: ironpage
-      POSTGRES_PASSWORD: ironpage
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       POSTGRES_DB: ironpage
       DB_HOST: 127.0.0.1
       DB_PORT: 5432
       DB_USER: ironpage
-      DB_PASSWORD: ironpage
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       DB_NAME: ironpage
-      JWT_SECRET: local-compose-jwt-secret-change-me
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      AES_KEY: ${AES_KEY:?AES_KEY is required}
+      ACCEPTANCE_MODE: ${ACCEPTANCE_MODE:-false}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_EDITOR_PASSWORD: ${SEED_EDITOR_PASSWORD:-}
+      SEED_REVIEWER_PASSWORD: ${SEED_REVIEWER_PASSWORD:-}
       STORAGE_DIR: /var/lib/ironpage/storage
       BACKUP_DIR: /var/lib/ironpage/backups
       MIGRATIONS_DIR: /opt/ironpage/migrations
+      PUBLIC_DIR: /opt/ironpage/public
       HTTP_ADDR: :8080
     volumes:
       - ironpage_pgdata:/var/lib/postgresql/data
