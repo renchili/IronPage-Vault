@@ -1,20 +1,37 @@
 # Usage and Acceptance Guide
 
-This document contains startup, operation, manual backend testing, and acceptance commands. IronPage Vault is a pure backend API project. The browser UI is an acceptance-only backend testing aid.
+This document covers secure startup, API use, and isolated acceptance runs. IronPage Vault is a pure backend API project. The browser UI is an acceptance-only backend testing aid.
 
-## Supply required runtime values
+## Required runtime configuration
 
-The service does not provide fallback database, signing, or encryption values. Supply them externally before startup:
+Supply these values externally before startup:
 
-```bash
-export DB_PASSWORD='<strong local database password>'
-export JWT_SECRET='<at least 32 characters of local signing material>'
-export AES_KEY='<at least 32 characters of local encryption material>'
+```text
+DB_PASSWORD
+JWT_SECRET
+AES_KEY
 ```
 
-Do not commit or publish the actual values.
+The service provides no fallback values for them.
 
-## Start the backend system
+## First normal-mode startup
+
+A new empty database also requires this pair:
+
+```text
+BOOTSTRAP_ADMIN_USERNAME
+BOOTSTRAP_ADMIN_PASSWORD
+```
+
+Start the service:
+
+```bash
+docker compose up --build
+```
+
+The pair creates one initial Admin only when the user table is empty. After verifying the account and creating the required local users, remove the bootstrap pair from the deployment environment. An existing user database does not require it.
+
+## Subsequent normal-mode startup
 
 ```bash
 docker compose up --build
@@ -32,47 +49,40 @@ Health check:
 curl http://localhost:8080/healthz
 ```
 
-A successful local startup proves that configuration validation passed, PostgreSQL is reachable, the storage and backup directories are available, and the health endpoint returns an OK status.
+A successful startup means runtime configuration passed validation, PostgreSQL is reachable, local data paths are available, and the health endpoint returns OK.
 
-## Default operating mode
-
-Default mode does not create acceptance identities and does not serve the backend test UI. Seed-user variables are not accepted unless acceptance mode is explicitly enabled.
+Normal mode does not create acceptance users and does not serve the backend test UI.
 
 ## Explicit acceptance mode
 
-For an isolated acceptance run, supply temporary fixture values and explicitly enable the mode:
+An isolated acceptance run uses:
 
-```bash
-export ACCEPTANCE_MODE=true
-export SEED_ADMIN_PASSWORD='<acceptance-only value>'
-export SEED_EDITOR_PASSWORD='<acceptance-only value>'
-export SEED_REVIEWER_PASSWORD='<acceptance-only value>'
-docker compose up --build
+```text
+ACCEPTANCE_MODE=true
+SEED_ADMIN_PASSWORD
+SEED_EDITOR_PASSWORD
+SEED_REVIEWER_PASSWORD
 ```
 
-The CI acceptance script generates these values for each execution. They are not stored in the repository.
+All three fixture values must be supplied externally. The CI acceptance script generates execution-scoped values. Bootstrap Admin variables and acceptance fixture variables cannot be used together.
 
 ## Backend test UI
 
-When acceptance mode is enabled, the backend test page is served at:
+Only acceptance mode serves:
 
 ```text
 http://localhost:8080/ui/
 ```
 
-The page contains blank username and password fields. It does not embed acceptance credentials.
-
-The screenshot acceptance script verifies that `/ui/` loads and can be rendered by a headless browser. It does not prove full login interaction, retry behavior, accessibility, or API state transitions from UI clicks.
+The page contains blank identity fields and no embedded credentials. Screenshot acceptance proves rendering only; it does not prove complete UI interaction or recovery behavior.
 
 ## API authentication flow
 
-Use a local identity supplied by the current deployment or acceptance environment. The login response returns a bearer token. Store it locally for subsequent requests:
+Use an identity supplied by the current local deployment. Store the returned bearer token locally:
 
 ```bash
 TOKEN='paste_token_here'
 ```
-
-## Authenticated request headers
 
 Authenticated endpoints require:
 
@@ -131,7 +141,7 @@ go test ./...
 bash unit_tests/test_rules.sh
 ```
 
-Docker/API acceptance, including generated temporary runtime and fixture values:
+Docker/API acceptance with generated execution-scoped fixture values:
 
 ```bash
 bash ci/docker_acceptance.sh
@@ -139,23 +149,19 @@ bash ci/docker_acceptance.sh
 
 ## Local data locations
 
-Inside the container:
-
 ```text
 /var/lib/postgresql/data
 /var/lib/ironpage/storage
 /var/lib/ironpage/backups
 ```
 
-Docker volumes are declared in `docker-compose.yml`.
-
-## Stop the system
+## Stop and reset
 
 ```bash
 docker compose down
 ```
 
-To remove local volumes during a clean re-test:
+Clean local re-test:
 
 ```bash
 docker compose down -v
@@ -163,4 +169,4 @@ docker compose down -v
 
 ## Evidence boundary
 
-These commands describe the supported local path. They are not a replacement for a current-HEAD full regression. Validation reports must include the exact commit SHA, run ID, and artifact digest when available.
+These commands describe the supported local path. Validation reports must still identify the exact commit SHA, run ID, and artifact digest when available.
