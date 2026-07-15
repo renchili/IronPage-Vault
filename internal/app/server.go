@@ -44,10 +44,8 @@ func Run(cfg Config) error {
 	if err := RunMigrations(db, cfg.MigrationsDir); err != nil {
 		return err
 	}
-	if cfg.AcceptanceMode {
-		if err := EnsureSeedUsers(context.Background(), db, cfg); err != nil {
-			return err
-		}
+	if err := EnsureInitialUsers(context.Background(), db, cfg); err != nil {
+		return err
 	}
 	a := &App{cfg: cfg, db: db}
 	a.startBackupScheduler()
