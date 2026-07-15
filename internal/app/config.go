@@ -10,32 +10,32 @@ import (
 
 // Config contains runtime settings for the local IronPage Vault service.
 type Config struct {
-	HTTPAddr              string
-	DBHost                string
-	DBPort                string
-	DBUser                string
-	DBPassword            string
-	DBName                string
-	JWTSecret             string
-	AESKey                string
-	StorageDir            string
-	BackupDir             string
-	MigrationsDir         string
-	PublicDir             string
-	SessionTTL            time.Duration
-	RequestMaxAge         time.Duration
-	MaxUploadBytes        int64
-	MaxPDFPages           int
-	MaxBatchFiles         int
-	MaxVersions           int
-	DefaultPageSize       int
-	MaxPageSize           int
-	AcceptanceMode        bool
-	BootstrapAdminUser    string
+	HTTPAddr               string
+	DBHost                 string
+	DBPort                 string
+	DBUser                 string
+	DBPassword             string
+	DBName                 string
+	JWTSecret              string
+	AESKey                 string
+	StorageDir             string
+	BackupDir              string
+	MigrationsDir          string
+	PublicDir              string
+	SessionTTL             time.Duration
+	RequestMaxAge          time.Duration
+	MaxUploadBytes         int64
+	MaxPDFPages            int
+	MaxBatchFiles          int
+	MaxVersions            int
+	DefaultPageSize        int
+	MaxPageSize            int
+	AcceptanceMode         bool
+	BootstrapAdminUser     string
 	BootstrapAdminPassword string
-	SeedAdminPassword     string
-	SeedEditorPassword    string
-	SeedReviewerPassword  string
+	SeedAdminPassword      string
+	SeedEditorPassword     string
+	SeedReviewerPassword   string
 }
 
 // LoadConfig reads runtime configuration without providing fallback values for
