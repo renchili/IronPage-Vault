@@ -62,6 +62,14 @@ check "compose wires bootstrap variables" "grep -q 'BOOTSTRAP_ADMIN_USERNAME' do
 check "test UI has no embedded password values" "! grep -R -E 'type=\"password\"[^>]*value=|const passwords[[:space:]]*=' public"
 check "API acceptance requires injected credentials" "grep -q 'SEED_ADMIN_PASSWORD is required for acceptance tests' API_tests/test_api_flow.sh"
 
+
+check "container image has no runtime credential defaults" "! grep -Eq '^ENV (POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_DB|DB_USER|DB_PASSWORD|DB_NAME|JWT_SECRET|AES_KEY|SEED_.*PASSWORD)=' Dockerfile"
+check "entrypoint has no database identity fallback" "! grep -Eq 'POSTGRES_USER:-|POSTGRES_PASSWORD:-|POSTGRES_DB:-|DB_USER:-|DB_PASSWORD:-|DB_NAME:-' scripts/entrypoint.sh"
+check "entrypoint requires PostgreSQL runtime values" "grep -q 'POSTGRES_USER is required' scripts/entrypoint.sh && grep -q 'POSTGRES_PASSWORD is required' scripts/entrypoint.sh && grep -q 'POSTGRES_DB is required' scripts/entrypoint.sh"
+check "entrypoint requires application runtime values" "grep -q 'DB_PASSWORD is required' scripts/entrypoint.sh && grep -q 'JWT_SECRET is required' scripts/entrypoint.sh && grep -q 'AES_KEY is required' scripts/entrypoint.sh"
+check "entrypoint checks single-container database consistency" "grep -q 'POSTGRES_USER and DB_USER must match' scripts/entrypoint.sh && grep -q 'POSTGRES_PASSWORD and DB_PASSWORD must match' scripts/entrypoint.sh && grep -q 'POSTGRES_DB and DB_NAME must match' scripts/entrypoint.sh"
+check "entrypoint gates acceptance identities" "grep -q 'SEED_ADMIN_PASSWORD' scripts/entrypoint.sh && grep -q 'ACCEPTANCE_MODE' scripts/entrypoint.sh"
+
 TOTAL=$((PASS+FAIL))
 echo "UNIT SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
