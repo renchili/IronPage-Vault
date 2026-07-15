@@ -43,8 +43,9 @@ Documentation files are project artifacts and must follow repository purpose, na
 - Create a new documentation file only when the user asks for it, the task requires a durable record, or the repository has a matching docs convention.
 - Place documentation under the repository's existing docs path, artifact path, or requested path; do not create loose root documents without a repository-convention reason.
 - Documentation file names must follow the generated artifact naming rules and repository naming style.
-- Project documentation must distinguish requirements, implementation notes, validation evidence, checks not run, and pending items.
+- Project documentation must distinguish requirements, implementation notes, validation evidence, checks not run, and pending items when those sections belong to the target document.
 - Do not use documentation to claim completion that is not backed by code, tests, CI, logs, reports, or artifacts.
+- Do not preserve agent execution history, tool failures, PR chronology, repeated experiments, or assistant self-corrections as project decisions.
 
 ## Default documentation outputs
 
@@ -52,41 +53,86 @@ For project generation or repair work, use these fixed documentation targets whe
 
 - `docs/api-spec.md`: API usage specification. It documents endpoints, methods, auth model, request fields, response fields, error behavior, examples, command examples, and API acceptance checks.
 - `docs/design.md`: project design and requirement implementation record. It explains the whole project design, how requirements are implemented, architecture, modules, data flow, security boundaries, workflow rules, storage model, constraints, and validation strategy.
-- `docs/questions.md`: clarification answer record. It explains unclear process, acceptance, testing, runtime, delivery, usage, and verification points. It states what the unclear point means in this project, why the explanation is reasonable, and how the explanation follows from user feedback, requirements, repository constraints, existing implementation, and validation goals.
+- `docs/questions.md`: requirement clarification and implementation guidance record. It supplements the original requirements with conclusions derived from multi-turn feedback, implementation results, test failures, acceptance gates, and repository constraints.
 
-Do not merge these three document purposes into one file unless the user explicitly asks for a single document. If one of these files already exists, update it in place. If a required section has no content yet, write `None currently known` rather than inventing content. Do not record agent, tool, PR, or platform execution issues in `docs/questions.md`; those belong in the final response or working record, not in project clarification documentation.
+Do not merge these three document purposes into one file unless the user explicitly asks for a single document. If one of these files already exists, update it in place.
 
-## Questions document clarification-answer contract
+## Questions document requirement-clarification contract
 
-`docs/questions.md` is not a FAQ, not a question-and-answer transcript, not a discussion record, not a decision log, not an agent execution log, and not a generic TODO list. It is a project clarification answer record.
+`docs/questions.md` exists to explain requirement areas that were easy to misunderstand, implemented unsatisfactorily, or shown by testing and acceptance evidence to be incomplete.
 
-A record belongs in `docs/questions.md` only when it explains a project-relevant unclear point, such as:
+It is a durable supplement to the original requirements and a compressed summary of the project-relevant conclusions from multi-turn work. It is not a chronological transcript of that work.
 
-- how a process should work.
-- how acceptance should be judged.
-- how tests should prove the requirement.
-- how local, Docker, CI, or manual verification should be interpreted.
-- how an API behavior, error behavior, permission rule, workflow rule, data rule, or runtime rule should be understood.
-- how user feedback changes the correct interpretation of a requirement.
-- how an implementation detail should be understood when the repository or prompt leaves it ambiguous.
+A clarification belongs in `docs/questions.md` when one or more of these conditions apply:
 
-Each entry must be written as an explanation, not as a question. Use this structure:
+- the original requirement has a plausible but incorrect or incomplete interpretation;
+- the current implementation technically works but violates a repository rule or acceptance gate;
+- a test or realistic acceptance flow exposes behavior that does not satisfy the intended requirement;
+- user feedback corrects the interpretation or implementation boundary;
+- several rounds of implementation or testing produce one stable project-level conclusion that future work must follow.
 
-1. `Clarification area`: the process, acceptance point, test point, API behavior, workflow, runtime behavior, or delivery concern being clarified.
-2. `Unclear point`: what was unclear or previously easy to misinterpret.
-3. `Clarification`: the project-specific explanation.
-4. `Reasoning`: why this explanation follows from user feedback, prompt requirements, repository constraints, existing implementation, security model, or validation goals.
-5. `What this resolves`: what ambiguity, incorrect implementation path, weak test, or weak acceptance claim this clarification prevents.
-6. `Effect on project`: what code behavior, documentation section, test case, acceptance evidence, or delivery claim this clarification affects.
+### Required content for each clarification
 
-Rules:
+Organize by requirement topic, not as `Q1`, `Q2`, question/answer pairs, or conversation turns.
 
-- Do not write entries as questions.
-- Do not write entries as yes/no items.
-- Do not include `Next action` sections.
-- Do not include agent, tool, PR, or platform execution issues.
-- Do not copy the full chat history; summarize only the project-relevant clarification trail.
-- If the answer cannot be derived from available context, do not invent it in `docs/questions.md`; ask the user directly and wait.
+Each topic must contain:
+
+1. `Easy-to-make interpretation`: the plausible reading or implementation approach that can lead to an unsatisfactory result.
+2. `Why it fails`: the concrete requirement, code-quality rule, security rule, test result, or acceptance gate that the interpretation violates.
+3. `Correct requirement interpretation`: the project behavior or boundary that should actually be implemented.
+4. `Required implementation`: the concrete code, configuration, documentation, workflow, or test changes needed to satisfy the clarification.
+5. `Acceptance evidence`: what tests, state changes, output, error behavior, or realistic interaction must prove the requirement is satisfied.
+
+Example shape:
+
+```markdown
+## Administrator initialization credentials
+
+### Easy-to-make interpretation
+
+The requirement for a default administrator can be interpreted as placing one fixed username and password in application code or normal deployment configuration.
+
+### Why it fails
+
+That implementation fails the repository gate prohibiting hard-coded local credentials and deployment-specific configuration in product code. It also makes every installation share the same long-lived credential.
+
+### Correct requirement interpretation
+
+A new installation must initialize an administrator automatically, but the credential must be installation-specific or supplied by deployment configuration and must not overwrite an existing administrator on restart.
+
+### Required implementation
+
+Detect whether an administrator exists. Initialize one only for an empty installation, use a deployment-supplied or generated bootstrap credential, and preserve existing credentials on restart and upgrade.
+
+### Acceptance evidence
+
+Tests must prove first-install login works, separate installations do not share a fixed password, restart does not reset the administrator, and product code contains no hard-coded deployment credential.
+```
+
+### Compression and update rules
+
+- Summarize the final project-relevant conclusion from multiple rounds; do not list first attempt, second attempt, tool failure, PR history, or conversation chronology.
+- A failed implementation or failed test may trigger a clarification, but the document must describe the requirement risk and correction, not blame or narrate the agent.
+- Do not convert an accidental agent implementation into a project decision. The correct interpretation must be grounded in the original requirement, user feedback, repository constraints, code-quality rules, or acceptance gates.
+- Merge repeated findings about the same requirement into one current topic. Do not append duplicate sections after every iteration.
+- Replace stale conclusions when later implementation or evidence changes the correct project interpretation.
+- Do not add generic `Next action`, `Future work`, `Recommendations`, or `Conversation record` sections.
+- Do not require the user to reconfirm conclusions that can be derived from the original prompt, existing feedback, repository rules, implementation, tests, and acceptance evidence.
+- When evidence supports a requirement boundary but not one mandatory design, describe the allowed solution space and acceptance conditions rather than inventing a single project decision.
+
+### Questions document validation gate
+
+Before delivery, scan the complete file and fail the documentation task when any of these are present:
+
+- numbered Q&A structure or headings such as `Question` and `Answer`;
+- repeated experiment history or chronological agent narration;
+- agent, tool, branch, commit, or PR failures presented as project requirements;
+- a correction that lacks a requirement, repository-rule, test, or acceptance-gate basis;
+- duplicate topics with conflicting current conclusions;
+- next-step or recommendation sections unrelated to a clarified requirement;
+- implementation guidance without a corresponding acceptance condition.
+
+This target-specific contract overrides the generic documentation structure below for `docs/questions.md`.
 
 ## Documentation output contract
 
@@ -95,43 +141,24 @@ When writing or updating a documentation file, the agent must produce a reviewab
 Before writing the document:
 
 1. Resolve the exact target path from the user request, existing documentation home, repository convention, or generated artifact naming rules.
-2. If the target path cannot be resolved, ask the user for the path or document name before writing.
-3. State whether the task updates an existing document or creates a new one.
+2. State whether the task updates an existing document or creates a new one.
+3. Apply the target-specific structure. Do not force one generic template onto README, API, design, questions, and acceptance reports.
 
-A project documentation file must use this structure unless the repository already has a stricter template:
+For documents without a stricter target-specific structure, use only the sections needed for the document purpose, such as purpose, requirements, implementation, validation evidence, checks not run, and current limitations.
 
-1. `# {{TITLE}}`
-2. `## Purpose`
-3. `## Source inputs`
-4. `## Requirement ledger`
-5. `## Decisions and constraints`
-6. `## Implementation notes`
-7. `## Validation evidence`
-8. `## Checks not run`
-9. `## Pending items`
-10. `## Conversation record`
+Operational facts such as commands, failed tool calls, branch state, PR state, and agent corrections belong in the temporary working record or final response. They must not be copied into permanent project documentation unless the requested artifact is explicitly an execution report or historical log.
 
-Section rules:
+Final response after writing a document must include the exact document path, whether it was created or updated, checks run, checks not run, and pending evidence.
 
-- `Source inputs` must list the prompt, issue, PR, existing file, uploaded file, or user message source used for the document.
-- `Requirement ledger` must map each requirement to status and evidence.
-- `Validation evidence` must cite concrete tests, CI, logs, generated artifacts, screenshots, reports, or file paths.
-- `Checks not run` must be explicit when local tests, Docker acceptance, CI, or manual checks were not executed.
-- `Pending items` must carry unresolved user feedback and missing evidence forward.
-- `Conversation record` must record only operational facts: user corrections, decisions, commands given to the user, merged PRs, failed operations, successful operations, and remaining blockers.
-
-Final response after writing a document must include the exact document path, whether it was created or updated, checks run, checks not run, and pending items.
-
-## Conversation record rules
+## Working record rules
 
 For multi-turn work, maintain a current working record before changing files or reporting completion.
 
-- Track user corrections, confirmed decisions, merged PRs, branch state, failed operations, successful operations, user-provided commands, and pending items.
+- Track user corrections, confirmed project conclusions, branch state, failed operations, successful operations, user-provided commands, and pending evidence.
 - Treat the latest user feedback as a constraint that overrides earlier assumptions.
 - Carry unresolved feedback forward until it is fixed, explicitly declined by the user, or marked pending with a reason.
-- If a required step must be executed by the user locally, provide exact commands and wait for the result before claiming the step is complete.
-- If correct implementation needs missing user input, ask one direct clarification question and wait before changing files or artifacts.
-- Do not offer alternate edits or scope changes for that feedback while the required user input is missing.
+- Do not automatically copy the working record into `docs/questions.md` or another permanent project document.
+- When information is incomplete, make the best evidence-backed determination, continue non-destructive work, and mark unsupported claims as not verified. Do not ask the user to reconfirm conclusions already derivable from available project evidence.
 
 ## Repository constraint rules
 
@@ -183,8 +210,7 @@ Use concise, reviewable commit messages:
 - Do not make repository writes that contain unrelated files, placeholder files, or cleanup noise.
 - Keep branches and commits reviewable and purpose-specific.
 - Ask before risky repository actions that rewrite or publish work.
-- When user feedback requires missing input to fix correctly, ask one direct clarification question and wait before changing files or artifacts.
-- Do not propose alternate edits or continue with a different scope while that required input is missing.
+- When project information is incomplete, continue with the strongest evidence-backed interpretation and mark unsupported claims as not verified instead of requiring user confirmation.
 
 ## Code annotation and schema contract
 
