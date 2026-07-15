@@ -42,16 +42,21 @@ func RunMigrations(db *sqlx.DB, dir string) error {
 	return nil
 }
 
+// EnsureSeedUsers creates local fixture identities only for an explicitly
+// enabled acceptance environment.
 func EnsureSeedUsers(ctx context.Context, db *sqlx.DB, cfg Config) error {
+	if !cfg.AcceptanceMode {
+		return fmt.Errorf("seed users require acceptance mode")
+	}
 	seeds := []struct {
 		Username string
 		Display  string
 		Role     string
 		Password string
 	}{
-		{"admin", "Default Admin", "Admin", cfg.SeedAdminPassword},
-		{"editor", "Default Editor", "Editor", cfg.SeedEditorPassword},
-		{"reviewer", "Default Reviewer", "Reviewer", cfg.SeedReviewerPassword},
+		{"admin", "Acceptance Admin", "Admin", cfg.SeedAdminPassword},
+		{"editor", "Acceptance Editor", "Editor", cfg.SeedEditorPassword},
+		{"reviewer", "Acceptance Reviewer", "Reviewer", cfg.SeedReviewerPassword},
 	}
 	for _, s := range seeds {
 		var count int
