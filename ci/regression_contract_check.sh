@@ -75,6 +75,9 @@ if grep -q 'contents: write' .github/workflows/post-merge-regression.yml; then
   echo "FAIL regression contract: post-merge workflow does not require write permission"
   exit 1
 fi
+grep -q "'.github/workflows/full-regression-reusable.yml'" .github/workflows/post-merge-regression.yml
+grep -q "'.github/workflows/post-merge-regression.yml'" .github/workflows/post-merge-regression.yml
+grep -q "'ci/regression_contract_check.sh'" .github/workflows/post-merge-regression.yml
 
 docker build -f ci/Dockerfile.acceptance -t ironpage-vault-ci-acceptance-contract .
 docker run --rm --entrypoint bash ironpage-vault-ci-acceptance-contract -lc '
