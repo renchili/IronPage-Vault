@@ -60,6 +60,22 @@ grep -q -- '-e SEED_ADMIN_PASSWORD=' ci/docker_acceptance.sh
 grep -q -- '-e SEED_EDITOR_PASSWORD=' ci/docker_acceptance.sh
 grep -q -- '-e SEED_REVIEWER_PASSWORD=' ci/docker_acceptance.sh
 
+# A successful full regression must not be converted into a failed workflow by
+# attempting a second direct write to the protected main branch. The generated
+# summary remains visible in the job summary and the complete evidence remains
+# in the retained workflow artifact.
+grep -q 'GITHUB_STEP_SUMMARY' .github/workflows/full-regression-reusable.yml
+grep -q 'inputs.record_summary' .github/workflows/full-regression-reusable.yml
+if grep -Eq 'git (commit|push)|HEAD:main' .github/workflows/full-regression-reusable.yml; then
+  echo "FAIL regression contract: reusable workflow must not write directly to main"
+  exit 1
+fi
+grep -q 'contents: read' .github/workflows/post-merge-regression.yml
+if grep -q 'contents: write' .github/workflows/post-merge-regression.yml; then
+  echo "FAIL regression contract: post-merge workflow does not require write permission"
+  exit 1
+fi
+
 docker build -f ci/Dockerfile.acceptance -t ironpage-vault-ci-acceptance-contract .
 docker run --rm --entrypoint bash ironpage-vault-ci-acceptance-contract -lc '
   test -f internal/service/pdf.go
