@@ -1,26 +1,32 @@
 # Point-in-Time Recovery
 
-This document describes the intended point-in-time recovery model for IronPage Vault in a local-only deployment.
+This document describes the supported point-in-time recovery documentation scope for IronPage Vault in a local-only deployment.
 
 ## Purpose
 
-Point-in-time recovery protects legal document metadata, audit records, workflow history, notification records, configuration, and backup metadata from accidental local data loss.
+Point-in-time recovery planning protects legal document metadata, audit records, workflow history, notification records, configuration, backup metadata, and PDF storage references from accidental local data loss.
 
-## Local-only Constraint
+## Local-only constraint
 
-PITR must not require cloud services or external network access. WAL archives and logical dump outputs should be written to a local backup volume.
+PITR guidance must not require cloud services or external network access. Recovery inputs must be local artifacts, local volumes, or locally retained database/archive material.
 
-## Recovery Inputs
+## Current supported scope
 
-A full recovery point should include:
+The current project supports documented local recovery strategy and strict backup/restore artifact semantics.
 
-- PostgreSQL base backup or logical dump
-- WAL archive when physical PITR is enabled
-- PDF storage snapshot
-- configuration snapshot
-- backup metadata record
+The current repository does not prove automated physical PITR orchestration. Documentation must not claim automated WAL archiving, scheduled physical base backups, or timestamp-target restore automation unless those features are implemented and validated.
 
-## Relationship Between Database and Filesystem
+## Recovery inputs
+
+A complete recovery point should include:
+
+- PostgreSQL dump or base backup material.
+- WAL archive when physical PITR is enabled by the operator.
+- PDF storage snapshot.
+- configuration snapshot.
+- backup manifest or backup metadata record.
+
+## Relationship between database and filesystem
 
 PostgreSQL stores the file path and hash for each PDF version. The filesystem stores the actual PDF binary.
 
@@ -30,24 +36,32 @@ A correct recovery must restore both sides consistently:
 document_versions.file_path -> restored local PDF file
 ```
 
-## Recommended PITR Strategy
+If metadata is restored to a point where a referenced PDF file does not exist, document download and version inspection will fail.
 
-For a stricter production deployment:
+## Documented PITR strategy
 
-1. Enable PostgreSQL WAL archiving to the local backup volume.
-2. Schedule periodic base backups.
-3. Snapshot PDF storage at the same recovery boundary.
-4. Record the recovery target timestamp in backup job metadata.
-5. Document the restore command used for each backup job.
+For a stricter local deployment, operators should document:
 
-## Prototype Status
+1. where database backup material is retained.
+2. where any local archive material is retained.
+3. how PDF storage snapshots are aligned to the same recovery boundary.
+4. the target timestamp or backup ID.
+5. the exact restore command used.
+6. the post-restore verification checks.
 
-The current prototype records backup job metadata and documents the local recovery strategy. Full automated WAL archiving and restore orchestration are planned hardening work.
+## Verification checks
 
-## Acceptance Questions
+After a recovery exercise, verify:
 
-- Are PostgreSQL data and PDF storage both included?
-- Is the target recovery time documented?
-- Does the restore procedure avoid external services?
-- Can restored metadata find the restored PDF files?
-- Are audit logs preserved?
+- `/healthz` returns successfully.
+- representative document metadata is present.
+- representative document version files are downloadable.
+- audit logs expected for the recovery point exist.
+- workflow state is consistent with the selected recovery point.
+- backup metadata and artifact paths are understandable to the operator.
+
+## Evidence boundary
+
+The re-audit report records strict backup/restore evidence, but current documentation must not overstate PITR. Full automated PITR remains unproven unless a future implementation and validation run demonstrate it.
+
+The project must not simultaneously claim both `no tracked limitations` and `planned PITR hardening`. This document treats automated physical PITR orchestration as not currently proven.
