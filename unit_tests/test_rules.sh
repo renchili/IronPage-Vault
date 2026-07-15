@@ -53,6 +53,12 @@ check "strict dependency failure API test exists" "test -f API_tests/test_strict
 check "bates sequence multi doc API test exists" "test -f API_tests/test_bates_sequence_multi_doc.sh"
 check "platform strict tests exist" "test -f internal/platform/pdf_strict_test.go && test -f internal/platform/backup_strict_test.go"
 check "scheduled backup interval test exists" "test -f internal/app/backup_interval_test.go"
+check "runtime configuration tests exist" "test -f internal/app/config_test.go"
+check "sensitive config has no fallback" "grep -q 'DBPassword:.*env(\"DB_PASSWORD\", \"\")' internal/app/config.go && grep -q 'JWTSecret:.*env(\"JWT_SECRET\", \"\")' internal/app/config.go && grep -q 'AESKey:.*env(\"AES_KEY\", \"\")' internal/app/config.go"
+check "acceptance mode gates seed users" "grep -q 'if cfg.AcceptanceMode' internal/app/server.go && grep -q 'seed users require acceptance mode' internal/app/database.go"
+check "compose requires sensitive values" "grep -q 'DB_PASSWORD is required' docker-compose.yml && grep -q 'JWT_SECRET is required' docker-compose.yml && grep -q 'AES_KEY is required' docker-compose.yml"
+check "test UI has no embedded password values" "! grep -R -E 'type=\"password\"[^>]*value=|const passwords[[:space:]]*=' public"
+check "API acceptance requires injected credentials" "grep -q 'SEED_ADMIN_PASSWORD is required for acceptance tests' API_tests/test_api_flow.sh"
 
 TOTAL=$((PASS+FAIL))
 echo "UNIT SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"
