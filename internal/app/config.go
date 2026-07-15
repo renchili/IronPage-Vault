@@ -10,60 +10,64 @@ import (
 
 // Config contains runtime settings for the local IronPage Vault service.
 type Config struct {
-	HTTPAddr             string
-	DBHost               string
-	DBPort               string
-	DBUser               string
-	DBPassword           string
-	DBName               string
-	JWTSecret            string
-	AESKey               string
-	StorageDir           string
-	BackupDir            string
-	MigrationsDir        string
-	PublicDir            string
-	SessionTTL           time.Duration
-	RequestMaxAge        time.Duration
-	MaxUploadBytes       int64
-	MaxPDFPages          int
-	MaxBatchFiles        int
-	MaxVersions          int
-	DefaultPageSize      int
-	MaxPageSize          int
-	AcceptanceMode       bool
-	SeedAdminPassword    string
-	SeedEditorPassword   string
-	SeedReviewerPassword string
+	HTTPAddr              string
+	DBHost                string
+	DBPort                string
+	DBUser                string
+	DBPassword            string
+	DBName                string
+	JWTSecret             string
+	AESKey                string
+	StorageDir            string
+	BackupDir             string
+	MigrationsDir         string
+	PublicDir             string
+	SessionTTL            time.Duration
+	RequestMaxAge         time.Duration
+	MaxUploadBytes        int64
+	MaxPDFPages           int
+	MaxBatchFiles         int
+	MaxVersions           int
+	DefaultPageSize       int
+	MaxPageSize           int
+	AcceptanceMode        bool
+	BootstrapAdminUser    string
+	BootstrapAdminPassword string
+	SeedAdminPassword     string
+	SeedEditorPassword    string
+	SeedReviewerPassword  string
 }
 
 // LoadConfig reads runtime configuration without providing fallback values for
-// passwords, signing material, encryption material, or acceptance identities.
+// passwords, signing material, encryption material, or local identities.
 func LoadConfig() Config {
 	return Config{
-		HTTPAddr:             env("HTTP_ADDR", ":8080"),
-		DBHost:               env("DB_HOST", "127.0.0.1"),
-		DBPort:               env("DB_PORT", "5432"),
-		DBUser:               env("DB_USER", "ironpage"),
-		DBPassword:           env("DB_PASSWORD", ""),
-		DBName:               env("DB_NAME", "ironpage"),
-		JWTSecret:            env("JWT_SECRET", ""),
-		AESKey:               env("AES_KEY", ""),
-		StorageDir:           env("STORAGE_DIR", "/var/lib/ironpage/storage"),
-		BackupDir:            env("BACKUP_DIR", "/var/lib/ironpage/backups"),
-		MigrationsDir:        env("MIGRATIONS_DIR", "migrations"),
-		PublicDir:            env("PUBLIC_DIR", "public"),
-		SessionTTL:           8 * time.Hour,
-		RequestMaxAge:        60 * time.Second,
-		MaxUploadBytes:       int64(envInt("MAX_UPLOAD_BYTES", 200*1024*1024)),
-		MaxPDFPages:          envInt("MAX_PDF_PAGES", 500),
-		MaxBatchFiles:        envInt("MAX_BATCH_FILES", 250),
-		MaxVersions:          envInt("MAX_VERSIONS", 50),
-		DefaultPageSize:      25,
-		MaxPageSize:          100,
-		AcceptanceMode:       envBool("ACCEPTANCE_MODE", false),
-		SeedAdminPassword:    env("SEED_ADMIN_PASSWORD", ""),
-		SeedEditorPassword:   env("SEED_EDITOR_PASSWORD", ""),
-		SeedReviewerPassword: env("SEED_REVIEWER_PASSWORD", ""),
+		HTTPAddr:               env("HTTP_ADDR", ":8080"),
+		DBHost:                 env("DB_HOST", "127.0.0.1"),
+		DBPort:                 env("DB_PORT", "5432"),
+		DBUser:                 env("DB_USER", "ironpage"),
+		DBPassword:             env("DB_PASSWORD", ""),
+		DBName:                 env("DB_NAME", "ironpage"),
+		JWTSecret:              env("JWT_SECRET", ""),
+		AESKey:                 env("AES_KEY", ""),
+		StorageDir:             env("STORAGE_DIR", "/var/lib/ironpage/storage"),
+		BackupDir:              env("BACKUP_DIR", "/var/lib/ironpage/backups"),
+		MigrationsDir:          env("MIGRATIONS_DIR", "migrations"),
+		PublicDir:              env("PUBLIC_DIR", "public"),
+		SessionTTL:             8 * time.Hour,
+		RequestMaxAge:          60 * time.Second,
+		MaxUploadBytes:         int64(envInt("MAX_UPLOAD_BYTES", 200*1024*1024)),
+		MaxPDFPages:            envInt("MAX_PDF_PAGES", 500),
+		MaxBatchFiles:          envInt("MAX_BATCH_FILES", 250),
+		MaxVersions:            envInt("MAX_VERSIONS", 50),
+		DefaultPageSize:        25,
+		MaxPageSize:            100,
+		AcceptanceMode:         envBool("ACCEPTANCE_MODE", false),
+		BootstrapAdminUser:     env("BOOTSTRAP_ADMIN_USERNAME", ""),
+		BootstrapAdminPassword: env("BOOTSTRAP_ADMIN_PASSWORD", ""),
+		SeedAdminPassword:      env("SEED_ADMIN_PASSWORD", ""),
+		SeedEditorPassword:     env("SEED_EDITOR_PASSWORD", ""),
+		SeedReviewerPassword:   env("SEED_REVIEWER_PASSWORD", ""),
 	}
 }
 
@@ -88,19 +92,32 @@ func (c Config) Validate() error {
 		{"SEED_EDITOR_PASSWORD", c.SeedEditorPassword},
 		{"SEED_REVIEWER_PASSWORD", c.SeedReviewerPassword},
 	}
+	bootstrapUser := strings.TrimSpace(c.BootstrapAdminUser)
+	bootstrapPassword := strings.TrimSpace(c.BootstrapAdminPassword)
 
-	if !c.AcceptanceMode {
+	if c.AcceptanceMode {
+		if bootstrapUser != "" || bootstrapPassword != "" {
+			return fmt.Errorf("bootstrap admin values are not allowed in acceptance mode")
+		}
 		for _, seed := range seedValues {
-			if strings.TrimSpace(seed.value) != "" {
-				return fmt.Errorf("%s requires ACCEPTANCE_MODE=true", seed.name)
+			if err := requireSecret(seed.name, seed.value, 12); err != nil {
+				return fmt.Errorf("acceptance mode: %w", err)
 			}
 		}
 		return nil
 	}
 
 	for _, seed := range seedValues {
-		if err := requireSecret(seed.name, seed.value, 12); err != nil {
-			return fmt.Errorf("acceptance mode: %w", err)
+		if strings.TrimSpace(seed.value) != "" {
+			return fmt.Errorf("%s requires ACCEPTANCE_MODE=true", seed.name)
+		}
+	}
+	if (bootstrapUser == "") != (bootstrapPassword == "") {
+		return fmt.Errorf("BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD must be supplied together")
+	}
+	if bootstrapPassword != "" {
+		if err := requireSecret("BOOTSTRAP_ADMIN_PASSWORD", bootstrapPassword, 16); err != nil {
+			return err
 		}
 	}
 	return nil
