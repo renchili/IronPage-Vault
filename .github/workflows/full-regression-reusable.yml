@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       record_summary:
-        description: Reserved for post-merge summary recording
+        description: Publish the generated regression summary to the workflow job summary
         required: false
         default: false
         type: boolean
@@ -34,18 +34,12 @@ jobs:
           path: artifacts/regression
           if-no-files-found: error
           retention-days: 90
-      - name: Commit regression summary to main
-        if: always()
+      - name: Publish regression summary
+        if: always() && inputs.record_summary
+        shell: bash
         run: |
-          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
-            exit 0
+          if [ ! -s artifacts/regression/summary.md ]; then
+            echo "ERROR: regression summary is missing" >&2
+            exit 1
           fi
-          report_dir="reports/regression/${GITHUB_SHA}/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}"
-          mkdir -p "$report_dir"
-          cp artifacts/regression/summary.json "$report_dir/summary.json"
-          cp artifacts/regression/summary.md "$report_dir/summary.md"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "$report_dir"
-          git commit -m "test(regression): record ${GITHUB_SHA} run ${GITHUB_RUN_ID} [skip regression]" || exit 0
-          git push origin HEAD:main
+          cat artifacts/regression/summary.md >> "$GITHUB_STEP_SUMMARY"
