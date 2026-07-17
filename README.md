@@ -185,4 +185,46 @@ Finalized is the terminal state. Upload replacement, rollback, redaction, annota
 
 PostgreSQL stores metadata, identity/session state, workflow history, audit records, notifications, configuration, and backup records. The local filesystem stores PDF binaries and transformed versions.
 
-A successful backup requires a PostgreSQL custom dump and filesystem archive. Restore requires valid local artifacts. See `docs/backup-recovery.md` and `docs/pitr.md` for the supported recovery boundary.
+Persistent container paths:
+
+```text
+/var/lib/postgresql/data
+/var/lib/ironpage/storage
+/var/lib/ironpage/backups
+```
+
+Strict backup requires both a PostgreSQL custom-format dump and a tar snapshot of local PDF storage. Restore requires both artifacts so database paths and files return to a consistent recovery point.
+
+See `docs/backup-recovery.md` and `docs/pitr.md` for the supported recovery scope and evidence boundaries.
+
+## Troubleshooting
+
+**Compose stops before building**  
+A required runtime variable is absent. Check `DB_PASSWORD`, `JWT_SECRET`, and `AES_KEY` in the calling environment.
+
+**A new normal-mode database exits during startup**  
+The user table is empty and the initial Admin pair was not supplied.
+
+**Acceptance users are not created**  
+Confirm that acceptance mode is explicitly enabled and all three fixture values are present.
+
+**An account remains locked after a correct password**  
+An active 15-minute lock intentionally rejects every password. Wait until `locked_until` expires; the next successful login clears the rolling-attempt state.
+
+**`/ui/` returns 404**  
+This is expected in normal mode. The test UI is acceptance-only.
+
+**Health returns database unavailable**  
+Check the local PostgreSQL process, database configuration, and persistent volume state.
+
+## Deeper documentation
+
+- `docs/api-spec.md` — API contract and examples.
+- `docs/design.md` — architecture, boundaries, data flow, and validation strategy.
+- `docs/security.md` — security model.
+- `docs/rbac.md` — role and object-access rules.
+- `docs/usage.md` — operational API examples.
+- `docs/testing.md` — local and Docker test coverage.
+- `docs/deployment-offline.md` — offline deployment configuration.
+- `docs/backup-recovery.md` — strict backup and restore.
+- `docs/pitr.md` — documented recovery strategy and current limitations.
