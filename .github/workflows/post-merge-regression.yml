@@ -18,14 +18,17 @@ on:
       - 'scripts/generate_swagger.sh'
       - 'API_tests/**'
       - 'testdata/**'
+      - '.github/workflows/full-regression-reusable.yml'
+      - '.github/workflows/post-merge-regression.yml'
       - 'ci/run_full_regression.sh'
+      - 'ci/regression_contract_check.sh'
       - 'ci/docker_acceptance.sh'
       - 'ci/run_project_api_regression.sh'
       - 'ci/Dockerfile.acceptance'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: post-merge-regression-${{ github.ref }}
