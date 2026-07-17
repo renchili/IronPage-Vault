@@ -1,70 +1,54 @@
 # Requirement Check
 
-This document maps the requested acceptance items to the implementation and verification model.
+This document maps the requested acceptance items to implementation paths and the evidence model used to verify them. A status claim is valid only for the exact revision named by the corresponding test or artifact.
 
 ## Verification model
 
-The repository intentionally separates PR gates, merge-candidate regression, post-merge evidence, and local/manual verification.
-
 | Layer | Purpose | What runs |
 |---|---|---|
-| Pull request CI | Prevent obviously unsafe changes before merge | change-impact analysis, gofmt, targeted `go vet`, targeted `go test`, generated Swagger contract, shell syntax, Docker build, CI-flow contract probes, local entrypoint contract probes |
+| Pull request CI | Reject unsafe or inconsistent changes before merge | change-impact analysis, formatting, targeted Go tests, Swagger contracts, shell syntax, Docker build, workflow contracts, and documentation consistency |
 | Merge queue regression | Verify the temporary merge result before it reaches `main` | reusable full regression on `merge_group` |
-| Post-merge regression evidence | Retain evidence for product/runtime/regression-impacting changes already merged to `main` | reusable full regression with logs, JSON summary, Markdown summary, and retained artifacts |
-| Local/manual replay | Developer reproduction path | `./run_tests.sh`, which generates Swagger artifacts before compiling/tests, executes API and UI screenshot acceptance stages, and writes a visual local acceptance report under `artifacts/local-acceptance/` |
+| Post-merge regression | Produce retained evidence for runtime-impacting changes on `main` | reusable full regression, Actions job summary, logs, JSON/Markdown summaries, and retained artifact |
+| Local/manual replay | Reproduce the same project checks outside CI | `./run_tests.sh`, `bash ci/docker_acceptance.sh`, and `bash ci/run_full_regression.sh artifacts/regression` |
 
-PR CI is impact-based. It does not use `run_tests.sh` as the pull-request pass/fail source. Runtime/API Docker acceptance is executed by the reusable full regression flow on merge candidates, post-merge evidence runs, or manual workflow dispatch.
+Targeted PR checks are not a substitute for a full regression. Historical artifacts remain evidence for their tested revision only.
 
-## Current fixed static recheck blockers
+## Requirement status and evidence paths
 
-- `run_tests.sh` now generates `docs/swagger` before `go test -mod=mod ./...`, so a fresh checkout does not depend on committed generated Swagger artifacts.
-- `run_tests.sh` now records local acceptance stages, logs, JSON/Markdown summaries, and `artifacts/local-acceptance/report.html` for visual review.
-- `run_tests.sh` now runs `API_tests/test_ui_screenshot_acceptance.sh`, opens `/ui/` with headless Chrome/Chromium, and stores screenshot evidence under `artifacts/local-acceptance/ui/`.
-- `ci/run_tests_contract_check.sh` verifies the local test entrypoint can generate Swagger artifacts and the visual local acceptance report from a clean state.
-- `ci/swagger_contract_check.sh` verifies every route-level `@Router` annotation appears in generated `docs/swagger/swagger.yaml` and checks key response contracts.
-- PR CI runs the local entrypoint contract when `run_tests.sh`, Swagger generation, or Swagger artifacts change.
-- PR CI runs the regression flow contract when full-regression workflow or runner logic changes.
-- `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts.
-- Mention notification test uses `Sticky note`, a supported annotation type.
-- Bates apply response returns `start_number`, matching the multi-document sequence test.
-
-## Final hardening evidence
-
-| Area | Status | Evidence |
+| Area | Implementation path | Required evidence |
 |---|---|---|
-| Compile blocker | Complete | `internal/app/workflows.go` malformed compare block was removed |
-| Redaction processing | Complete | Service path requires raster burn-in for successful redaction output |
-| Bates processing | Complete | Service path requires successful visible page overlay for Bates output |
-| Backup success semantics | Complete | Backup API success requires database dump and filesystem archive artifacts |
-| Scheduled backup evidence | Complete | `ci/scheduled_backup_contract_check.sh` verifies scheduler startup, interval gating, strict artifact worker path, job row, and audit event |
-| Restore success semantics | Complete | Restore API requires artifact paths and successful restore/archive extraction before success |
-| Redaction coordinate storage | Complete | Request geometry is written to encrypted coordinate columns; legacy numeric columns are zero placeholders |
-| Redaction API exposure | Complete | Redaction list response omits coordinate and reason fields |
-| Sensitive metadata storage matrix | Complete | `docs/metadata-security.md` and `ci/metadata_storage_check.sh` cover password hash verifiers, username/display name, document title, notification message, audit source IP, audit metadata, redaction geometry/reason, and annotation comment storage/exposure rules |
-| Contextual role-based masking matrix | Complete | `docs/role-field-visibility.md` defines Admin, Editor, and Reviewer visibility for decrypted fields and hidden ciphertext/security fields |
-| Compare API test chain | Complete | Self-contained compare test creates a second version before comparing |
-| Compare content accuracy | Complete | `internal/service/compare_test.go` asserts added, removed, and modified text blocks contain the expected changed text |
-| Password hash storage | Complete | `createUser` and seed users seal bcrypt verifiers with AES before writing `users.password_hash`; login opens the sealed verifier before bcrypt comparison |
-| PII metadata column encryption | Complete | PII source-of-truth values are AES sealed in ciphertext columns while lookup/compatibility columns hold only deterministic keys, blanks, or legacy fallback values |
-| Local visual acceptance report | Complete | `run_tests.sh` writes `results.tsv`, `summary.json`, `summary.md`, `report.html`, and per-stage logs under `artifacts/local-acceptance/`; the browser UI is a manual/backend test aid, not a product UI scope expansion |
-| UI screenshot evidence | Complete | `API_tests/test_ui_screenshot_acceptance.sh` verifies `/ui/`, captures `artifacts/local-acceptance/ui/ironpage-ui.png` with headless Chrome/Chromium, and the local report embeds the generated screenshot |
-| API token orchestration | Complete | `run_tests.sh` and `API_tests/lib.sh` preserve token availability across scripts |
-| Mention notification test | Complete | Test uses `Sticky note` |
-| Bates sequence contract | Complete | Bates apply response includes `start_number` |
-| PR CI | Complete | Impact-based static/build gates, generated Swagger contract, local entrypoint contract, and CI-flow contract probes |
-| Full regression | Complete | Reusable full regression runs generated Swagger, generated Swagger route coverage, scheduled backup contract, metadata storage contract, full gofmt, `go vet ./...`, race tests, Docker build, and Docker acceptance |
-| Static regression guards | Complete | `unit_tests/test_rules.sh` and `unit_tests/test_structure_rules.sh` guard reject-condition regressions |
+| Runtime configuration | `internal/app/config.go`, `Dockerfile`, `docker-compose.yml`, `scripts/entrypoint.sh` | configuration tests, static guards, Docker build, and startup rejection for missing values |
+| Initial administrator | `internal/app/database.go` | empty normal-mode volume creates one externally configured Admin; restart without bootstrap values preserves it |
+| Acceptance fixtures and UI | `internal/app/config.go`, `internal/app/server.go`, `public/` | acceptance mode requires externally supplied fixtures; normal mode rejects fixture values and does not serve `/ui/` |
+| Rolling login lockout | `internal/app/auth.go`, `migrations/002_login_attempt_window.sql` | `API_tests/test_auth_lockout_docker.sh` proves four expired attempts do not count, the fifth fresh failure locks for 15 minutes, expiry recovers, and success clears state |
+| Authentication persistence | `internal/app/auth.go` | fault-injection requests prove failed-attempt, login-state, blacklist, replay, session, and logout database errors fail closed |
+| Sessions and replay | `internal/app/auth.go`, `sessions`, `jwt_blacklist`, `request_replay_guard` | timestamp, duplicate request ID, inactivity, logout, and revoked-token negative flows |
+| Strict redaction | `internal/service/`, `internal/platform/` | generated PDF no longer exposes the redacted text through extraction |
+| Bates numbering | `internal/service/`, `internal/platform/`, `bates_jobs`, `bates_sequences` | visible/extractable labels and cross-document sequence progression |
+| Version comparison | comparison service and platform extraction paths | added, removed, and modified text blocks with page and bounding-box data |
+| Finalized immutability | workflow and mutator guards | every material mutation rejects a Finalized document |
+| Protected metadata | crypto helpers, ciphertext columns, masking paths | metadata storage contract and API exposure checks |
+| Audit and notifications | audit and notification handlers/storage | state-changing API flows and subsequent filtered reads |
+| Backup and restore | backup/restore service and platform adapters | real PostgreSQL dump, filesystem archive, restore, and subsequent state verification |
+| Documentation truth | `README.md`, `docs/`, `ci/docs_consistency_check.sh` | Markdown-only PR produces a visible documentation consistency check |
+| Full regression | `ci/run_full_regression.sh`, reusable workflow | generated `summary.json` reports `overall_status=passed`, every stage is zero, and the artifact is tied to the tested SHA |
 
-## Swagger generated artifact policy
+## Current acceptance conditions
 
-Generated Swagger artifacts under `docs/swagger` are treated as generated output, not the primary source of truth. Route-level Swaggo annotations under `internal/app/swagger_*.go` are the source of truth. Every compile/test entrypoint that imports `ironpage-vault/docs/swagger` must generate or stub the package before compiling.
+The repository must not use a blanket statement such as “no limitations” as a substitute for evidence. Acceptance remains conditional until the following evidence is available for the revision being judged:
 
-See `docs/swagger-artifacts.md` for the operational policy.
+- the rolling-window and authentication persistence Docker test has executed successfully;
+- the normal-mode bootstrap first-start and restart flow has executed against a clean volume;
+- any browser interaction claim beyond rendering has an executed interaction trace;
+- the full-regression summary and artifact identify the exact tested commit;
+- formal documentation passes the dedicated consistency gate.
 
-## Known limitations / separate product-scope follow-ups
+These are evidence conditions, not permission to omit the underlying implementation.
 
-No product-scope recheck limitations are currently tracked in this document.
+## Generated API documentation policy
 
-## Notes
+Route-level Swaggo annotations under `internal/app/swagger_*.go` are the source of truth. Generated files under `docs/swagger/` are build artifacts and must be regenerated by supported entrypoints before compilation or contract checks.
 
-The application keeps the original API shape and database schema compatibility where needed. Protected plaintext is written to AES-256-GCM ciphertext columns as source of truth. Compatibility columns remain only for deterministic lookup keys, blank placeholders, or legacy migration fallback.
+## Compatibility notes
+
+The application retains compatibility columns where migration safety requires them, but protected plaintext must not remain the source of truth. Lookup columns may contain deterministic lookup keys, blanks, or explicitly documented legacy compatibility values; sensitive source values belong in protected ciphertext columns.
