@@ -1,119 +1,113 @@
-# Questions and Implementation Answers
+# Requirement Clarifications
 
-This document is a current project clarification-answer record. It explains how ambiguous project behavior should be understood from the current repository rules, implementation, and available validation evidence.
+This document records stable requirement interpretations that affect implementation and acceptance. Each topic states the easy mistake, why it fails, the correct boundary, the required implementation, and the evidence needed to accept it.
 
-It is not a work log, not an agent-process diary, not a future cleanup checklist, and not a substitute for tests or CI evidence.
+## Rolling failed-login lockout
 
-## Source inputs
+### Easy-to-make interpretation
 
-- `AGENT.md`: project-specific product and documentation rules.
-- `README.md`: current backend scope and package map.
-- `docs/requirement-check.md`: current requirement status summary.
-- `docs/api-spec.md`: API surface documentation.
-- Current source paths under `cmd/`, `internal/`, `migrations/`, `API_tests/`, and `unit_tests/`.
-- Full project re-audit report uploaded on 2026-07-13.
+A single cumulative `failed_attempts` counter can appear to satisfy the requirement to lock an account after five failures.
 
-## Evidence boundary
+### Why it fails
 
-The strongest historical runtime evidence is the full regression run recorded in the re-audit report: GitHub Actions run `28109623265` at SHA `3522a9dfed8e38556c0cc4d4e147be14fe405a95`.
+A cumulative counter has no time boundary. Failures separated by hours or days can be added together even though the requirement is five failures inside a rolling window. It also gives no durable event history for proving that old attempts expired.
 
-That evidence supports the behavior captured by that run, but it is not the same as a fresh full-regression run at the current `main` HEAD. Documentation must state exact SHAs and run IDs when claiming validation evidence.
+### Correct requirement interpretation
 
-## Current project scope
+Only failed attempts whose timestamps fall within the preceding 15 minutes count toward lockout. The fifth in-window failure locks the account for 15 minutes. Attempts older than the window do not count, an active lock rejects even the correct password, and a successful login after the lock expires clears the failed-attempt state.
 
-IronPage Vault is a backend-first legal PDF lifecycle API. The deliverable is a local Go/Echo service with PostgreSQL metadata, filesystem PDF storage, workflow, versioning, annotations, redaction metadata, Bates processing records, audit logs, notifications, and backup records.
+### Required implementation
 
-The browser UI under `public/` is a backend testing aid for manual API probing and screenshot evidence. It is not a production frontend and must not expand the acceptance scope into a fullstack product.
+Persist failed attempts in `login_attempts`. Serialize updates for one user, delete events older than the rolling cutoff, insert the new event, count current events, and update `users.failed_attempts` and `users.locked_until` in one transaction. Successful login must atomically clear the attempt events and user lock fields while creating the server-side session.
 
-## Docker delivery model
+### Acceptance evidence
 
-The intended local acceptance path is Docker-based. The repository provides a Docker/Compose path so acceptance does not depend on a developer's local Go installation.
+`API_tests/test_auth_lockout_docker.sh`, executed by `ci/docker_acceptance.sh`, must prove that four expired failures do not combine with fresh failures, the fifth fresh failure returns `423 ACCOUNT_LOCKED`, the correct password remains blocked during the lock, an expired lock permits login, and successful login clears both the event rows and compatibility fields.
 
-The re-audit report records successful Docker build and stateful API acceptance evidence for a historical behavior-equivalent SHA. Current-HEAD acceptance still requires an exact run tied to the current default-branch SHA before documentation may claim fresh current-HEAD full regression.
+## Initial administrator and acceptance fixtures
 
-## Role access and object access
+### Easy-to-make interpretation
 
-Role access decides whether a role may call a category of endpoint. Object access decides whether that user may access a specific document.
+The requirement for usable local accounts can be interpreted as embedding one administrator and several reusable seeded credentials in normal product configuration.
 
-Admin, Editor, and Reviewer are the only supported roles. Admin is not automatically a document editor. Editors own document mutation flows such as upload, redaction confirmation, Bates numbering, finalization, and version actions. Reviewers retrieve non-Draft records, annotate, set dispositions, and move workflow where allowed.
+### Why it fails
 
-Documentation must not collapse role access and object access into one generic RBAC claim.
+Fixed identities make separate installations share long-lived credentials and mix acceptance fixtures with product state. Changing those credentials after startup does not remove the unsafe initialization path.
 
-## Document lifecycle
+### Correct requirement interpretation
 
-The required document lifecycle is:
+Normal mode initializes one externally configured administrator only when the user table is empty. Existing users are never overwritten on restart. Acceptance fixtures are allowed only when explicit acceptance mode is enabled, and their values must be supplied by the execution environment. The browser probe under `/ui/` belongs to that acceptance-only mode.
 
-```text
-Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
-```
+### Required implementation
 
-Finalized is the terminal immutable state. Mutating operations after Finalized must be rejected, including replacement upload, rollback, redaction, annotation changes, Bates numbering, workflow transition, and metadata mutation.
+Runtime validation must reject missing or conflicting bootstrap and fixture configuration. Normal startup must use `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD` only for an empty installation. Acceptance startup must require externally supplied fixture values and must not accept bootstrap values at the same time. Product code, Docker image configuration, Compose files, and browser assets must not contain fixed credential values.
 
-## Batch upload
+### Acceptance evidence
 
-Batch upload is part of the document intake model. It must use the same persistence path as single upload: document record, version record, stored PDF file, and audit output per accepted file.
+Configuration tests and static guards must prove missing or conflicting values are rejected. Docker evidence must prove an empty normal-mode volume creates one administrator, removing bootstrap values and restarting preserves the existing identity, acceptance mode creates only its externally supplied fixtures, and normal mode does not expose `/ui/`.
 
-Documentation must not describe batch upload as a placeholder if current source and acceptance evidence prove persisted document/version/file side effects.
+## Authentication state failures must fail closed
 
-## Protected data and deployment status
+### Easy-to-make interpretation
 
-The repository contains encrypted metadata paths for sensitive annotation and redaction fields. This implementation detail is not the same as secure deployment acceptance.
+Database updates around authentication can be treated as best-effort because password verification and token parsing already succeeded in memory.
 
-The re-audit report still blocks acceptance on unsafe runtime defaults. Documentation must not describe the project as production-ready or security-accepted until those defaults are removed or gated behind an explicit acceptance-only mode.
+### Why it fails
 
-## Redaction status
+Ignoring a failed lockout update can allow repeated guesses without durable enforcement. Ignoring blacklist, replay, session, or logout persistence failures can return authenticated or logged-out success when the database state says otherwise.
 
-Redaction is a two-phase workflow: proposed coordinate-bound metadata is staged, then an authorized Editor confirms burn-in.
+### Correct requirement interpretation
 
-Current documentation must not claim marker-only redaction when the current strict PDF path and recorded Docker acceptance evidence show strict burn-in behavior and target-text removal. If a document still states marker-only behavior, that document is stale and must be rewritten or removed.
+Authentication and logout succeed only when their required state reads and writes succeed. A database error in failed-attempt recording, successful-login reset, blacklist lookup, replay recording, session activity, or logout revocation must return the standard internal-error envelope and stop the request. Logout must update blacklist and session state atomically.
 
-## Bates status
+### Required implementation
 
-Bates processing is not metadata-only in the current implementation record. Current documentation must describe visible Bates processing and sequence allocation only when backed by strict adapter code and runtime evidence.
+Check every `GetContext`, `ExecContext`, transaction commit, and `RowsAffected` result on the authentication path. Use transactions for rolling-window updates, successful-login state creation, and logout revocation. Do not emit a token or `logged_out` response after an incomplete state mutation.
 
-Documentation must not keep obsolete statements that Bates numbers are not visible if current strict Bates evidence says otherwise.
+### Acceptance evidence
 
-## Document comparison status
+Docker fault-injection tests must force the failed-attempt, login-reset, blacklist, replay, session, and logout persistence paths to fail. Each request must return the documented internal error. A forced logout failure must roll back token blacklisting and leave the session usable; a later successful logout must revoke the same token.
 
-Comparison must be described from current service behavior and evidence. Documentation must not call comparison binary-only if current code and tests expose structured text and coordinate-aware comparison behavior.
+## Acceptance browser surface
 
-When static source assembly prevents a complete route or field inventory, documentation must say what is directly verified and point to the source or API documentation home.
+### Easy-to-make interpretation
 
-## Audit and notifications
+The presence of files under `public/` or one rendered screenshot can be interpreted as a product frontend or as complete browser interaction coverage.
 
-Audit logs are required for material mutations and must support filtering by user, document, action type, and date range.
+### Why it fails
 
-Notifications are local in-app records. Workflow updates and annotation mentions can create notifications. Documentation must distinguish notification persistence and read acknowledgement from external delivery, which is out of scope.
+IronPage Vault is a backend deliverable. The browser surface is an acceptance aid, and a screenshot proves only that static rendering occurred. It does not prove login submission, validation errors, network recovery, retry behavior, keyboard operation, focus management, or accessible status updates.
 
-## Backup and restore status
+### Correct requirement interpretation
 
-Backup is not metadata-only in the current implementation record. The Admin backup path calls strict artifact creation and requires a PostgreSQL custom dump and tar snapshot before it reports restore support.
+`/ui/` is served only in acceptance mode and must remain outside the product frontend scope. Browser interaction evidence improves acceptance confidence but does not create a required production frontend.
 
-Documentation must not say that a future worker is still needed for full local backup if the current implementation already runs strict local artifacts. It may still document operational prerequisites, local backup volume access, and consistent database/filesystem recovery boundaries.
+### Required implementation
 
-## PITR status
+Keep the UI behind `ACCEPTANCE_MODE`, do not embed fixture values, and preserve API behavior as the source of truth. Browser tests should operate the existing probe rather than introduce a separate frontend architecture.
 
-The project requires point-in-time recovery documentation, but full automated WAL archiving and restore orchestration are not proven as current implementation.
+### Acceptance evidence
 
-PITR documentation must state the supported scope clearly: local recovery strategy and required consistency model are documented; automated physical PITR orchestration must not be claimed unless implemented and validated.
+Rendering evidence must be described as rendering only. Interaction acceptance requires an executed browser flow covering missing input, incorrect credentials, successful login, network failure and retry, keyboard navigation, visible focus, and understandable result status, with trace or screenshot-sequence evidence tied to the tested revision.
 
-## API and acceptance evidence
+## Regression and current-HEAD evidence
 
-The repository contains broad API acceptance coverage, including authentication, RBAC denials, workflow/finalization, redaction, Bates, comparison, audit, notifications, backup, restore, and UI screenshot evidence.
+### Easy-to-make interpretation
 
-Documentation must still distinguish historical successful runs from exact current-HEAD runs. A passing historical artifact is evidence, but it is not fresh verification for a later commit.
+A passing historical run, a passing targeted PR job, or a generated reviewer report can be presented as full current-HEAD acceptance.
 
-## Manual backend UI scope
+### Why it fails
 
-The manual UI is served at `/ui/` and is only a backend testing aid.
+Evidence from another revision does not prove the inspected tree. Targeted PR checks do not execute every full-regression stage, and a reviewer report summarizes evidence rather than generating it.
 
-Current screenshot acceptance proves page load and screenshot generation. It does not prove login clicks, retry behavior, accessibility, keyboard focus, or full operator recovery flow. Documentation must not describe screenshot evidence as full UI E2E coverage.
+### Correct requirement interpretation
 
-## Documentation status
+Every full-regression claim must identify the exact tested commit, workflow run, generated summary, and retained artifact. A later commit may reuse earlier evidence only for unchanged behavior and must be labelled accordingly; it cannot be called a fresh current-HEAD run.
 
-The current re-audit verdict is `FAIL` until the blocking P0 issues are fixed:
+### Required implementation
 
-- unsafe runtime defaults.
-- official documentation contradictions.
+The reusable regression workflow must execute all defined stages, publish `summary.md` to the Actions job summary, and retain the complete artifact without pushing generated reports directly to the protected `main` branch. Documentation must distinguish product tests, workflow publication status, and reviewer conclusions.
 
-This document removes stale contradictions from the clarification record, but it does not fix runtime configuration safety and does not replace a current-HEAD full regression.
+### Acceptance evidence
+
+Acceptance requires a generated `summary.json` with `overall_status=passed`, all stage statuses equal to zero, and an artifact tied to the tested SHA. When the current `main` differs from that SHA, the difference and its validation scope must be stated rather than hidden.
