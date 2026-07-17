@@ -1,113 +1,89 @@
 # Design Document
 
-## Why IronPage Vault is a pure backend project
+## Product boundary
 
-The prompt describes IronPage Vault as the backbone API for legal professionals, paralegals, and compliance teams. The system boundary is therefore the backend API, not a formal web application.
+IronPage Vault is an air-gapped legal PDF lifecycle backend. The product boundary is the Go/Echo API, PostgreSQL metadata and security state, and local filesystem PDF storage.
 
-The repository may include a small browser page for manual testing, but that page is only a backend test aid. It is not a production frontend, not a fullstack requirement, and not part of the product deliverable.
+Files under `public/` provide an acceptance-only browser probe. They are not a production frontend and do not change the backend-only product scope.
 
-This design keeps the project aligned with the required stack: Go, Echo, sqlx, PostgreSQL, and local filesystem storage.
+## Single-container deployment
 
-## Why the system is single-container
+The standalone deployment packages PostgreSQL and the Go API in one container because the target environment is one offline machine without required external services. Persistent state is separated into PostgreSQL data, PDF storage, and backup volumes.
 
-The prompt requires standalone deployment on an air-gapped machine. The design packages PostgreSQL and the Go API into one container so an evaluator can start the backend system with one command and without any external services.
+Runtime credentials, signing material, encryption material, bootstrap identity values, and acceptance fixture values are supplied by the deployment environment. They are not image defaults.
 
-This is not the usual production recommendation for large distributed deployments, but it fits the stated air-gapped standalone requirement. Persistent data is kept in Docker volumes:
+## Data ownership
 
-- PostgreSQL data volume
-- PDF storage volume
-- backup volume
+PostgreSQL is the source of truth for users, login attempts, sessions, replay state, documents, versions, workflow history, audit records, protected review metadata, Bates allocation, notifications, configuration, and backup jobs.
 
-## Why PostgreSQL stores metadata but not PDF binaries
+PDF binaries and transformed versions are stored on the local filesystem. PostgreSQL records their paths, hashes, sizes, page counts, versions, and related audit state.
 
-PostgreSQL stores users, sessions, replay guard records, document metadata, version metadata, audit logs, redaction metadata, annotations, Bates jobs, notifications, configuration entries, and backup jobs.
+## Package boundaries
 
-PDF binaries are stored on the local filesystem because the prompt explicitly separates binary assets from database metadata. The database stores file pointers, hashes, size, page count, and version numbers.
+`internal/core` owns deterministic domain policy such as roles, workflow transitions, object access, validation, mention parsing, and notification-cap calculations.
 
-This keeps large binary files out of ordinary relational queries while preserving traceability through metadata and audit logs.
+`internal/service` coordinates use cases that combine policy, persistence, and platform operations.
 
-## Why roles are strict and discrete
+`internal/repository` and `internal/store` own persistence contracts and SQL-facing behavior. SQL fragments and schema knowledge do not belong in core policy.
 
-The prompt defines three roles only:
+`internal/platform` owns infrastructure adapters such as encryption, digesting, filesystem operations, strict PDF transforms, backup, and restore.
 
-- Admin
-- Editor
-- Reviewer
+`internal/app` owns Echo routing, middleware, request/response mapping, runtime assembly, and narrow adapter functions required by handlers. A compatibility wrapper in `internal/app` does not move ownership of the underlying domain or platform rule back into the HTTP layer.
 
-The design does not make Admin a super-editor by default. Admin manages the system. Editor manipulates documents. Reviewer reviews and annotates documents.
+## Roles and object access
 
-This prevents accidental privilege expansion.
+The supported roles are Admin, Editor, and Reviewer. Admin manages identities and system configuration, Editor performs document operations, and Reviewer performs review operations. Admin does not automatically receive Editor document authority.
 
-## Why business rules live outside route declarations
+Role permission and object access are separate decisions. Object access depends on the principal, document owner, document status, and requested operation. Backend policy enforces both decisions even when a route is already role-gated.
 
-Route middleware provides a first permission boundary, but sensitive rules must also live in handlers or service logic. For example, Finalized document immutability must be enforced by the document operation itself, not only by route grouping.
+## Document workflow
 
-This prevents accidental bypass when a handler is reused or a new route is added later.
+The default lifecycle is:
 
-The implementation is being refactored so pure domain rules live in `internal/core`, not in the API package. `internal/app` should translate HTTP requests into application calls and API responses; it should not own role rules, workflow rules, object-access policy, PDF helpers, crypto helpers, or SQL repositories.
+```text
+Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
+```
 
-## Why object access policy is a core rule
+Workflow policy is defined in core rules and enforced by mutation paths. Finalized is terminal; every document mutation must reject a Finalized record.
 
-Object access decides whether a principal can read, edit, review, or transition a specific document. That decision is domain policy, not HTTP behavior.
+## Redaction, Bates, and comparison
 
-The policy depends only on principal user ID, principal role, document owner ID, and document status. It does not need Echo, sqlx, PostgreSQL, request headers, or response formatting. For that reason the access policy belongs in `internal/core`.
+Redaction is a two-phase operation. A proposal stores protected coordinate-bound metadata. Confirmation produces a new PDF version through strict raster burn-in so the underlying target content is not merely hidden by an overlay.
 
-## Why document list filters are store logic
+Bates numbering creates a new page-visible version and allocates auditable sequence state across document sets.
 
-The document list filter turns a principal into a SQL WHERE clause and query arguments. That output contains database column names and placeholder syntax, so it is persistence adapter logic.
+Version comparison extracts structured text and location data to report added, removed, and modified blocks with page and bounding-box information.
 
-It does not belong in `internal/core`, because core must not emit SQL fragments or know storage schema details. It also should not remain owned by `internal/app`, because HTTP handlers should not own query construction.
+## Authentication and lockout
 
-The current migration places `DocumentListWhereClause` in `internal/store`. `internal/app` keeps a small wrapper only to preserve current handler calls while larger repository methods are extracted later.
+Passwords are compared through bcrypt verifiers stored in protected form. Failed logins are persisted as timestamped `login_attempts` events.
 
-## Why workflow chain rules are core rules
+For one user, failed-attempt processing uses a transaction and row lock. Events older than the 15-minute rolling cutoff are removed, the new event is inserted, the current window is counted, and compatibility fields on `users` are updated atomically. The fifth in-window failure sets a 15-minute lock. Successful login clears attempt events and lock fields while creating the server-side session in one transaction.
 
-The workflow status chain is domain policy. It decides the valid next legal document status and does not require Echo, SQL, filesystem access, or response formatting.
+## JWT, session, freshness, and replay
 
-For that reason `NextWorkflowStatus` and `WorkflowStatusChain` belong in `internal/core`. `internal/app` may temporarily keep a wrapper for handler compatibility, but the real rule should not live in the API adapter layer.
+JWTs are locally signed and contain `sub`, role, username, `jti`, issued-at time, and expiration. PostgreSQL session state is still required for inactivity expiration and immediate logout.
 
-## Why text token parsing is a core rule
+Authenticated requests must provide a fresh `X-Request-Timestamp` and unique `X-Request-ID`. Replay records are bound to the JWT `jti`. Session activity updates require an active, unrevoked, unexpired session.
 
-Mention parsing decides which local usernames are referenced by an annotation comment. The parser is deterministic text policy and does not require Echo, SQL, or notification persistence.
+Blacklist reads, replay writes, session updates, successful-login state, and logout writes fail closed on database errors. Logout inserts the blacklist record and revokes the session in one transaction.
 
-For that reason `ExtractMentionUsernames` belongs in `internal/core`. The database lookup and notification creation remain outside core because they are persistence and side-effect behavior.
+## Protected metadata
 
-## Why notification cap policy is a core rule
+AES-256-GCM protected columns hold sensitive source values. Deterministic lookup keys, blank compatibility values, or documented legacy migration values may remain in compatibility columns, but protected plaintext is not the source of truth and is not returned through ordinary API responses.
 
-The unread notification cap decides how many old unread records must be marked read before inserting a new notification. The calculation itself is deterministic domain policy and does not require Echo or SQL.
+## Audit and notifications
 
-For that reason `NotificationTrimCount` and `MaxUnreadNotifications` belong in `internal/core`. The SQL update that marks old rows as read remains outside core because it is persistence adapter behavior.
+Material mutations create audit records with actor, target, action, request ID, timestamp, and structured metadata. Audit queries support user, document, action, and date filtering.
 
-## Why crypto and digest helpers are platform code
+Notifications are local database records. Workflow transitions and annotation mentions create in-app notifications; read acknowledgement and the unread cap are enforced without external delivery services.
 
-Encryption and digesting are implementation adapters. They do not decide whether a user may perform an action and they do not map HTTP requests. They provide low-level capabilities used by higher-level workflows.
+## Backup and recovery
 
-For that reason AES-GCM string encryption and SHA-256 reader digesting belong in `internal/platform` instead of `internal/app`.
+Backup success requires both a PostgreSQL custom dump and a local filesystem archive. Restore validates and applies the supplied local artifacts before reporting success. Automated physical WAL-based PITR orchestration is not claimed; the supported recovery boundary is documented separately in `docs/pitr.md`.
 
-The migration keeps temporary app wrappers so existing handlers can continue calling the old helper names while follow-up PRs move callers directly to `internal/platform`.
+## Acceptance evidence boundary
 
-## Why PDF helpers are platform code
+A route, screenshot, static guard, or historical artifact is not by itself current project acceptance. Product claims must cite implementation paths and executed evidence tied to the tested revision.
 
-PDF inspection and strict PDF transforms are infrastructure adapters. They perform filesystem reads and writes, PDF validation, page inspection, digest calculation, rasterized redaction burn-in, and page-visible Bates overlays.
-
-The strict redaction path rewrites page content so sensitive text is not merely hidden by an annotation layer. The strict Bates path renders the page-visible label into a new version. Both transforms are validated by content-level acceptance tests.
-
-These responsibilities do not belong in the API adapter layer. `internal/app` may expose compatibility wrappers, but the underlying implementation belongs in `internal/platform` and `internal/service`.
-
-## Why request timestamp and request ID are required
-
-The prompt requires anti-replay behavior with timestamp validation. The system uses:
-
-- `X-Request-Timestamp` to reject stale requests
-- `X-Request-ID` to reject duplicate request IDs for the same token
-- JWT `jti` to bind replay records to a token/session
-
-This provides deterministic local replay protection without requiring any external identity or security service.
-
-## Why JWT still has server-side session state
-
-A pure stateless JWT cannot enforce inactivity expiration or immediate logout reliably. The design therefore stores session state in PostgreSQL:
-
-- token `jti`
-- user ID
-- last seen timestamp
+The full-regression workflow publishes its generated summary in the Actions job summary and retains the complete artifact. It does not write generated reports directly to the protected `main` branch.
