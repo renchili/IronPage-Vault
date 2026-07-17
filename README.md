@@ -8,7 +8,7 @@ This is not a fullstack product. Files under `public/` are acceptance-only backe
 
 The API covers:
 
-- local identity, server-side sessions, token revocation, freshness checks, and replay protection.
+- local identity, rolling failed-login lockout, server-side sessions, token revocation, freshness checks, and replay protection.
 - Admin, Editor, and Reviewer authorization boundaries.
 - PDF intake, version records, local binary storage, and revision limits.
 - ordered workflow from Draft through Finalized, with terminal immutability.
@@ -30,12 +30,12 @@ internal/repository/ repository interfaces and persistence operations
 internal/store/      SQL-facing storage helpers
 internal/platform/   PDF, crypto, digest, filesystem, backup, restore adapters
 migrations/          PostgreSQL schema
-API_tests/           stateful API acceptance scripts
+API_tests/           stateful API, bootstrap, authentication, and browser acceptance
 unit_tests/          static and repository contract checks
 ci/                  Docker acceptance and full-regression entrypoints
 testdata/            local PDF and CSV fixtures
 docs/                API, design, security, deployment, testing, and operations docs
-public/              acceptance-only browser aids
+public/              acceptance-only browser aid
 ```
 
 Start with `cmd/server/main.go` for process startup, `internal/app/server.go` for routes and runtime assembly, `internal/app/config.go` for configuration gates, and `docs/api-spec.md` for endpoint behavior.
@@ -75,7 +75,7 @@ With all required values present, start the service:
 docker compose up --build
 ```
 
-The bootstrap pair is used only when the user table is empty. After the initial Admin is verified and the required local identities are created, remove the bootstrap pair from the deployment environment. Existing databases with users do not require it.
+The bootstrap pair is used only when the user table is empty. After the initial Admin is verified and the required local identities are created, remove the bootstrap pair from the deployment environment. Existing databases with users do not require it and restart does not overwrite the existing Admin.
 
 ## Verify startup
 
@@ -90,6 +90,12 @@ A successful response confirms that runtime validation passed and PostgreSQL is 
 ```text
 http://localhost:8080/swagger/index.html
 ```
+
+## Authentication lockout
+
+Failed logins are stored as timestamped events. Only failures within the preceding 15 minutes count. The fifth in-window failure locks the account for 15 minutes. Attempts outside the rolling window expire from the count, and successful login after lock expiry clears the failure state.
+
+Authentication state is fail-closed: failed-attempt persistence, login-state reset, blacklist lookup, replay recording, session activity, and logout revocation errors must return the standard internal-error envelope rather than authenticated or logged-out success.
 
 ## Normal mode and acceptance mode
 
@@ -122,7 +128,7 @@ The acceptance UI is then available at:
 http://localhost:8080/ui/
 ```
 
-The UI is a backend probe surface only. Screenshot acceptance proves that it loads and renders; it does not prove complete login, retry, accessibility, or recovery interactions.
+The UI is a backend probe surface only. Screenshot acceptance proves rendering only. `API_tests/test_ui_interaction_acceptance.sh` exercises actual submission, errors, recovery, keyboard focus, and retry behavior and writes evidence without recording the supplied password.
 
 ## Run checks
 
@@ -133,7 +139,7 @@ go test ./...
 bash unit_tests/test_rules.sh
 ```
 
-Docker build, Compose startup, generated execution-scoped fixture values, and stateful API acceptance:
+Docker build, normal-mode bootstrap restart, rolling lockout, authentication fault injection, browser interaction, and stateful API acceptance:
 
 ```bash
 bash ci/docker_acceptance.sh
@@ -179,43 +185,4 @@ Finalized is the terminal state. Upload replacement, rollback, redaction, annota
 
 PostgreSQL stores metadata, identity/session state, workflow history, audit records, notifications, configuration, and backup records. The local filesystem stores PDF binaries and transformed versions.
 
-Persistent container paths:
-
-```text
-/var/lib/postgresql/data
-/var/lib/ironpage/storage
-/var/lib/ironpage/backups
-```
-
-Strict backup requires both a PostgreSQL custom-format dump and a tar snapshot of local PDF storage. Restore requires both artifacts so database paths and files return to a consistent recovery point.
-
-See `docs/backup-recovery.md` and `docs/pitr.md` for the supported recovery scope and evidence boundaries.
-
-## Troubleshooting
-
-**Compose stops before building**  
-A required runtime variable is absent. Check `DB_PASSWORD`, `JWT_SECRET`, and `AES_KEY` in the calling environment.
-
-**A new normal-mode database exits during startup**  
-The user table is empty and the initial Admin pair was not supplied.
-
-**Acceptance users are not created**  
-Confirm that acceptance mode is explicitly enabled and all three fixture values are present.
-
-**`/ui/` returns 404**  
-This is expected in normal mode. The test UI is acceptance-only.
-
-**Health returns database unavailable**  
-Check the local PostgreSQL process, database configuration, and persistent volume state.
-
-## Deeper documentation
-
-- `docs/api-spec.md` — API contract and examples.
-- `docs/design.md` — architecture, boundaries, data flow, and validation strategy.
-- `docs/security.md` — security model.
-- `docs/rbac.md` — role and object-access rules.
-- `docs/usage.md` — operational API examples.
-- `docs/testing.md` — local and Docker test coverage.
-- `docs/deployment-offline.md` — offline deployment configuration.
-- `docs/backup-recovery.md` — strict backup and restore.
-- `docs/pitr.md` — documented recovery strategy and current limitations.
+A successful backup requires a PostgreSQL custom dump and filesystem archive. Restore requires valid local artifacts. See `docs/backup-recovery.md` and `docs/pitr.md` for the supported recovery boundary.
