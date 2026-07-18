@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -u -o pipefail
-. API_tests/lib.sh
+. tests/api/lib.sh
 FAIL=0
 : "${EDITOR_TOKEN:?set EDITOR_TOKEN}"
 DOC_ID_FILE=${DOC_ID_FILE:-/tmp/ironpage_doc_id.out}
