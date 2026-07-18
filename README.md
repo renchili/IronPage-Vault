@@ -99,7 +99,7 @@ The deployment layer writes every local runtime value to `.env`; the image, Comp
 | Product storage | `IRONPAGE_VOLUME_ROOT`, `STORAGE_DIR`, `BACKUP_DIR` |
 | Acceptance fixtures | `ACCEPTANCE_MODE`, `SEED_ADMIN_PASSWORD`, `SEED_EDITOR_PASSWORD`, `SEED_REVIEWER_PASSWORD` |
 
-Compose maps `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` from the same generated `DB_*` values used by the API. Startup fails if required values are missing or inconsistent.
+Compose maps `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `PGPORT` from the same generated `DB_*` values used by the API. Startup fails if required values are missing or inconsistent.
 
 To inspect or customize a clean installation before startup:
 
@@ -135,6 +135,8 @@ Local source and report entrypoint:
 bash run_tests.sh
 ```
 
+Without `BASE_URL` and all three execution-scoped `SEED_*_PASSWORD` values, stateful rows are recorded as `SKIP`, the report is `INCOMPLETE`, and the command exits with status `2`. A skipped stage is never reported as a local PASS.
+
 Complete serialized regression:
 
 ```bash
@@ -144,7 +146,7 @@ bash ci/run_full_regression.sh artifacts/regression
 GitHub verification is defined only in `.github/workflows/ci.yml`. The workflow:
 
 - uses one repository-and-target concurrency group;
-- applies a ten-minute same-revision cooldown;
+- waits out any remaining ten-minute target cooldown before validation;
 - latches a failed revision until a new commit or explicit reviewed manual unlock;
 - runs one sequential job;
 - stops after the first failed stage; and
