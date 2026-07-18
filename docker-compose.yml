@@ -6,7 +6,7 @@ services:
         IRONPAGE_APP_ROOT: ${IRONPAGE_APP_ROOT}
         IRONPAGE_HTTP_PORT: ${HTTP_PORT}
     ports:
-      - "${HOST_PORT}:${HTTP_PORT}"
+      - "${HOST_BIND_ADDRESS}:${HOST_PORT}:${HTTP_PORT}"
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
