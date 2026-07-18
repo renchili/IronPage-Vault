@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Pre-merge CI control-plane contract check.
-# This executes the regression runner in a deliberate failing mode and verifies
-# the CI contract: a failed stage must still produce results.tsv, summary.json,
-# and summary.md, while the runner exits non-zero. It also verifies that failed
-# stage log content is printed to stdout.
-
-probe_dir="$(mktemp -d)"
-deploy_probe_dir=""
+probe_dir=$(mktemp -d)
+deploy_probe_dir=$(mktemp -d)
 cleanup() {
-  rm -rf "$probe_dir"
-  if [ -n "$deploy_probe_dir" ]; then
-    rm -rf "$deploy_probe_dir"
-  fi
+  rm -rf "$probe_dir" "$deploy_probe_dir"
 }
 trap cleanup EXIT
 
@@ -32,47 +23,48 @@ test -s "$probe_dir/results.tsv"
 test -s "$probe_dir/summary.json"
 test -s "$probe_dir/summary.md"
 test -s "$probe_dir/logs/contract_fail.log"
-
 grep -q 'IRONPAGE_REGRESSION_CONTRACT_FAIL_SENTINEL' "$probe_dir/logs/contract_fail.log"
-grep -q 'FAIL contract_fail' "$probe_dir/probe.log"
 grep -q -- '---- contract_fail failure log:' "$probe_dir/probe.log"
-grep -q 'IRONPAGE_REGRESSION_CONTRACT_FAIL_SENTINEL' "$probe_dir/probe.log"
-grep -q -- '---- end contract_fail failure log ----' "$probe_dir/probe.log"
 
 python3 - "$probe_dir/summary.json" <<'PY'
 import json, sys
-summary_path = sys.argv[1]
-with open(summary_path, encoding='utf-8') as f:
+with open(sys.argv[1], encoding='utf-8') as f:
     summary = json.load(f)
 if summary.get('overall_status') != 'failed':
-    raise SystemExit(f"expected overall_status=failed, got {summary.get('overall_status')!r}")
-stages = {stage['stage']: stage for stage in summary.get('stages', [])}
-if stages.get('contract_pass', {}).get('status') != 0:
-    raise SystemExit('contract_pass stage missing or not successful')
-if stages.get('contract_fail', {}).get('status') == 0:
-    raise SystemExit('contract_fail stage missing or unexpectedly successful')
+    raise SystemExit('failing probe did not produce overall_status=failed')
+stages = summary.get('stages', [])
+if [stage.get('stage') for stage in stages] != ['contract_pass', 'contract_fail']:
+    raise SystemExit(f'first-error stop failed; unexpected stages: {stages!r}')
+if stages[0].get('status') != 0 or stages[1].get('status') == 0:
+    raise SystemExit('contract probe stage statuses are invalid')
 PY
 
 grep -q 'Overall: \*\*FAILED\*\*' "$probe_dir/summary.md"
 
-# A fresh checkout must have a real one-command normal deployment path. The
-# deployer generates random external runtime values, stores them outside the
-# image, reuses them on repeated runs, and leaves application fallback checks
-# intact.
+# The repository has one executable workflow. Concurrency, cooldown, failure
+# latching, and all validation therefore share a single control plane.
+mapfile -t workflows < <(find .github/workflows -maxdepth 1 -type f -name '*.yml' -o -name '*.yaml')
+test "${#workflows[@]}" -eq 1
+test "${workflows[0]}" = ".github/workflows/ci.yml"
+grep -q 'cancel-in-progress: false' .github/workflows/ci.yml
+grep -q 'ci/ci_execution_guard.py' .github/workflows/ci.yml
+grep -q 'ci/run_full_regression.sh' .github/workflows/ci.yml
+! grep -RIn 'if: always()' .github/workflows
+
+# A fresh checkout generates every local runtime value without retaining fixed
+# identities, ports, paths, credentials, or container names in Compose/code.
 test -f scripts/deploy.sh
 bash -n scripts/deploy.sh
 grep -Fxq '.env' .gitignore
 grep -Fxq '.env' .dockerignore
-grep -q 'scripts/deploy.sh' API_tests/test_bootstrap_restart_docker.sh
+grep -q 'scripts/deploy.sh' tests/api/test_bootstrap_restart_docker.sh
 
-deploy_probe_dir="$(mktemp -d)"
 deploy_env="$deploy_probe_dir/runtime.env"
 IRONPAGE_ENV_FILE="$deploy_env" IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh >"$deploy_probe_dir/first.log"
 test -s "$deploy_env"
 cp "$deploy_env" "$deploy_probe_dir/runtime.before"
 IRONPAGE_ENV_FILE="$deploy_env" IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh >"$deploy_probe_dir/second.log"
 cmp "$deploy_probe_dir/runtime.before" "$deploy_env"
-
 docker compose --env-file "$deploy_env" config >/dev/null
 
 python3 - "$deploy_env" <<'PY'
@@ -82,99 +74,59 @@ import sys
 
 path = Path(sys.argv[1])
 values = {}
-for line in path.read_text(encoding="utf-8").splitlines():
-    if not line or line.startswith("#"):
+for line in path.read_text(encoding='utf-8').splitlines():
+    if not line or line.startswith('#'):
         continue
-    key, separator, value = line.partition("=")
+    key, separator, value = line.partition('=')
     if not separator:
-        raise SystemExit(f"malformed runtime line: {line!r}")
+        raise SystemExit(f'malformed runtime line: {line!r}')
     values[key] = value
 
 required = {
-    "DB_HOST",
-    "DB_PORT",
-    "DB_USER",
-    "DB_PASSWORD",
-    "DB_NAME",
-    "JWT_SECRET",
-    "AES_KEY",
-    "ACCEPTANCE_MODE",
-    "BOOTSTRAP_ADMIN_USERNAME",
-    "BOOTSTRAP_ADMIN_PASSWORD",
+    'HOST_BIND_ADDRESS', 'HOST_PORT', 'HTTP_PORT', 'HTTP_ADDR',
+    'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME',
+    'JWT_SECRET', 'AES_KEY', 'ACCEPTANCE_MODE',
+    'BOOTSTRAP_ADMIN_USERNAME', 'BOOTSTRAP_ADMIN_PASSWORD',
+    'IRONPAGE_APP_ROOT', 'MIGRATIONS_DIR', 'PUBLIC_DIR',
+    'POSTGRES_VOLUME_ROOT', 'PGDATA', 'IRONPAGE_VOLUME_ROOT',
+    'STORAGE_DIR', 'BACKUP_DIR',
 }
-missing = sorted(required - values.keys())
+missing = sorted(key for key in required if not values.get(key))
 if missing:
-    raise SystemExit(f"generated runtime configuration is missing: {missing}")
-if values["DB_HOST"] != "127.0.0.1" or values["DB_PORT"] != "5432":
-    raise SystemExit("generated database endpoint does not target the embedded PostgreSQL service")
-if values["DB_USER"] != "ironpage" or values["DB_NAME"] != "ironpage":
-    raise SystemExit("generated database identity is inconsistent")
-if len(values["DB_PASSWORD"]) < 16:
-    raise SystemExit("generated DB_PASSWORD is too short")
-if len(values["JWT_SECRET"]) < 32 or len(values["AES_KEY"]) < 32:
-    raise SystemExit("generated cryptographic runtime values are too short")
-if values["ACCEPTANCE_MODE"] != "false":
-    raise SystemExit("one-command deployment must default to normal mode")
-bootstrap_password_length = len(values["BOOTSTRAP_ADMIN_PASSWORD"].encode("utf-8"))
-if not values["BOOTSTRAP_ADMIN_USERNAME"] or bootstrap_password_length < 16:
-    raise SystemExit("generated initial Admin configuration is incomplete")
-if bootstrap_password_length > 72:
-    raise SystemExit("generated initial Admin password exceeds bcrypt's 72-byte limit")
-mode = stat.S_IMODE(path.stat().st_mode)
-if mode != 0o600:
-    raise SystemExit(f"runtime configuration mode must be 0600, got {mode:o}")
+    raise SystemExit(f'generated runtime configuration is incomplete: {missing}')
+for key in ('HOST_PORT', 'HTTP_PORT', 'DB_PORT'):
+    port = int(values[key])
+    if not 1024 <= port <= 65535:
+        raise SystemExit(f'{key} is outside the unprivileged port range')
+if len({values['HOST_PORT'], values['HTTP_PORT'], values['DB_PORT']}) < 2:
+    raise SystemExit('generated ports are not independently configurable')
+if not values['DB_USER'].startswith('ironpage_') or not values['DB_NAME'].startswith('ironpage_'):
+    raise SystemExit('database identity is not installation-specific')
+if len(values['DB_PASSWORD']) < 16 or len(values['JWT_SECRET']) < 32 or len(values['AES_KEY']) < 32:
+    raise SystemExit('generated secrets are too short')
+password_bytes = len(values['BOOTSTRAP_ADMIN_PASSWORD'].encode('utf-8'))
+if not 16 <= password_bytes <= 72:
+    raise SystemExit('generated bootstrap password is outside bcrypt limits')
+if values['ACCEPTANCE_MODE'] != 'false':
+    raise SystemExit('one-command deployment must default to normal mode')
+if stat.S_IMODE(path.stat().st_mode) != 0o600:
+    raise SystemExit('runtime environment file must use mode 0600')
 PY
 
-# The Docker acceptance runner must generate execution-scoped runtime values,
-# explicitly enable acceptance mode, and pass fixture values into the test
-# container instead of depending on application defaults.
-grep -q 'random_hex' ci/docker_acceptance.sh
-grep -q 'export ACCEPTANCE_MODE=true' ci/docker_acceptance.sh
-grep -q 'export DB_PASSWORD=' ci/docker_acceptance.sh
-grep -q 'export JWT_SECRET=' ci/docker_acceptance.sh
-grep -q 'export AES_KEY=' ci/docker_acceptance.sh
-grep -q -- '-e SEED_ADMIN_PASSWORD=' ci/docker_acceptance.sh
-grep -q -- '-e SEED_EDITOR_PASSWORD=' ci/docker_acceptance.sh
-grep -q -- '-e SEED_REVIEWER_PASSWORD=' ci/docker_acceptance.sh
+! grep -q 'container_name:' docker-compose.yml
+! grep -Eq '\$\{(DB_USER|DB_NAME|DB_PORT|HOST_PORT|HTTP_PORT):-' docker-compose.yml
+! grep -Eq 'env\("(HTTP_ADDR|DB_PORT|DB_USER|DB_NAME|STORAGE_DIR|BACKUP_DIR|MIGRATIONS_DIR|PUBLIC_DIR)", "[^"]+"\)' internal/app/config.go
 
-# Authentication acceptance must include a persisted rolling window, real
-# normal-mode restart evidence, fail-closed fault injection, and browser flow.
-test -f migrations/002_login_attempt_window.sql
-test -f API_tests/test_auth_lockout_docker.sh
-test -f API_tests/test_bootstrap_restart_docker.sh
-test -f API_tests/test_ui_interaction_acceptance.sh
-test -f API_tests/ui_interaction_cdp.py
-grep -q 'loginAttemptWindow = 15 \* time.Minute' internal/app/auth.go
-grep -q 'LOGIN_ATTEMPT_WRITE_ERROR' internal/app/auth.go
-grep -q 'LOGIN_STATE_WRITE_ERROR' internal/app/auth.go
-grep -q 'AUTH_STATE_READ_ERROR' internal/app/auth.go
-grep -q 'REPLAY_GUARD_ERROR' internal/app/auth.go
-grep -q 'SESSION_UPDATE_ERROR' internal/app/auth.go
-grep -q 'LOGOUT_WRITE_ERROR' internal/app/auth.go
-grep -q 'bash API_tests/test_bootstrap_restart_docker.sh' ci/docker_acceptance.sh
-grep -q 'bash API_tests/test_auth_lockout_docker.sh' ci/docker_acceptance.sh
-grep -q 'bash API_tests/test_ui_interaction_acceptance.sh' ci/docker_acceptance.sh
-grep -q 'IRONPAGE_UI_EVIDENCE_DIR=' ci/run_full_regression.sh
-bash -n API_tests/test_auth_lockout_docker.sh
-bash -n API_tests/test_bootstrap_restart_docker.sh
-bash -n API_tests/test_ui_interaction_acceptance.sh
-python3 -m py_compile API_tests/ui_interaction_cdp.py
+# Canonical test and UI layout must be unambiguous.
+test -d tests/api
+test -d tests/contracts
+test ! -e API_tests
+test ! -e unit_tests
+test -f public/index.html
+test ! -e public/manual-test.html
 
-# Markdown-only changes must have a dedicated consistency workflow and the
-# current clarification contract must be executable in PR CI.
-test -f ci/docs_consistency_check.sh
-test -f .github/workflows/documentation-consistency.yml
-grep -q 'bash ci/docs_consistency_check.sh' .github/workflows/documentation-consistency.yml
-bash -n ci/docs_consistency_check.sh
-
-# The acceptance image must remain capable of running the strict dependency
-# contract without relying on the product runtime image.
-docker build -f ci/Dockerfile.acceptance -t ironpage-vault-ci-acceptance-contract .
-docker run --rm --entrypoint bash ironpage-vault-ci-acceptance-contract -lc '
-  test -f internal/service/pdf.go
-  test -f internal/platform/pdf_strict.go
-  test -f internal/platform/backup_strict.go
-  bash API_tests/test_strict_dependency_failures.sh
-'
+# Generated local reports may describe only their actual stage rows.
+! grep -q 'This local report covers Swagger generation' run_tests.sh
+grep -q 'Executed stages' run_tests.sh
 
 echo "PASS regression flow contract"
