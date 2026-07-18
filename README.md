@@ -30,6 +30,7 @@ internal/repository/ repository interfaces and persistence operations
 internal/store/      SQL-facing storage helpers
 internal/platform/   PDF, crypto, digest, filesystem, backup, restore adapters
 migrations/          PostgreSQL schema
+scripts/deploy.sh    one-command secure local deployment
 API_tests/           stateful API, bootstrap, authentication, and browser acceptance
 unit_tests/          static and repository contract checks
 ci/                  Docker acceptance and full-regression entrypoints
@@ -38,44 +39,43 @@ docs/                API, design, security, deployment, testing, and operations 
 public/              acceptance-only browser aid
 ```
 
-Start with `cmd/server/main.go` for process startup, `internal/app/server.go` for routes and runtime assembly, `internal/app/config.go` for configuration gates, and `docs/api-spec.md` for endpoint behavior.
+Start with `cmd/server/main.go` for process startup, `internal/app/server.go` for routes and runtime assembly, `internal/app/config.go` for application configuration gates, `docker-compose.yml` for the single-container runtime, and `docs/api-spec.md` for endpoint behavior.
 
 ## Prerequisites
 
-The supported local runtime path uses Docker with Compose. The application image includes PostgreSQL and the Go API process in one service container.
+The supported local runtime path requires:
+
+- Docker with Docker Compose v2.
+- Bash and standard local tools including `od`, `sed`, and `tr`.
+
+The application image contains PostgreSQL and the Go API process in one service container. No external database or network service is required.
 
 For source-level Go checks, use the Go version declared by the repository build configuration.
 
-## Required runtime configuration
+## First 10 minutes: one-command deployment
 
-IronPage Vault has no built-in fallback for database authentication, token signing, or sensitive-field encryption. Supply these values externally:
-
-```text
-DB_PASSWORD
-JWT_SECRET
-AES_KEY
-```
-
-Compose rejects missing values, and the application validates them again before creating directories, connecting to PostgreSQL, running migrations, or serving HTTP.
-
-Do not commit runtime values to the repository.
-
-## First secure startup
-
-A new empty database needs one explicitly configured initial Admin:
-
-```text
-BOOTSTRAP_ADMIN_USERNAME
-BOOTSTRAP_ADMIN_PASSWORD
-```
-
-With all required values present, start the service:
+From the repository root, run:
 
 ```bash
-docker compose up --build
+bash scripts/deploy.sh
 ```
 
-The bootstrap pair is used only when the user table is empty. After the initial Admin is verified and the required local identities are created, remove the bootstrap pair from the deployment environment. Existing databases with users do not require it and restart does not overwrite the existing Admin.
+On the first run, the deployer:
+
+1. creates a local `.env` runtime file with mode `0600`;
+2. generates random database, JWT-signing, AES-encryption, and initial Admin secrets;
+3. configures the embedded PostgreSQL instance and API from that file;
+4. builds and starts the single Compose service in the background;
+5. waits for `/healthz` to succeed; and
+6. prints the initial Admin username and password once.
+
+The generated `.env` is excluded from Git and from the Docker build context. Product code, image layers, Compose defaults, documentation, and browser assets do not contain a fixed credential or cryptographic key.
+
+Repeated execution uses the existing `.env` instead of rotating the database password or encryption keys:
+
+```bash
+bash scripts/deploy.sh
+```
 
 ## Verify startup
 
@@ -91,15 +91,63 @@ A successful response confirms that runtime validation passed and PostgreSQL is 
 http://localhost:8080/swagger/index.html
 ```
 
-## Authentication lockout
+## Database and runtime configuration
 
-Failed logins are stored as timestamped events. Only failures within the preceding 15 minutes count. The fifth in-window failure locks the account for 15 minutes. Attempts outside the rolling window expire from the count, and successful login after lock expiry clears the failure state.
+The one-command deployer writes the complete local runtime configuration to `.env`. The embedded PostgreSQL process and the Go API use the same database identity.
 
-Authentication state is fail-closed: failed-attempt persistence, login-state reset, blacklist lookup, replay recording, session activity, and logout revocation errors must return the standard internal-error envelope rather than authenticated or logged-out success.
+| Variable | Generated/default value | Purpose |
+|---|---|---|
+| `DB_HOST` | `127.0.0.1` | Embedded PostgreSQL address inside the container |
+| `DB_PORT` | `5432` | Embedded PostgreSQL port |
+| `DB_USER` | `ironpage` | PostgreSQL role used by both PostgreSQL initialization and the API |
+| `DB_PASSWORD` | Randomly generated | PostgreSQL password used by both PostgreSQL initialization and the API |
+| `DB_NAME` | `ironpage` | PostgreSQL database used by both PostgreSQL initialization and the API |
+| `JWT_SECRET` | Randomly generated | Local JWT signing material |
+| `AES_KEY` | Randomly generated | Sensitive-column encryption material |
+| `BOOTSTRAP_ADMIN_USERNAME` | `admin` on first generation | Initial empty-database Admin identity |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Randomly generated | Initial empty-database Admin password |
+
+`docker-compose.yml` derives `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` from `DB_USER`, `DB_PASSWORD`, and `DB_NAME`. This keeps the embedded database initialization and the application connection configuration consistent.
+
+The Go application still has no sensitive fallback values. Starting Compose without a complete runtime file or equivalent externally supplied values fails closed. The deployment script is responsible for creating those external values securely on first use.
+
+To customize a clean installation, generate the file without starting containers, edit it, and then deploy:
+
+```bash
+IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh
+# Edit .env while preserving strong unique secret values.
+bash scripts/deploy.sh
+```
+
+Do not casually change `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`, or `AES_KEY` after persistent data exists. Database credentials must be migrated inside PostgreSQL, and changing `AES_KEY` makes existing encrypted metadata unreadable. For a disposable clean re-test, remove the volumes first.
+
+After the initial Admin login is verified, remove `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD` from `.env`. Existing users are preserved and restart does not create or overwrite another Admin.
+
+## Manual Compose operation
+
+The deployment script is the supported first-run path. Once `.env` exists, the equivalent manual start is:
+
+```bash
+docker compose --env-file .env up --build -d
+```
+
+Stop while preserving data:
+
+```bash
+docker compose --env-file .env down
+```
+
+Remove local volumes for a clean re-test:
+
+```bash
+docker compose --env-file .env down -v
+```
+
+A clean normal-mode database again needs bootstrap values. Running `bash scripts/deploy.sh` with a missing or empty `.env` generates a new complete configuration.
 
 ## Normal mode and acceptance mode
 
-Normal mode is the default:
+Normal mode is the deployment default:
 
 ```text
 ACCEPTANCE_MODE=false
@@ -139,7 +187,7 @@ go test ./...
 bash unit_tests/test_rules.sh
 ```
 
-Docker build, normal-mode bootstrap restart, rolling lockout, authentication fault injection, browser interaction, and stateful API acceptance:
+Docker build, one-command normal-mode bootstrap and restart, rolling lockout, authentication fault injection, browser interaction, and stateful API acceptance:
 
 ```bash
 bash ci/docker_acceptance.sh
@@ -199,23 +247,23 @@ See `docs/backup-recovery.md` and `docs/pitr.md` for the supported recovery scop
 
 ## Troubleshooting
 
-**Compose stops before building**  
-A required runtime variable is absent. Check `DB_PASSWORD`, `JWT_SECRET`, and `AES_KEY` in the calling environment.
+**`scripts/deploy.sh` reports that Docker is missing**  
+Install Docker with the Compose v2 plugin, then rerun the same command.
+
+**The generated runtime file already exists**  
+This is expected. The deployer reuses `.env` so persistent database and encryption credentials remain stable.
+
+**Compose reports a missing required variable**  
+The existing `.env` is incomplete or malformed. Restore the required database and cryptographic variables, or remove the empty/disposable file and rerun the deployer to generate a complete one.
 
 **A new normal-mode database exits during startup**  
-The user table is empty and the initial Admin pair was not supplied.
-
-**Acceptance users are not created**  
-Confirm that acceptance mode is explicitly enabled and all three fixture values are present.
-
-**An account remains locked after a correct password**  
-An active 15-minute lock intentionally rejects every password. Wait until `locked_until` expires; the next successful login clears the rolling-attempt state.
+The user table is empty but bootstrap variables were removed from `.env`. Restore an explicit bootstrap pair or regenerate the disposable installation after removing its volumes.
 
 **`/ui/` returns 404**  
 This is expected in normal mode. The test UI is acceptance-only.
 
 **Health returns database unavailable**  
-Check the local PostgreSQL process, database configuration, and persistent volume state.
+Check the container logs, the database variables in `.env`, and the persistent volume state. Do not change only one side of an initialized database credential.
 
 ## Deeper documentation
 
