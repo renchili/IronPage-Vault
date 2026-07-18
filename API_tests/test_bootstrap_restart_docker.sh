@@ -56,6 +56,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The caller builds the image once. This flow exercises a clean normal-mode
+# volume, then recreates the container against the same persisted database.
 docker compose down -v --remove-orphans >/dev/null 2>&1 || true
 docker compose up -d "$APP_SERVICE"
 wait_for_health
@@ -66,6 +68,7 @@ expect_code "initial Admin login after empty-volume bootstrap" 200 "$code"
 ui_code=$(curl -sS -o /tmp/ironpage_bootstrap_ui.out -w '%{http_code}' "$BASE_URL/ui/")
 expect_code "normal mode does not serve acceptance UI" 404 "$ui_code"
 
+# Remove the bootstrap pair and recreate the container while retaining volumes.
 docker compose down --remove-orphans
 unset BOOTSTRAP_ADMIN_USERNAME BOOTSTRAP_ADMIN_PASSWORD
 docker compose up -d "$APP_SERVICE"

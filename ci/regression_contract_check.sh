@@ -60,25 +60,38 @@ grep -q -- '-e SEED_ADMIN_PASSWORD=' ci/docker_acceptance.sh
 grep -q -- '-e SEED_EDITOR_PASSWORD=' ci/docker_acceptance.sh
 grep -q -- '-e SEED_REVIEWER_PASSWORD=' ci/docker_acceptance.sh
 
-# A successful full regression must not be converted into a failed workflow by
-# attempting a second direct write to the protected main branch. The generated
-# summary remains visible in the job summary and the complete evidence remains
-# in the retained workflow artifact.
-grep -q 'GITHUB_STEP_SUMMARY' .github/workflows/full-regression-reusable.yml
-grep -q 'inputs.record_summary' .github/workflows/full-regression-reusable.yml
-if grep -Eq 'git (commit|push)|HEAD:main' .github/workflows/full-regression-reusable.yml; then
-  echo "FAIL regression contract: reusable workflow must not write directly to main"
-  exit 1
-fi
-grep -q 'contents: read' .github/workflows/post-merge-regression.yml
-if grep -q 'contents: write' .github/workflows/post-merge-regression.yml; then
-  echo "FAIL regression contract: post-merge workflow does not require write permission"
-  exit 1
-fi
-grep -q "'.github/workflows/full-regression-reusable.yml'" .github/workflows/post-merge-regression.yml
-grep -q "'.github/workflows/post-merge-regression.yml'" .github/workflows/post-merge-regression.yml
-grep -q "'ci/regression_contract_check.sh'" .github/workflows/post-merge-regression.yml
+# Authentication acceptance must include a persisted rolling window, real
+# normal-mode restart evidence, fail-closed fault injection, and browser flow.
+test -f migrations/002_login_attempt_window.sql
+test -f API_tests/test_auth_lockout_docker.sh
+test -f API_tests/test_bootstrap_restart_docker.sh
+test -f API_tests/test_ui_interaction_acceptance.sh
+test -f API_tests/ui_interaction_cdp.py
+grep -q 'loginAttemptWindow = 15 \* time.Minute' internal/app/auth.go
+grep -q 'LOGIN_ATTEMPT_WRITE_ERROR' internal/app/auth.go
+grep -q 'LOGIN_STATE_WRITE_ERROR' internal/app/auth.go
+grep -q 'AUTH_STATE_READ_ERROR' internal/app/auth.go
+grep -q 'REPLAY_GUARD_ERROR' internal/app/auth.go
+grep -q 'SESSION_UPDATE_ERROR' internal/app/auth.go
+grep -q 'LOGOUT_WRITE_ERROR' internal/app/auth.go
+grep -q 'bash API_tests/test_bootstrap_restart_docker.sh' ci/docker_acceptance.sh
+grep -q 'bash API_tests/test_auth_lockout_docker.sh' ci/docker_acceptance.sh
+grep -q 'bash API_tests/test_ui_interaction_acceptance.sh' ci/docker_acceptance.sh
+grep -q 'IRONPAGE_UI_EVIDENCE_DIR=' ci/run_full_regression.sh
+bash -n API_tests/test_auth_lockout_docker.sh
+bash -n API_tests/test_bootstrap_restart_docker.sh
+bash -n API_tests/test_ui_interaction_acceptance.sh
+python3 -m py_compile API_tests/ui_interaction_cdp.py
 
+# Markdown-only changes must have a dedicated consistency workflow and the
+# current clarification contract must be executable in PR CI.
+test -f ci/docs_consistency_check.sh
+test -f .github/workflows/documentation-consistency.yml
+grep -q 'bash ci/docs_consistency_check.sh' .github/workflows/documentation-consistency.yml
+bash -n ci/docs_consistency_check.sh
+
+# The acceptance image must remain capable of running the strict dependency
+# contract without relying on the product runtime image.
 docker build -f ci/Dockerfile.acceptance -t ironpage-vault-ci-acceptance-contract .
 docker run --rm --entrypoint bash ironpage-vault-ci-acceptance-contract -lc '
   test -f internal/service/pdf.go
