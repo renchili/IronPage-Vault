@@ -8,7 +8,7 @@ env_file="$env_dir/runtime.env"
 
 # The normal-mode test relies only on its generated runtime file.
 unset HOST_BIND_ADDRESS HOST_PORT HTTP_PORT HTTP_ADDR
-unset DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME
+unset DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME PGPORT
 unset JWT_SECRET AES_KEY ACCEPTANCE_MODE
 unset BOOTSTRAP_ADMIN_USERNAME BOOTSTRAP_ADMIN_PASSWORD
 unset SEED_ADMIN_PASSWORD SEED_EDITOR_PASSWORD SEED_REVIEWER_PASSWORD
@@ -97,7 +97,7 @@ code=$(login_code "$bootstrap_username" "$bootstrap_password")
 expect_code "existing Admin login survives restart without bootstrap values" 200 "$code"
 
 admin_count=$(compose exec -T "$APP_SERVICE" bash -lc '
-  psql -X -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) FROM users WHERE role='"'"'Admin'"'"';"
+  psql -X -qAt -p "$DB_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) FROM users WHERE role='"'"'Admin'"'"';"
 ' | tr -d '\r')
 if [ "$admin_count" != "1" ]; then
   echo "FAIL bootstrap: expected one Admin after restart, got $admin_count" >&2
