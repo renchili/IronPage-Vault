@@ -5,11 +5,18 @@ required_runtime_values=(
   POSTGRES_USER
   POSTGRES_PASSWORD
   POSTGRES_DB
+  DB_PORT
   DB_USER
   DB_PASSWORD
   DB_NAME
   JWT_SECRET
   AES_KEY
+  STORAGE_DIR
+  BACKUP_DIR
+  MIGRATIONS_DIR
+  PUBLIC_DIR
+  HTTP_ADDR
+  PGDATA
 )
 
 for name in "${required_runtime_values[@]}"; do
@@ -34,6 +41,13 @@ if [ "$POSTGRES_DB" != "$DB_NAME" ]; then
   exit 1
 fi
 
+case "$DB_PORT" in
+  ''|*[!0-9]*)
+    echo "ERROR: DB_PORT must be numeric" >&2
+    exit 1
+    ;;
+esac
+
 case "${ACCEPTANCE_MODE:-false}" in
   1|true|TRUE|True)
     for name in \
@@ -49,9 +63,10 @@ case "${ACCEPTANCE_MODE:-false}" in
     ;;
 esac
 
-export PGDATA="${PGDATA:-/var/lib/postgresql/data}"
+mkdir -p "$PGDATA" "$STORAGE_DIR" "$BACKUP_DIR"
+export PGPORT="$DB_PORT"
 
-docker-entrypoint.sh postgres &
+docker-entrypoint.sh postgres -p "$DB_PORT" &
 postgres_pid=$!
 
 cleanup() {
@@ -68,8 +83,7 @@ trap 'exit 130' INT
 ready=0
 for _ in $(seq 1 60); do
   if pg_isready \
-      -h 127.0.0.1 \
-      -p 5432 \
+      -p "$DB_PORT" \
       -U "$POSTGRES_USER" \
       -d "$POSTGRES_DB" >/dev/null 2>&1
   then
