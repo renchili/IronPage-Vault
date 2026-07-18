@@ -1,30 +1,17 @@
-# API Tests
+# API Acceptance Tests
 
-This directory contains API functional acceptance material.
+This directory contains stateful HTTP and browser acceptance flows. The scripts exercise local login, authentication state, RBAC denials, document lifecycle, PDF processing, audit records, notifications, backup/restore, and recovery paths.
 
-The API test suite is expected to cover:
-
-- health endpoint
-- local login
-- authenticated principal lookup
-- role denial paths
-- Admin user and configuration endpoints
-- Editor document upload endpoints
-- Reviewer annotation endpoints
-- workflow transitions
-- finalized document immutability
-- audit log query
-- notification query
-- backup job metadata
-
-Run from the repository root with:
+Run the complete local entrypoint from the repository root:
 
 ```bash
-./run_tests.sh
+bash run_tests.sh
 ```
 
-The scripts assume the service is already available at `BASE_URL`, defaulting to:
+For Docker-backed complete evidence, use:
 
-```text
-http://localhost:8080
+```bash
+bash ci/run_full_regression.sh artifacts/regression
 ```
+
+Individual scripts require an explicit `BASE_URL` and the relevant execution-scoped credentials or tokens. They do not contain a fixed server address or credential.
