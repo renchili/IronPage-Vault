@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Reject duplicate or unsafe CI starts for the same repository revision.
+"""Enforce target cooldown and an auditable failed-revision latch.
 
-GitHub Actions history is the persistent, auditable latch. A new commit SHA
-clears a failed-revision latch. A reviewed workflow_dispatch may explicitly
-unlock one replay of the same SHA.
+GitHub Actions history is the persistent control record. A reviewed fix commit
+changes the SHA and clears the failure latch. A deliberate workflow_dispatch
+with the unlock input may replay the same SHA once.
 """
 
 from __future__ import annotations
@@ -38,8 +38,19 @@ def parse_time(value: str | None) -> dt.datetime | None:
     return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def run_target(run: dict[str, object]) -> str:
+    pull_requests = run.get("pull_requests")
+    if isinstance(pull_requests, list) and pull_requests:
+        first = pull_requests[0]
+        if isinstance(first, dict) and first.get("number") is not None:
+            return f"pr-{first['number']}"
+    head_branch = run.get("head_branch")
+    return str(head_branch or "")
+
+
 def main() -> int:
     repository = required("GITHUB_REPOSITORY")
+    target = required("IRONPAGE_CI_TARGET")
     sha = required("GITHUB_SHA")
     token = required("GITHUB_TOKEN")
     current_run_id = int(required("GITHUB_RUN_ID"))
@@ -55,7 +66,7 @@ def main() -> int:
         return 1
 
     request = urllib.request.Request(
-        f"https://api.github.com/repos/{repository}/actions/runs?head_sha={sha}&per_page=100",
+        f"https://api.github.com/repos/{repository}/actions/runs?per_page=100",
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
@@ -73,7 +84,9 @@ def main() -> int:
     previous_runs = [
         run
         for run in payload.get("workflow_runs", [])
-        if int(run.get("id", 0)) != current_run_id
+        if isinstance(run, dict)
+        and int(run.get("id", 0)) != current_run_id
+        and run_target(run) == target
     ]
     previous_runs.sort(
         key=lambda run: parse_time(run.get("run_started_at") or run.get("created_at"))
@@ -82,15 +95,19 @@ def main() -> int:
     )
 
     if unlock:
-        print("PASS: reviewed manual CI unlock accepted for this revision")
+        print(f"PASS: reviewed manual CI unlock accepted for target {target}")
         return 0
 
-    failed = [run for run in previous_runs if run.get("conclusion") in FAILED_CONCLUSIONS]
-    if failed:
-        run = failed[0]
+    failed_same_revision = [
+        run
+        for run in previous_runs
+        if run.get("head_sha") == sha and run.get("conclusion") in FAILED_CONCLUSIONS
+    ]
+    if failed_same_revision:
+        run = failed_same_revision[0]
         print(
-            "ERROR: this revision is latched after a failed run "
-            f"({run.get('html_url')}); push a fix commit before automatic verification",
+            "ERROR: this target and revision are latched after a failed run "
+            f"({run.get('html_url')}); push a reviewed fix commit before automatic verification",
             file=sys.stderr,
         )
         return 1
@@ -104,13 +121,13 @@ def main() -> int:
     if recent:
         run = recent[0]
         print(
-            "ERROR: another run for this revision started within the 10-minute cooldown "
+            f"ERROR: target {target} already started verification within the 10-minute cooldown "
             f"({run.get('html_url')})",
             file=sys.stderr,
         )
         return 1
 
-    print("PASS: CI cooldown and failed-revision latch")
+    print(f"PASS: CI cooldown and failed-revision latch for target {target}")
     return 0
 
 
