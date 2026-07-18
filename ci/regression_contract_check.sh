@@ -43,12 +43,15 @@ grep -q 'Overall: \*\*FAILED\*\*' "$probe_dir/summary.md"
 
 # The repository has one executable workflow. Concurrency, cooldown, failure
 # latching, and all validation therefore share a single control plane.
-mapfile -t workflows < <(find .github/workflows -maxdepth 1 -type f -name '*.yml' -o -name '*.yaml')
+mapfile -t workflows < <(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \))
 test "${#workflows[@]}" -eq 1
 test "${workflows[0]}" = ".github/workflows/ci.yml"
 grep -q 'cancel-in-progress: false' .github/workflows/ci.yml
+grep -q 'IRONPAGE_CI_TARGET' .github/workflows/ci.yml
 grep -q 'ci/ci_execution_guard.py' .github/workflows/ci.yml
 grep -q 'ci/run_full_regression.sh' .github/workflows/ci.yml
+grep -q 'COOLDOWN_SECONDS = 10 \* 60' ci/ci_execution_guard.py
+grep -q 'failed_same_revision' ci/ci_execution_guard.py
 ! grep -RIn 'if: always()' .github/workflows
 
 # A fresh checkout generates every local runtime value without retaining fixed
@@ -57,6 +60,8 @@ test -f scripts/deploy.sh
 bash -n scripts/deploy.sh
 grep -Fxq '.env' .gitignore
 grep -Fxq '.env' .dockerignore
+grep -Fxq 'reports/' .gitignore
+grep -Fxq 'artifacts/' .gitignore
 grep -q 'scripts/deploy.sh' tests/api/test_bootstrap_restart_docker.sh
 
 deploy_env="$deploy_probe_dir/runtime.env"
@@ -98,7 +103,7 @@ for key in ('HOST_PORT', 'HTTP_PORT', 'DB_PORT'):
     port = int(values[key])
     if not 1024 <= port <= 65535:
         raise SystemExit(f'{key} is outside the unprivileged port range')
-if len({values['HOST_PORT'], values['HTTP_PORT'], values['DB_PORT']}) < 2:
+if len({values['HOST_PORT'], values['HTTP_PORT'], values['DB_PORT']}) != 3:
     raise SystemExit('generated ports are not independently configurable')
 if not values['DB_USER'].startswith('ironpage_') or not values['DB_NAME'].startswith('ironpage_'):
     raise SystemExit('database identity is not installation-specific')
@@ -114,19 +119,26 @@ if stat.S_IMODE(path.stat().st_mode) != 0o600:
 PY
 
 ! grep -q 'container_name:' docker-compose.yml
-! grep -Eq '\$\{(DB_USER|DB_NAME|DB_PORT|HOST_PORT|HTTP_PORT):-' docker-compose.yml
+! grep -Eq '\$\{(HOST_BIND_ADDRESS|DB_USER|DB_NAME|DB_PORT|HOST_PORT|HTTP_PORT|STORAGE_DIR|BACKUP_DIR|MIGRATIONS_DIR|PUBLIC_DIR):-' docker-compose.yml
 ! grep -Eq 'env\("(HTTP_ADDR|DB_PORT|DB_USER|DB_NAME|STORAGE_DIR|BACKUP_DIR|MIGRATIONS_DIR|PUBLIC_DIR)", "[^"]+"\)' internal/app/config.go
+! grep -q 'DBHost' internal/app/config.go
 
-# Canonical test and UI layout must be unambiguous.
+# Canonical source and evidence layout must be unambiguous and clean.
 test -d tests/api
 test -d tests/contracts
 test ! -e API_tests
 test ! -e unit_tests
 test -f public/index.html
 test ! -e public/manual-test.html
+test ! -e deploy/aws
+test ! -e reports/regression
+test ! -e PLAN.md
+test ! -d docs/review-fixes || test -z "$(find docs/review-fixes -type f -print -quit)"
+test -f ci/source_inventory.py
 
 # Generated local reports may describe only their actual stage rows.
 ! grep -q 'This local report covers Swagger generation' run_tests.sh
 grep -q 'Executed stages' run_tests.sh
+grep -q 'executed_stages' run_tests.sh
 
 echo "PASS regression flow contract"
