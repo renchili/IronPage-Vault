@@ -1,95 +1,103 @@
 # RBAC Documentation
 
-IronPage Vault uses three discrete roles only:
+IronPage Vault supports exactly three roles:
 
 - Admin
 - Editor
 - Reviewer
 
-The roles are intentionally separate. Admin is not treated as an automatic super-editor.
+The roles are intentionally separate. Admin is a system-management and oversight role, not an automatic document editor.
 
-## Role Purpose
-
-| Role | Primary purpose |
-|---|---|
-| Admin | System administration and configuration |
-| Editor | Legal document manipulation and finalization |
-| Reviewer | Review, annotation, and review workflow participation |
-
-## Capability Matrix
+## Capability matrix
 
 | Capability | Admin | Editor | Reviewer |
 |---|---:|---:|---:|
-| Login | Yes | Yes | Yes |
-| View own principal | Yes | Yes | Yes |
-| User creation | Yes | No | No |
-| User listing | Yes | No | No |
-| Configuration listing | Yes | No | No |
-| Configuration update | Yes | No | No |
-| Workflow status definition listing | Yes | No | No |
-| Notification template listing | Yes | No | No |
-| Backup job metadata creation | Yes | No | No |
-| Backup job listing | Yes | No | No |
-| Document listing | Yes | Yes | Yes |
-| Document metadata retrieval | Yes | Yes | Yes |
-| PDF file retrieval | Yes | Yes | Yes |
-| PDF upload | No | Yes | No |
-| Batch PDF upload | No | Yes | No |
-| Version listing | Yes | Yes | Yes |
-| Version rollback | No | Yes | No |
-| Redaction proposal | No | Yes | No |
-| Redaction confirmation | No | Yes | No |
-| Bates numbering | No | Yes | No |
-| Annotation creation | No | No | Yes |
-| Annotation disposition update | No | No | Yes |
-| Workflow transition | No | Yes | Yes |
-| Finalization | No | Yes | No |
-| Audit log query | Yes | Yes | Yes |
-| Notification query | Own records | Own records | Own records |
-| Notification read acknowledgment | Own records | Own records | Own records |
+| Login and view own principal | Yes | Yes | Yes |
+| Create and list users | Yes | No | No |
+| Read and update system configuration | Yes | No | No |
+| Manage workflow status definitions | Yes | No | No |
+| Manage notification templates | Yes | No | No |
+| Run, list, and restore backups | Yes | No | No |
+| Query audit logs | Yes | No | No |
+| Read document metadata and files | Oversight access | Owned documents | Non-Draft documents |
+| Upload and batch-upload PDFs | No | Yes | No |
+| List document versions | Oversight access | Owned documents | Non-Draft documents |
+| Roll back versions | No | Owning Editor only | No |
+| Propose and confirm redaction | No | Owning Editor only | No |
+| Apply Bates numbering | No | Owning Editor only | No |
+| Create and disposition annotations | No | No | Reviewable documents only |
+| Transition workflow | No | Owned non-Finalized documents | Non-Draft, non-Finalized documents |
+| Finalize documents | No | Owning Editor after approval | No |
+| Query notifications | Own records | Own records | Own records |
+| Acknowledge notifications | Own records | Own records | Own records |
+
+Every document mutation is additionally rejected after Finalized, regardless of role.
 
 ## Why Admin is not Editor
 
-The prompt defines Admin as a system-management role. Admins manage users, dictionaries, workflow status definitions, and notification templates. Editors manipulate legal documents.
+Admin manages identities, configuration dictionaries, workflow definitions, notification templates, and backup operations. Editor manipulates legal documents. Keeping those roles separate prevents infrastructure administration from silently granting document-edit authority.
 
-Keeping these roles separate prevents accidental document tampering by system administrators and gives acceptance tests clear denial cases.
+Admin retains read-only oversight access to document objects but cannot upload, roll back, redact, annotate, apply Bates numbering, transition, or finalize them.
 
-## Enforcement Layers
+## Enforcement layers
 
-RBAC is enforced in two places:
+Authorization is enforced at multiple backend layers:
 
-1. Route-level middleware for coarse API boundary enforcement.
-2. Handler/service-level validation for sensitive business rules such as Finalized immutability.
+1. route middleware provides the coarse role boundary;
+2. core object policy evaluates principal, owner, status, and operation;
+3. service and mutation paths enforce workflow and Finalized-state rules; and
+4. persistence queries and response mapping preserve object scope and field visibility.
 
-Route-level checks alone are not enough because future routes could accidentally call shared logic. Business operations must protect themselves.
+Frontend filtering and route grouping are never sufficient authorization controls.
 
-## Required Denial Cases
+## Object-level policy
 
-Acceptance must verify at least:
+The current object policy is defined in `internal/core/access.go`.
 
-- Reviewer cannot upload a PDF.
-- Reviewer cannot apply Bates numbering.
-- Reviewer cannot confirm redaction.
-- Editor cannot create users.
-- Editor cannot update system configuration.
-- Admin cannot upload PDF unless the design is explicitly changed.
-- Any role is denied mutation after Finalized.
+### Read
 
-## Required Approval Cases
+- Admin may read documents for oversight.
+- An owning Editor may read the Editor's own document.
+- Reviewer may read a document only after it leaves Draft.
+- A non-owning Editor cannot read another Editor's document.
 
-Acceptance must verify at least:
+### Edit
 
-- Admin can list users.
-- Admin can create a user.
-- Admin can view configuration.
-- Editor can upload a PDF.
-- Editor can stage and confirm redaction.
-- Editor can create Bates job metadata.
-- Reviewer can create annotation.
-- Reviewer can update annotation disposition.
+Only the owning Editor may mutate document content, and never after Finalized.
 
-## Object-level Authorization
+### Review
 
-The current prototype validates document existence and immutable state. Future production hardening should add matter/team ownership rules if the legal organization requires document-level segregation between teams.
+Reviewer may add review activity only after Draft and before Finalized.
 
-Object-level authorization should never be replaced by frontend filtering.
+### Transition
+
+- Owning Editor may transition a non-Finalized document where the workflow permits.
+- Reviewer may transition a non-Draft, non-Finalized document where the workflow permits.
+- Admin has no document-transition authority.
+
+The workflow state machine independently rejects skipped or invalid transitions.
+
+## Required positive evidence
+
+Acceptance must prove at least:
+
+- Admin can manage users and configuration;
+- Admin can query audit records and run backup operations;
+- Admin can read document objects for oversight without mutating them;
+- owning Editor can upload and perform permitted document operations;
+- Reviewer can read and review a non-Draft document; and
+- each role can query and acknowledge only its own notifications.
+
+## Required negative evidence
+
+Acceptance must prove at least:
+
+- Reviewer cannot upload, redact, apply Bates numbering, or finalize;
+- Reviewer cannot access Draft documents;
+- Editor cannot manage users, configuration, audit logs, or backups;
+- non-owning Editor cannot access another Editor's document;
+- Admin cannot perform Editor or Reviewer document mutations;
+- invalid workflow transitions are rejected; and
+- every role is denied every mutation after Finalized.
+
+Static policy inspection identifies the intended rules. A runtime RBAC acceptance claim requires executed positive and negative flows tied to the tested revision.
