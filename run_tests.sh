@@ -57,6 +57,9 @@ skip_stage() {
   printf '%s\n' "$reason" > "$log"
   echo "SKIP $stage: $reason"
   record_stage "$stage" SKIP 0 0 "$log"
+  if [ "$OVERALL_STATUS" -eq 0 ]; then
+    OVERALL_STATUS=2
+  fi
 }
 
 run_script() {
@@ -94,7 +97,7 @@ import json
 import os
 import sys
 
-out_dir, results_path, overall_status = sys.argv[1], sys.argv[2], int(sys.argv[3])
+out_dir, results_path, exit_status = sys.argv[1], sys.argv[2], int(sys.argv[3])
 rows = []
 with open(results_path, newline='', encoding='utf-8') as f:
     for row in csv.DictReader(f, delimiter='\t'):
@@ -103,7 +106,14 @@ with open(results_path, newline='', encoding='utf-8') as f:
         rows.append(row)
 
 counts = {name: sum(1 for row in rows if row['result'] == name) for name in ('PASS', 'FAIL', 'SKIP')}
-passed = bool(rows) and overall_status == 0 and counts['FAIL'] == 0
+if exit_status == 1 or counts['FAIL']:
+    state = 'failed'
+elif exit_status == 2 or counts['SKIP']:
+    state = 'incomplete'
+elif rows:
+    state = 'passed'
+else:
+    state = 'incomplete'
 executed_stages = [row['stage'] for row in rows]
 ui_manifest_path = os.path.join(out_dir, 'ui', 'manifest.json')
 ui_manifest = None
@@ -113,7 +123,7 @@ if os.path.exists(ui_manifest_path):
 
 payload = {
     'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(),
-    'overall_status': 'passed' if passed else 'failed',
+    'overall_status': state,
     'total_stages': len(rows),
     'passed': counts['PASS'],
     'failed': counts['FAIL'],
@@ -128,7 +138,7 @@ with open(os.path.join(out_dir, 'summary.json'), 'w', encoding='utf-8') as f:
 with open(os.path.join(out_dir, 'summary.md'), 'w', encoding='utf-8') as f:
     f.write('# IronPage Local Acceptance Report\n\n')
     f.write(f"Generated: `{payload['generated_at']}`\n\n")
-    f.write(f"Overall: **{'PASSED' if passed else 'FAILED'}**\n\n")
+    f.write(f"Overall: **{state.upper()}**\n\n")
     f.write(f"Stages: {len(rows)} total / {counts['PASS']} passed / {counts['FAIL']} failed / {counts['SKIP']} skipped\n\n")
     f.write('## Executed stages\n\n')
     for stage in executed_stages:
@@ -165,7 +175,6 @@ if ui_manifest:
         '</section>'
     )
 
-status_label = 'PASSED' if passed else 'FAILED'
 html_doc = f'''<!doctype html>
 <html lang="en">
 <head>
@@ -181,9 +190,9 @@ code{{background:#eee;padding:2px 5px}}img{{max-width:100%}}
 <body>
 <h1>IronPage Local Acceptance Report</h1>
 <p>Generated at {html.escape(payload['generated_at'])}</p>
-<p><strong>{status_label}</strong></p>
+<p><strong>{state.upper()}</strong></p>
 <h2>Executed stages</h2>
-<p>This report claims coverage only for the stage rows recorded below.</p>
+<p>This report claims coverage only for the stage rows recorded below. Any skipped row makes the report incomplete.</p>
 <ul>{stage_items}</ul>
 <table>
 <thead><tr><th>Stage</th><th>Result</th><th>Exit</th><th>Duration</th><th>Log</th></tr></thead>
@@ -214,28 +223,56 @@ fi
 
 run_script repository_contracts tests/contracts/repository_rules.sh
 run_stage go_test_all go test -mod=mod ./...
-
-run_script api_flow tests/api/test_api_flow.sh
-load_api_tokens
-run_script api_contracts tests/api/test_api_contracts.sh
-load_api_tokens
-run_script static_review_reject_flows tests/api/test_static_review_reject_flows.sh
-load_api_tokens
-run_script acceptance_denials tests/api/test_acceptance_denials.sh
-load_api_tokens
-run_script compare_acceptance tests/api/test_compare_acceptance.sh
-load_api_tokens
-run_script finalized_immutability tests/api/test_finalized_immutability.sh
-load_api_tokens
-run_script pdf_content_acceptance tests/api/test_pdf_content_acceptance.sh
-load_api_tokens
-run_script notification_mention_side_effect tests/api/test_notification_mention_side_effect.sh
-load_api_tokens
-run_script ui_screenshot_acceptance tests/api/test_ui_screenshot_acceptance.sh
-load_api_tokens
 run_script structure_contracts tests/contracts/structure_rules.sh
 run_script strict_dependency_failures tests/api/test_strict_dependency_failures.sh
-run_script bates_sequence_multi_doc tests/api/test_bates_sequence_multi_doc.sh
+
+api_reason=""
+for name in BASE_URL SEED_ADMIN_PASSWORD SEED_EDITOR_PASSWORD SEED_REVIEWER_PASSWORD; do
+  if [ -z "${!name:-}" ]; then
+    api_reason="stateful acceptance requires BASE_URL and all SEED_*_PASSWORD values"
+    break
+  fi
+done
+
+api_stages=(
+  api_flow
+  api_contracts
+  static_review_reject_flows
+  acceptance_denials
+  compare_acceptance
+  finalized_immutability
+  pdf_content_acceptance
+  notification_mention_side_effect
+  ui_screenshot_acceptance
+  bates_sequence_multi_doc
+)
+
+if [ -n "$api_reason" ]; then
+  for stage in "${api_stages[@]}"; do
+    skip_stage "$stage" "$api_reason"
+  done
+else
+  rm -f /tmp/ironpage_admin_token.out /tmp/ironpage_editor_token.out /tmp/ironpage_reviewer_token.out
+  run_script api_flow tests/api/test_api_flow.sh
+  load_api_tokens
+  run_script api_contracts tests/api/test_api_contracts.sh
+  load_api_tokens
+  run_script static_review_reject_flows tests/api/test_static_review_reject_flows.sh
+  load_api_tokens
+  run_script acceptance_denials tests/api/test_acceptance_denials.sh
+  load_api_tokens
+  run_script compare_acceptance tests/api/test_compare_acceptance.sh
+  load_api_tokens
+  run_script finalized_immutability tests/api/test_finalized_immutability.sh
+  load_api_tokens
+  run_script pdf_content_acceptance tests/api/test_pdf_content_acceptance.sh
+  load_api_tokens
+  run_script notification_mention_side_effect tests/api/test_notification_mention_side_effect.sh
+  load_api_tokens
+  run_script ui_screenshot_acceptance tests/api/test_ui_screenshot_acceptance.sh
+  load_api_tokens
+  run_script bates_sequence_multi_doc tests/api/test_bates_sequence_multi_doc.sh
+fi
 
 write_acceptance_report
 exit "$OVERALL_STATUS"
