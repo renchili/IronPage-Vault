@@ -33,6 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p artifacts/one-command-deployment
           random_hex() {
             od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
           }
@@ -40,7 +41,17 @@ jobs:
           JWT_SECRET="$(random_hex)"
           AES_KEY="$(random_hex)"
           export DB_PASSWORD JWT_SECRET AES_KEY
-          docker compose build ironpage
+          docker compose build ironpage 2>&1 | tee artifacts/one-command-deployment/build.log
       - name: Exercise generated configuration, login, rerun, and restart
         shell: bash
-        run: bash API_tests/test_bootstrap_restart_docker.sh
+        run: |
+          set -o pipefail
+          bash API_tests/test_bootstrap_restart_docker.sh 2>&1 | tee artifacts/one-command-deployment/acceptance.log
+      - name: Upload one-command deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-command-deployment-${{ github.run_id }}-${{ github.sha }}
+          path: artifacts/one-command-deployment/**
+          if-no-files-found: error
+          retention-days: 30
