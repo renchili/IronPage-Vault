@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -u -o pipefail
-. API_tests/lib.sh
+. tests/api/lib.sh
 FAIL=0
 : "${ADMIN_TOKEN:?set ADMIN_TOKEN}"
 
@@ -44,10 +44,8 @@ expect_json_nonempty "admin backup dump path" artifacts.database_dump_path || FA
 expect_json_nonempty "admin backup file path" artifacts.file_snapshot_path || FAIL=$((FAIL+1))
 DB_DUMP_PATH="$(json_field artifacts.database_dump_path)"
 FILE_SNAPSHOT_PATH="$(json_field artifacts.file_snapshot_path)"
-# Structure guard only: artifact paths are container-internal during Docker acceptance.
-# Do not use host-side test -s here.
-# dump artifact file missing
-# file artifact missing
+# Artifact paths are container-internal during Docker acceptance; their
+# existence is verified by the restore request below rather than host-side test.
 
 code=$(auth_get "$ADMIN_TOKEN" /api/admin/backup/jobs)
 expect_code "admin backup jobs" 200 "$code" || FAIL=$((FAIL+1))
