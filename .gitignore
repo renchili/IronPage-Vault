@@ -1,1 +1,6 @@
 .env
+artifacts/
+reports/
+coverage/
+coverage.out
+*.log
