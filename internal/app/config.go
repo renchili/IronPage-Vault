@@ -2,7 +2,9 @@ package app
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -90,9 +92,32 @@ func (c Config) Validate() error {
 			return err
 		}
 	}
-	if _, err := strconv.Atoi(c.DBPort); err != nil {
-		return fmt.Errorf("DB_PORT must be numeric")
+
+	_, httpPort, err := net.SplitHostPort(c.HTTPAddr)
+	if err != nil {
+		return fmt.Errorf("HTTP_ADDR must include a valid host and port: %w", err)
 	}
+	if err := validatePort("HTTP_ADDR", httpPort); err != nil {
+		return err
+	}
+	if err := validatePort("DB_PORT", c.DBPort); err != nil {
+		return err
+	}
+
+	for _, item := range []struct {
+		name string
+		path string
+	}{
+		{"STORAGE_DIR", c.StorageDir},
+		{"BACKUP_DIR", c.BackupDir},
+		{"MIGRATIONS_DIR", c.MigrationsDir},
+		{"PUBLIC_DIR", c.PublicDir},
+	} {
+		if !filepath.IsAbs(item.path) {
+			return fmt.Errorf("%s must be an absolute path", item.name)
+		}
+	}
+
 	if err := requireSecret("DB_PASSWORD", c.DBPassword, 16); err != nil {
 		return err
 	}
@@ -150,6 +175,17 @@ func (c Config) DSN() string {
 		"dbname=" + c.DBName,
 		"sslmode=disable",
 	}, " ")
+}
+
+func validatePort(name, value string) error {
+	port, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("%s port must be numeric", name)
+	}
+	if port < 1024 || port > 65535 {
+		return fmt.Errorf("%s port must be between 1024 and 65535", name)
+	}
+	return nil
 }
 
 func requireValue(name, value string) error {
