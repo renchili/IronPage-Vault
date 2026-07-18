@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL=${BASE_URL:-http://localhost:8080}
+: "${BASE_URL:?BASE_URL is required}"
 OUT_DIR=${IRONPAGE_UI_EVIDENCE_DIR:-artifacts/regression/ui-interaction}
 : "${SEED_EDITOR_PASSWORD:?SEED_EDITOR_PASSWORD is required}"
 
@@ -26,7 +26,7 @@ browser=$(browser_bin) || {
 }
 
 mkdir -p "$OUT_DIR"
-python3 API_tests/ui_interaction_cdp.py \
+python3 tests/api/ui_interaction_cdp.py \
   --browser "$browser" \
   --base-url "$BASE_URL" \
   --username editor \
