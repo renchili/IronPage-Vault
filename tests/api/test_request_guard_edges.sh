@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -u -o pipefail
-. API_tests/lib.sh
+. tests/api/lib.sh
 
 FAIL=0
 
