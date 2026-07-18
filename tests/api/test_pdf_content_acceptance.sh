@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -u -o pipefail
-. API_tests/lib.sh
+. tests/api/lib.sh
 FAIL=0
 : "${EDITOR_TOKEN:?set EDITOR_TOKEN}"
 
@@ -15,12 +15,14 @@ pdftotext_to_file() {
     return
   fi
 
-  if command -v docker >/dev/null 2>&1 && docker compose ps ironpage >/dev/null 2>&1; then
-    docker compose exec -T ironpage sh -c 'cat >/tmp/ironpage_pdf_probe.pdf && pdftotext /tmp/ironpage_pdf_probe.pdf -' < "$input" > "$output"
-    return
+  if command -v docker >/dev/null 2>&1 && [ -n "${IRONPAGE_ENV_FILE:-}" ]; then
+    if docker compose --env-file "$IRONPAGE_ENV_FILE" ps ironpage >/dev/null 2>&1; then
+      docker compose --env-file "$IRONPAGE_ENV_FILE" exec -T ironpage sh -c 'cat >/tmp/ironpage_pdf_probe.pdf && pdftotext /tmp/ironpage_pdf_probe.pdf -' < "$input" > "$output"
+      return
+    fi
   fi
 
-  echo "FAIL api: pdftotext missing on host and docker compose ironpage is unavailable"
+  echo "FAIL api: pdftotext missing and generated Compose environment is unavailable"
   return 1
 }
 
