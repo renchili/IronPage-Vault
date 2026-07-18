@@ -15,9 +15,22 @@ ci/                    serialized verification and full-regression orchestration
 
 ## Local report entrypoint
 
+Source-only local checks can be started with:
+
 ```bash
 bash run_tests.sh
 ```
+
+Stateful API and browser stages additionally require an already running isolated acceptance service and explicit execution-scoped values:
+
+```text
+BASE_URL
+SEED_ADMIN_PASSWORD
+SEED_EDITOR_PASSWORD
+SEED_REVIEWER_PASSWORD
+```
+
+When those values are absent, `run_tests.sh` records the affected stages as `SKIP`, marks the report `INCOMPLETE`, and exits with status `2`. A skipped stage can never contribute to a local PASS.
 
 The generated report records only the stages actually present in `results.tsv`. A lightweight entrypoint probe may therefore list only Swagger preparation and the probe stage. It must not claim RBAC, PDF, backup, browser, Docker, or full-regression coverage unless those rows were executed.
 
@@ -82,15 +95,16 @@ The runner is sequential and fail-fast. On the first failed stage it records tha
 artifacts/regression/results.tsv
 artifacts/regression/summary.json
 artifacts/regression/summary.md
+artifacts/regression/source-inventory.json
 artifacts/regression/logs/
 artifacts/regression/ui-interaction/
 ```
 
-A complete PASS requires `summary.json` to report `overall_status=passed` and every recorded stage to have status zero.
+A complete PASS requires `summary.json` to report `overall_status=passed`, every recorded stage to have status zero, and the source inventory to contain no contamination finding.
 
 ## GitHub verification safety
 
-`.github/workflows/ci.yml` is the sole workflow. It uses one repository-and-target concurrency group, a ten-minute same-revision cooldown, an auditable failed-revision latch, one sequential job, and no `if: always()` post-failure steps. Successful evidence is uploaded only after the complete regression returns success.
+`.github/workflows/ci.yml` is the sole workflow. It uses one repository-and-target concurrency group, waits out any remaining ten-minute target cooldown before validation, enforces an auditable failed-revision latch, runs one sequential job, and has no `if: always()` post-failure steps. Successful evidence is uploaded only after the complete regression returns success.
 
 A failed SHA is not automatically replayed. Verification proceeds after a new reviewed commit or an explicit reviewed manual unlock.
 
