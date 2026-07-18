@@ -22,7 +22,7 @@ Persist failed attempts in `login_attempts`. Serialize updates for one user, del
 
 ### Acceptance evidence
 
-`API_tests/test_auth_lockout_docker.sh`, executed by `ci/docker_acceptance.sh`, must prove that four expired failures do not combine with fresh failures, the fifth fresh failure returns `423 ACCOUNT_LOCKED`, the correct password remains blocked during the lock, an expired lock permits login, and successful login clears both the event rows and compatibility fields.
+`tests/api/test_auth_lockout_docker.sh`, executed by `ci/docker_acceptance.sh`, must prove that expired failures do not combine with fresh failures, the fifth fresh failure returns `423 ACCOUNT_LOCKED`, the correct password remains blocked during the lock, an expired lock permits login, and successful login clears both event rows and compatibility fields.
 
 ## Initial administrator and acceptance fixtures
 
@@ -36,15 +36,15 @@ Fixed identities make separate installations share long-lived credentials and mi
 
 ### Correct requirement interpretation
 
-Normal mode initializes one externally configured administrator only when the user table is empty. Existing users are never overwritten on restart. Acceptance fixtures are allowed only when explicit acceptance mode is enabled, and their values must be supplied by the execution environment. The browser probe under `/ui/` belongs to that acceptance-only mode.
+Normal mode initializes one generated administrator only when the user table is empty. Existing users are never overwritten on restart. Acceptance fixtures are allowed only when explicit acceptance mode is enabled, and their values must be supplied by the execution environment. The browser probe under `/ui/` belongs to that acceptance-only mode.
 
 ### Required implementation
 
-Runtime validation must reject missing or conflicting bootstrap and fixture configuration. Normal startup must use `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD` only for an empty installation. Acceptance startup must require externally supplied fixture values and must not accept bootstrap values at the same time. Product code, Docker image configuration, Compose files, and browser assets must not contain fixed credential values.
+The deployment layer must generate installation-specific bootstrap and complete local runtime configuration. Application validation must reject missing or conflicting values. Acceptance startup must require execution-scoped fixture values and must not accept bootstrap values at the same time. Product code, image configuration, Compose, and browser assets must contain no fixed credential.
 
 ### Acceptance evidence
 
-Configuration tests and static guards must prove missing or conflicting values are rejected. Docker evidence must prove an empty normal-mode volume creates one administrator, removing bootstrap values and restarting preserves the existing identity, acceptance mode creates only its externally supplied fixtures, and normal mode does not expose `/ui/`.
+Configuration tests and repository contracts must prove missing, conflicting, and bcrypt-incompatible values are rejected. Docker evidence must prove an empty normal-mode generated volume creates one administrator, removing bootstrap values and restarting preserves that identity, acceptance mode creates only its execution-scoped fixtures, and normal mode does not expose `/ui/`.
 
 ## Authentication state failures must fail closed
 
@@ -62,7 +62,7 @@ Authentication and logout succeed only when their required state reads and write
 
 ### Required implementation
 
-Check every `GetContext`, `ExecContext`, transaction commit, and `RowsAffected` result on the authentication path. Use transactions for rolling-window updates, successful-login state creation, and logout revocation. Do not emit a token or `logged_out` response after an incomplete state mutation.
+Check every database read, write, transaction commit, and affected-row result on the authentication path. Use transactions for rolling-window updates, successful-login state creation, and logout revocation. Do not emit a token or `logged_out` response after an incomplete state mutation.
 
 ### Acceptance evidence
 
@@ -76,29 +76,29 @@ The presence of files under `public/` or one rendered screenshot can be interpre
 
 ### Why it fails
 
-IronPage Vault is a backend deliverable. The browser surface is an acceptance aid, and a screenshot proves only that static rendering occurred. It does not prove login submission, validation errors, network recovery, retry behavior, keyboard operation, focus management, or accessible status updates.
+IronPage Vault is a backend deliverable. The browser surface is an acceptance aid, and a screenshot proves only static rendering. It does not prove submission, validation errors, network recovery, retry, keyboard operation, focus management, or accessible status updates. Multiple served HTML pages also create an ambiguous acceptance contract.
 
 ### Correct requirement interpretation
 
-`/ui/` is served only in acceptance mode and must remain outside the product frontend scope. Browser interaction evidence improves acceptance confidence but does not create a required production frontend.
+`/ui/` is served only in acceptance mode and is backed by one canonical source, `public/index.html`. Browser interaction evidence improves acceptance confidence but does not create a required production frontend.
 
 ### Required implementation
 
-Keep the UI behind `ACCEPTANCE_MODE`, do not embed fixture values, and preserve API behavior as the source of truth. Browser tests should operate the existing probe rather than introduce a separate frontend architecture.
+Keep the canonical UI behind `ACCEPTANCE_MODE`, do not embed fixture values, remove duplicate served surfaces, and preserve API behavior as the source of truth. Browser tests operate the same canonical page.
 
 ### Acceptance evidence
 
-Rendering evidence must be described as rendering only. Interaction acceptance requires an executed browser flow covering missing input, incorrect credentials, successful login, network failure and retry, keyboard navigation, visible focus, and understandable result status, with trace or screenshot-sequence evidence tied to the tested revision.
+Rendering evidence must be described as rendering only. Interaction acceptance requires an executed browser flow covering missing input, incorrect credentials, successful login, network failure and retry, keyboard navigation, visible focus, and understandable result status, with evidence tied to the tested revision.
 
 ## Regression and current-HEAD evidence
 
 ### Easy-to-make interpretation
 
-A passing historical run, a passing targeted PR job, or a generated reviewer report can be presented as full current-HEAD acceptance.
+A passing historical run, a passing targeted job, or a generated reviewer report can be presented as full current-HEAD acceptance.
 
 ### Why it fails
 
-Evidence from another revision does not prove the inspected tree. Targeted PR checks do not execute every full-regression stage, and a reviewer report summarizes evidence rather than generating it.
+Evidence from another revision does not prove the inspected tree. A reviewer report summarizes evidence rather than generating it. A local entrypoint probe proves only the rows it executes.
 
 ### Correct requirement interpretation
 
@@ -106,8 +106,8 @@ Every full-regression claim must identify the exact tested commit, workflow run,
 
 ### Required implementation
 
-The reusable regression workflow must execute all defined stages, publish `summary.md` to the Actions job summary, and retain the complete artifact without pushing generated reports directly to the protected `main` branch. Documentation must distinguish product tests, workflow publication status, and reviewer conclusions.
+The sole workflow must run the complete regression sequentially, stop after the first failure, publish a summary only after success, and retain the complete successful artifact without pushing generated reports to protected `main`. The same workflow must enforce shared concurrency, cooldown, and failed-revision latching.
 
 ### Acceptance evidence
 
-Acceptance requires a generated `summary.json` with `overall_status=passed`, all stage statuses equal to zero, and an artifact tied to the tested SHA. When the current `main` differs from that SHA, the difference and its validation scope must be stated rather than hidden.
+Acceptance requires a generated `summary.json` with `overall_status=passed`, all recorded stage statuses equal to zero, and an artifact tied to the tested SHA. When the inspected revision differs from that SHA, the difference and its validation scope must be stated rather than hidden.
