@@ -11,17 +11,19 @@ github.com/swaggo/swag
 github.com/swaggo/echo-swagger
 ```
 
-## Generate Swagger Files
+## Generate Swagger files
 
 From the repository root:
 
 ```bash
-swag init -g cmd/server/main.go -o docs/swagger
+bash scripts/generate_swagger.sh
 ```
 
-## Expected Output
+The generation script uses `cmd/server/main.go` as the Swaggo entrypoint and writes output under `docs/swagger/`.
 
-Swaggo normally generates:
+## Expected output
+
+Swaggo generates:
 
 ```text
 docs/swagger/docs.go
@@ -29,26 +31,28 @@ docs/swagger/swagger.json
 docs/swagger/swagger.yaml
 ```
 
-## Source of Truth
+## Source of truth
 
-The hand-written API reference is:
+Route-level Swaggo annotations in the Go source are the generated contract source. The hand-written API usage reference is:
 
 ```text
 docs/api-spec.md
 ```
 
-Generated Swagger output should mirror that API document.
+Generated Swagger output and the hand-written reference must agree with the current routes, request fields, response fields, authentication behavior, and error envelopes.
 
-## UI Route
+## Served routes
 
-When Swagger UI is wired into the Echo server, the intended route is:
-
-```text
-/swagger/*
-```
-
-The manual acceptance UI is separate and is served from:
+Swagger UI is mounted at:
 
 ```text
-/ui/manual-test.html
+/swagger/index.html
 ```
+
+The acceptance-only backend probe UI is separate and is served only when acceptance mode is explicitly enabled:
+
+```text
+/ui/
+```
+
+The acceptance UI is not a product frontend. Rendering or screenshot evidence alone does not prove its login, error-recovery, keyboard, focus, or retry interactions.

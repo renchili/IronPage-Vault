@@ -1,18 +1,47 @@
-# Test Effectiveness Follow-up
+# Test Effectiveness
 
-The uploaded review correctly identified that the earlier API tests were too weak.
+This document records the current test-effectiveness boundary. It describes what the repository's checks prove and what still requires executed runtime evidence. It is not a work log or implementation chronology.
 
-Changes made:
+## API acceptance
 
-- `API_tests/test_api_flow.sh` no longer prints static coverage claims.
-- `API_tests/lib.sh` provides reusable request helpers.
-- `API_tests/test_auth_rbac.sh` now contains real authenticated RBAC checks when tokens are supplied.
-- `API_tests/test_document_upload.sh` now checks reviewer upload denial, editor upload, document ID extraction, document read, and version list.
-- `public/manual-test.html` now calls backend APIs directly instead of only describing test steps.
-- `/swagger/swagger.yaml` is now served from public assets so it is available in the container without copying the full docs tree.
+The API acceptance suite must exercise real HTTP requests against the running service and verify resulting PostgreSQL and filesystem state where applicable.
 
-Remaining manual step:
+Required coverage includes:
 
-- Finish the seeded login bootstrap in `API_tests/test_api_flow.sh` so the script creates Admin, Editor, and Reviewer tokens before running sub-suites.
+- local login and supported roles;
+- positive and negative RBAC paths;
+- document upload, retrieval, versions, and workflow transitions;
+- terminal Finalized immutability;
+- redaction, Bates numbering, and comparison outputs;
+- audit records and notification side effects;
+- backup and restore artifacts;
+- request timestamp, replay, session, and logout behavior;
+- rolling failed-login lockout and authentication persistence failures.
 
-No commands were executed while making these changes.
+Static scripts or route-name checks do not substitute for these runtime flows.
+
+## Acceptance UI
+
+The backend probe UI is served at:
+
+```text
+/ui/
+```
+
+It is an acceptance-only test aid, not a product frontend. Screenshot evidence proves rendering only. Interaction acceptance must separately verify form submission, invalid-login output, recovery after failure, keyboard submission, focus behavior, and retry behavior.
+
+## Swagger and API documentation
+
+Swagger UI is served at:
+
+```text
+/swagger/index.html
+```
+
+Generated Swagger artifacts come from route-level Go annotations and are written under `docs/swagger/`. Generated output, `docs/api-spec.md`, and the implemented routes must remain consistent.
+
+## Evidence boundary
+
+A test claim is valid only for the exact revision that produced the test summary, logs, screenshots, traces, and retained artifact. A historical passing run must not be reported as current-HEAD validation.
+
+A complete acceptance result requires executed evidence. Source inspection and static contracts can prevent regressions, but they cannot by themselves prove runtime interaction or state changes.
