@@ -3,4 +3,5 @@ artifacts/
 reports/
 coverage/
 coverage.out
+docs/swagger/
 *.log
