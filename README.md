@@ -46,7 +46,7 @@ Start with `cmd/server/main.go` for process startup, `internal/app/server.go` fo
 The supported local runtime path requires:
 
 - Docker with Docker Compose v2.
-- Bash and standard local tools including `od`, `sed`, and `tr`.
+- Bash and standard local tools including `od`, `sed`, `tr`, and `cut`.
 
 The application image contains PostgreSQL and the Go API process in one service container. No external database or network service is required.
 
@@ -63,7 +63,7 @@ bash scripts/deploy.sh
 On the first run, the deployer:
 
 1. creates a local `.env` runtime file with mode `0600`;
-2. generates random database, JWT-signing, AES-encryption, and initial Admin secrets;
+2. generates random database, JWT-signing, AES-encryption, and initial Admin credentials;
 3. configures the embedded PostgreSQL instance and API from that file;
 4. builds and starts the single Compose service in the background;
 5. waits for `/healthz` to succeed; and
@@ -104,7 +104,7 @@ The one-command deployer writes the complete local runtime configuration to `.en
 | `DB_NAME` | `ironpage` | PostgreSQL database used by both PostgreSQL initialization and the API |
 | `JWT_SECRET` | Randomly generated | Local JWT signing material |
 | `AES_KEY` | Randomly generated | Sensitive-column encryption material |
-| `BOOTSTRAP_ADMIN_USERNAME` | `admin` on first generation | Initial empty-database Admin identity |
+| `BOOTSTRAP_ADMIN_USERNAME` | Randomly generated | Initial empty-database Admin identity |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Randomly generated | Initial empty-database Admin password |
 
 `docker-compose.yml` derives `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` from `DB_USER`, `DB_PASSWORD`, and `DB_NAME`. This keeps the embedded database initialization and the application connection configuration consistent.
