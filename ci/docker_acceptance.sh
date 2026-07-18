@@ -22,7 +22,8 @@ export SEED_REVIEWER_PASSWORD=${SEED_REVIEWER_PASSWORD:-$(random_hex)}
 
 docker compose build "$APP_SERVICE"
 
-# Prove the normal-mode bootstrap and restart contract against a clean volume
+# Prove the one-command normal-mode deployment, generated runtime configuration,
+# initial Admin login, idempotent rerun, and restart contract against clean data
 # before starting the isolated acceptance fixture environment.
 bash API_tests/test_bootstrap_restart_docker.sh
 
