@@ -13,33 +13,83 @@ random_hex() {
   od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
 }
 
+random_port() {
+  local value
+  value=$(od -An -N2 -tu2 /dev/urandom | tr -d ' ')
+  printf '%s\n' "$((20000 + value % 30000))"
+}
+
 read_env_value() {
   local key="$1"
   sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1
 }
 
+validate_runtime_env() {
+  local name value
+  for name in \
+    HOST_BIND_ADDRESS HOST_PORT HTTP_PORT HTTP_ADDR \
+    DB_PORT DB_USER DB_PASSWORD DB_NAME \
+    JWT_SECRET AES_KEY ACCEPTANCE_MODE \
+    IRONPAGE_APP_ROOT MIGRATIONS_DIR PUBLIC_DIR \
+    POSTGRES_VOLUME_ROOT PGDATA IRONPAGE_VOLUME_ROOT STORAGE_DIR BACKUP_DIR
+  do
+    value=$(read_env_value "$name")
+    if [ -z "$value" ]; then
+      echo "ERROR: runtime configuration is missing $name: $ENV_FILE" >&2
+      exit 1
+    fi
+  done
+}
+
 create_runtime_env() {
-  local db_password jwt_secret aes_key admin_username admin_password
+  local installation_id db_password jwt_secret aes_key
+  local admin_username admin_password db_port http_port host_port
+  local app_root postgres_root data_root
+
+  installation_id=$(random_hex | cut -c1-12)
   db_password=$(random_hex)
   jwt_secret=$(random_hex)
   aes_key=$(random_hex)
-  admin_username="admin_$(random_hex | cut -c1-12)"
+  admin_username="admin_$installation_id"
   # bcrypt accepts at most 72 bytes; one random_hex value is 64 ASCII bytes.
   admin_password=$(random_hex)
+  db_port=$(random_port)
+  http_port=$(random_port)
+  while [ "$http_port" = "$db_port" ]; do
+    http_port=$(random_port)
+  done
+  host_port=$(random_port)
+  app_root="/opt/ironpage-$installation_id"
+  postgres_root="/var/lib/postgresql-$installation_id"
+  data_root="/var/lib/ironpage-$installation_id"
 
   mkdir -p "$(dirname -- "$ENV_FILE")"
   umask 077
   cat >"$ENV_FILE" <<EOF
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_USER=ironpage
+HOST_BIND_ADDRESS=127.0.0.1
+HOST_PORT=$host_port
+HTTP_PORT=$http_port
+HTTP_ADDR=0.0.0.0:$http_port
+DB_PORT=$db_port
+DB_USER=ironpage_$installation_id
 DB_PASSWORD=$db_password
-DB_NAME=ironpage
+DB_NAME=ironpage_$installation_id
 JWT_SECRET=$jwt_secret
 AES_KEY=$aes_key
 ACCEPTANCE_MODE=false
 BOOTSTRAP_ADMIN_USERNAME=$admin_username
 BOOTSTRAP_ADMIN_PASSWORD=$admin_password
+SEED_ADMIN_PASSWORD=
+SEED_EDITOR_PASSWORD=
+SEED_REVIEWER_PASSWORD=
+IRONPAGE_APP_ROOT=$app_root
+MIGRATIONS_DIR=$app_root/migrations
+PUBLIC_DIR=$app_root/public
+POSTGRES_VOLUME_ROOT=$postgres_root
+PGDATA=$postgres_root/data
+IRONPAGE_VOLUME_ROOT=$data_root
+STORAGE_DIR=$data_root/storage
+BACKUP_DIR=$data_root/backups
 EOF
   chmod 600 "$ENV_FILE"
 }
@@ -56,6 +106,7 @@ if [ ! -s "$ENV_FILE" ]; then
 else
   chmod 600 "$ENV_FILE"
 fi
+validate_runtime_env
 
 if [ "$DRY_RUN" = "true" ]; then
   echo "Runtime configuration ready: $ENV_FILE"
@@ -76,6 +127,10 @@ fi
 # overriding the persisted configuration on restart.
 compose() {
   env \
+    -u HOST_BIND_ADDRESS \
+    -u HOST_PORT \
+    -u HTTP_PORT \
+    -u HTTP_ADDR \
     -u POSTGRES_USER \
     -u POSTGRES_PASSWORD \
     -u POSTGRES_DB \
@@ -92,6 +147,14 @@ compose() {
     -u SEED_ADMIN_PASSWORD \
     -u SEED_EDITOR_PASSWORD \
     -u SEED_REVIEWER_PASSWORD \
+    -u IRONPAGE_APP_ROOT \
+    -u MIGRATIONS_DIR \
+    -u PUBLIC_DIR \
+    -u POSTGRES_VOLUME_ROOT \
+    -u PGDATA \
+    -u IRONPAGE_VOLUME_ROOT \
+    -u STORAGE_DIR \
+    -u BACKUP_DIR \
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
@@ -111,10 +174,11 @@ case "$DEPLOY_BUILD" in
     ;;
 esac
 
+http_port=$(read_env_value HTTP_PORT)
 ready=false
 for _ in $(seq 1 "$STARTUP_WAIT_SECONDS"); do
   if compose exec -T "$APP_SERVICE" python3 -c \
-    'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=2).read()' \
+    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${http_port}/healthz', timeout=2).read()" \
     >/dev/null 2>&1; then
     ready=true
     break
@@ -128,10 +192,13 @@ if [ "$ready" != "true" ]; then
   exit 1
 fi
 
+host_address=$(read_env_value HOST_BIND_ADDRESS)
+host_port=$(read_env_value HOST_PORT)
+base_url="http://${host_address}:${host_port}"
 echo "IronPage Vault is running."
-echo "API: http://localhost:8080"
-echo "Health: http://localhost:8080/healthz"
-echo "Swagger: http://localhost:8080/swagger/index.html"
+echo "API: $base_url"
+echo "Health: $base_url/healthz"
+echo "Swagger: $base_url/swagger/index.html"
 echo "Runtime configuration: $ENV_FILE"
 
 if [ "$created_runtime_env" = "true" ]; then
