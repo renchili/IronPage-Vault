@@ -189,7 +189,7 @@ http_port=$(read_env_value HTTP_PORT)
 ready=false
 for _ in $(seq 1 "$STARTUP_WAIT_SECONDS"); do
   if compose exec -T "$APP_SERVICE" python3 -c \
-    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${http_port}/healthz', timeout=2).read()" \
+    "import socket, urllib.request; host=socket.gethostbyname('localhost'); urllib.request.urlopen(f'http://{host}:${http_port}/healthz', timeout=2).read()" \
     >/dev/null 2>&1; then
     ready=true
     break
