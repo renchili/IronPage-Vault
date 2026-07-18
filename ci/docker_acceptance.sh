@@ -37,15 +37,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Generate the complete build/runtime configuration rather than relying on
-# application, Compose, or image defaults.
-IRONPAGE_ENV_FILE="$env_file" IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh
-compose build "$APP_SERVICE"
-
-# Prove normal-mode one-command deployment, initial Admin login, idempotent
-# rerun, and restart against an independently generated clean configuration.
+# Prove normal-mode one-command deployment against an independently generated
+# installation. That flow builds an installation-specific image.
 bash tests/api/test_bootstrap_restart_docker.sh
 
+# Generate a separate installation-specific acceptance environment and rebuild
+# the image from exactly that configuration before starting its containers.
+IRONPAGE_ENV_FILE="$env_file" IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh
 seed_admin_password=$(random_hex)
 seed_editor_password=$(random_hex)
 seed_reviewer_password=$(random_hex)
@@ -60,6 +58,7 @@ sed -i \
 chmod 600 "$env_file"
 
 compose down -v --remove-orphans >/dev/null 2>&1 || true
+compose build "$APP_SERVICE"
 compose up -d "$APP_SERVICE"
 
 host_address=$(read_env_value HOST_BIND_ADDRESS)
@@ -83,7 +82,9 @@ for i in $(seq 1 60); do
 done
 
 BASE_URL="$host_base_url" \
+IRONPAGE_ENV_FILE="$env_file" \
 SEED_ADMIN_PASSWORD="$seed_admin_password" \
+SEED_EDITOR_PASSWORD="$seed_editor_password" \
   bash tests/api/test_auth_lockout_docker.sh
 
 BASE_URL="$host_base_url" \
