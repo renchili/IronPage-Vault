@@ -115,8 +115,11 @@ if len(values["JWT_SECRET"]) < 32 or len(values["AES_KEY"]) < 32:
     raise SystemExit("generated cryptographic runtime values are too short")
 if values["ACCEPTANCE_MODE"] != "false":
     raise SystemExit("one-command deployment must default to normal mode")
-if not values["BOOTSTRAP_ADMIN_USERNAME"] or len(values["BOOTSTRAP_ADMIN_PASSWORD"]) < 16:
+bootstrap_password_length = len(values["BOOTSTRAP_ADMIN_PASSWORD"].encode("utf-8"))
+if not values["BOOTSTRAP_ADMIN_USERNAME"] or bootstrap_password_length < 16:
     raise SystemExit("generated initial Admin configuration is incomplete")
+if bootstrap_password_length > 72:
+    raise SystemExit("generated initial Admin password exceeds bcrypt's 72-byte limit")
 mode = stat.S_IMODE(path.stat().st_mode)
 if mode != 0o600:
     raise SystemExit(f"runtime configuration mode must be 0600, got {mode:o}")
