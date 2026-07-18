@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL=${BASE_URL:-http://localhost:8080}
+: "${BASE_URL:?BASE_URL is required}"
 OUT_DIR=${IRONPAGE_ACCEPTANCE_REPORT_DIR:-artifacts/local-acceptance}
 UI_OUT="$OUT_DIR/ui"
 SCREENSHOT="$UI_OUT/ironpage-ui.png"
@@ -41,9 +41,8 @@ expect_http health "$BASE_URL/healthz" 200 "$UI_OUT/health.json"
 expect_http ui_page "$BASE_URL/ui/" 200 "$HTML_COPY"
 
 grep -q "IronPage Vault Backend Test UI" "$HTML_COPY"
-grep -q "data-testid=\"screenshot-contract\"" "$HTML_COPY"
-
-echo "PASS ui: static page contract"
+grep -q 'data-testid="interaction-contract"' "$HTML_COPY"
+echo "PASS ui: canonical page contract"
 
 BROWSER=$(browser_bin) || {
   echo "FAIL ui: no supported browser found. Install google-chrome, chromium, or set IRONPAGE_BROWSER_BIN."
@@ -103,12 +102,10 @@ with open(manifest, "w", encoding="utf-8") as f:
     json.dump(payload, f, indent=2)
 with open(report, "w", encoding="utf-8") as f:
     f.write("<!doctype html><html><head><meta charset='utf-8'><title>IronPage UI Screenshot Evidence</title>")
-    f.write("<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:32px;} img{max-width:100%;border:1px solid #d0d7de;border-radius:12px;} code{background:#f6f8fa;padding:2px 6px;border-radius:6px;}</style>")
-    f.write("</head><body>")
-    f.write("<h1>IronPage UI Screenshot Evidence</h1>")
+    f.write("<style>body{font-family:system-ui,sans-serif;margin:32px}img{max-width:100%;border:1px solid #d0d7de}</style>")
+    f.write("</head><body><h1>IronPage UI Screenshot Evidence</h1>")
     f.write(f"<p>Generated at <code>{html.escape(payload['generated_at'])}</code> using <code>{html.escape(browser)}</code>.</p>")
     f.write(f"<p>Page: <code>{html.escape(payload['page'])}</code></p>")
-    f.write(f"<p>Screenshot bytes: <code>{payload['screenshot_size_bytes']}</code></p>")
     f.write(f"<img src='{html.escape(payload['screenshot'])}' alt='IronPage UI screenshot'>")
     f.write("</body></html>")
 PY
