@@ -36,9 +36,10 @@ jobs:
           random_hex() {
             od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
           }
-          export DB_PASSWORD="$(random_hex)"
-          export JWT_SECRET="$(random_hex)"
-          export AES_KEY="$(random_hex)"
+          DB_PASSWORD="$(random_hex)"
+          JWT_SECRET="$(random_hex)"
+          AES_KEY="$(random_hex)"
+          export DB_PASSWORD JWT_SECRET AES_KEY
           docker compose build ironpage
       - name: Exercise generated configuration, login, rerun, and restart
         shell: bash
