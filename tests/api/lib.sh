@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u -o pipefail
 
-BASE_URL=${BASE_URL:-http://localhost:8080}
+: "${BASE_URL:?BASE_URL is required}"
 BODY=${BODY:-/tmp/ironpage_api_body.json}
 
 load_saved_tokens() {
