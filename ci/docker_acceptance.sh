@@ -21,6 +21,11 @@ export SEED_EDITOR_PASSWORD=${SEED_EDITOR_PASSWORD:-$(random_hex)}
 export SEED_REVIEWER_PASSWORD=${SEED_REVIEWER_PASSWORD:-$(random_hex)}
 
 docker compose build "$APP_SERVICE"
+
+# Prove the normal-mode bootstrap and restart contract against a clean volume
+# before starting the isolated acceptance fixture environment.
+bash API_tests/test_bootstrap_restart_docker.sh
+
 docker compose up -d "$APP_SERVICE"
 
 cleanup() {
@@ -40,6 +45,17 @@ for i in $(seq 1 60); do
     exit 1
   fi
 done
+
+# Exercise the rolling failed-login window and fail-closed authentication state
+# against the real PostgreSQL service.
+bash API_tests/test_auth_lockout_docker.sh
+
+# Exercise the actual acceptance UI with mouse, keyboard, network failure, and
+# retry interactions. Evidence is retained inside the full-regression artifact.
+BASE_URL="${HOST_HEALTH_URL%/healthz}" \
+IRONPAGE_UI_EVIDENCE_DIR="${IRONPAGE_UI_EVIDENCE_DIR:-artifacts/regression/ui-interaction}" \
+SEED_EDITOR_PASSWORD="$SEED_EDITOR_PASSWORD" \
+  bash API_tests/test_ui_interaction_acceptance.sh
 
 container_id="$(docker compose ps -q "$APP_SERVICE")"
 if [ -z "$container_id" ]; then

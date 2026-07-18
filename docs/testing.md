@@ -1,118 +1,119 @@
 # Testing Guide
 
-IronPage Vault keeps testing material in these main locations:
+IronPage Vault separates source-level checks, real Docker/API acceptance, browser interaction evidence, and full-regression artifacts. A test claim is valid only for the exact revision named by the generated evidence.
+
+## Test locations
 
 ```text
-unit_tests/
-API_tests/
+unit_tests/    repository and static contracts
+API_tests/     real HTTP, PostgreSQL, filesystem, PDF, bootstrap, auth, and browser flows
+ci/            Docker acceptance and full-regression orchestration
 ```
 
-The root script `run_tests.sh` is the common local acceptance entrypoint.
+`run_tests.sh` is the local report entrypoint. `ci/run_full_regression.sh` is the complete regression entrypoint used by reusable CI workflows.
 
 ## Unit and static checks
 
-Unit and static checks cover repository structure, implementation contracts, and local fixtures, including:
+Source-level checks include:
 
-- required metadata files.
-- migration files.
-- Docker files.
-- sample PDF files.
-- CSV manifests.
-- role definitions.
-- workflow definitions.
-- documentation files.
-- storage and protected-metadata contracts.
+- Go package tests and race tests;
+- role, workflow, access, PDF, backup, and protected-metadata contracts;
+- migration and repository structure checks;
+- generated Swagger contract and route coverage;
+- shell syntax;
+- documentation consistency and sensitive-value exposure checks.
 
-## API and runtime checks
+These checks do not replace running the service against PostgreSQL.
 
-API checks cover the running service. The acceptance suite includes real HTTP/API flows for:
+## Docker and API acceptance
 
-- health endpoint.
-- login endpoint.
-- protected endpoint behavior.
-- Admin-only endpoints.
-- Editor-only endpoints.
-- Reviewer-only endpoints.
-- document upload.
-- annotation flow.
-- workflow flow.
-- finalized immutability.
-- redaction confirmation.
-- PDF content-removal acceptance.
-- Bates sequence acceptance.
-- document comparison acceptance.
-- audit log query.
-- notification query and mention side effects.
-- strict dependency failure behavior.
-- backup and restore behavior.
+Run:
 
-## Manual backend UI checks
+```bash
+bash ci/docker_acceptance.sh
+```
 
-The manual backend testing UI is served from:
+The Docker acceptance flow builds the single-container image and exercises real HTTP, PostgreSQL, filesystem, PDF, backup, and restore behavior.
+
+Before the broader acceptance fixture flow, `API_tests/test_bootstrap_restart_docker.sh` must verify normal mode on a clean volume:
+
+1. externally supplied bootstrap values create the first Admin;
+2. the Admin can log in;
+3. `/ui/` is not served;
+4. the container is removed without deleting the volumes;
+5. bootstrap values are removed;
+6. restart succeeds against the same database;
+7. the original Admin still logs in and is not duplicated.
+
+`API_tests/test_auth_lockout_docker.sh` must then verify:
+
+- attempts older than 15 minutes do not count in the current rolling window;
+- the fifth fresh failure returns `423 ACCOUNT_LOCKED`;
+- a correct password remains blocked during the active lock;
+- login succeeds after lock expiry;
+- successful login clears event rows and compatibility fields;
+- failed-attempt, login-state, blacklist, replay, session, and logout database faults fail closed;
+- a forced logout write failure rolls back both revocation changes;
+- successful logout rejects later token reuse.
+
+The broader API regression continues to cover RBAC, object access, workflow, finalization, redaction, Bates numbering, comparison, audit, notifications, pagination, errors, backup, restore, and strict dependency failure behavior.
+
+## Acceptance browser interaction
+
+The acceptance-only backend probe is served at:
 
 ```text
 /ui/
 ```
 
-The source page is the backend test aid under `public/`. It is not a production frontend, not a formal fullstack deliverable, and not a replacement for API acceptance tests.
+It is not a product frontend. Normal mode must return 404 for this path.
 
-The screenshot acceptance script verifies:
+`API_tests/test_ui_screenshot_acceptance.sh` proves rendering only. It captures a page screenshot and manifest but does not prove user interaction.
 
-- `/healthz` returns 200.
-- `/ui/` returns 200.
-- the static page contract is present.
-- a headless browser can render and capture a screenshot.
-- screenshot evidence and a manifest are written under the local acceptance artifacts directory.
+`API_tests/test_ui_interaction_acceptance.sh` uses Chrome/Chromium DevTools Protocol through the Python standard library to exercise the actual page. It must verify:
 
-The screenshot acceptance script does not prove:
+- missing-input validation and focus placement;
+- visible invalid state;
+- incorrect-credential API error output;
+- successful mouse-click login;
+- Tab order through username, password, and submit button;
+- Enter-key form submission;
+- network failure guidance;
+- retry after network recovery;
+- live status semantics;
+- screenshot sequence and `interaction.json` evidence without recording the password.
 
-- login button behavior.
-- success and failure interaction flows.
-- retry and recovery behavior.
-- keyboard focus order.
-- accessibility announcements.
-- resulting API state after UI interaction.
+The full-regression runner passes `IRONPAGE_UI_EVIDENCE_DIR` so these files are retained inside the regression artifact.
 
-Those require a separate browser interaction test.
+## Full regression
 
-## Acceptance flow
+Run:
 
-A representative full acceptance flow should:
-
-1. Start the service with Docker Compose.
-2. Verify `/healthz` returns OK.
-3. Authenticate as the supported local roles through the API.
-4. Upload a PDF as Editor.
-5. Verify Reviewer cannot upload.
-6. Create annotation as Reviewer.
-7. Verify Editor cannot manage users.
-8. Stage redaction as Editor.
-9. Confirm redaction as Editor.
-10. Verify target redacted content is not extractable from the confirmed output.
-11. Apply Bates numbering as Editor.
-12. Verify visible or extractable Bates evidence and cross-document sequence behavior where applicable.
-13. Move workflow through the required chain.
-14. Finalize the document.
-15. Verify post-finalization mutation rejection.
-16. Query audit logs.
-17. Query notifications.
-18. Create strict backup artifacts as Admin.
-19. Verify restore-capable backup metadata and artifact paths.
-20. Capture backend test UI screenshot evidence.
-
-## Test data
-
-Fixtures are local:
-
-```text
-testdata/pdfs/sample_contract.pdf
-testdata/csv/batch_import_manifest.csv
+```bash
+bash ci/run_full_regression.sh artifacts/regression
 ```
 
-No internet download should be required for acceptance.
+The generated evidence includes:
+
+```text
+artifacts/regression/results.tsv
+artifacts/regression/summary.json
+artifacts/regression/summary.md
+artifacts/regression/logs/
+artifacts/regression/ui-interaction/
+```
+
+`summary.json` must report `overall_status=passed`, and every defined stage must have status zero. The CI workflow publishes `summary.md` in the Actions job summary and retains the complete artifact; it does not push generated reports directly to protected `main`.
 
 ## Evidence boundary
 
-A historical full-regression run is useful evidence only for the exact SHA it ran against. Documentation must not claim a fresh current-HEAD full regression unless the run ID and current HEAD SHA are recorded.
+A historical run proves only its tested SHA. A targeted PR job, screenshot, static guard, or reviewer report cannot be presented as a fresh current-HEAD full regression.
 
-The uploaded re-audit report records that current `main` had not received an exact-current-HEAD full regression at the time of the report. That remains a separate evidence gap until a new run is executed and linked.
+Before declaring the project accepted, record:
+
+- tested commit SHA;
+- workflow run and job IDs;
+- generated summary result;
+- artifact name, size, and digest;
+- any difference between the tested revision and the current `main`;
+- checks not executed and the reason.

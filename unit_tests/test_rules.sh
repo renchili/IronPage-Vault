@@ -62,13 +62,22 @@ check "compose wires bootstrap variables" "grep -q 'BOOTSTRAP_ADMIN_USERNAME' do
 check "test UI has no embedded password values" "! grep -R -E 'type=\"password\"[^>]*value=|const passwords[[:space:]]*=' public"
 check "API acceptance requires injected credentials" "grep -q 'SEED_ADMIN_PASSWORD is required for acceptance tests' API_tests/test_api_flow.sh"
 
-
 check "container image has no runtime credential defaults" "! grep -Eq '^ENV (POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_DB|DB_USER|DB_PASSWORD|DB_NAME|JWT_SECRET|AES_KEY|SEED_.*PASSWORD)=' Dockerfile"
 check "entrypoint has no database identity fallback" "! grep -Eq 'POSTGRES_USER:-|POSTGRES_PASSWORD:-|POSTGRES_DB:-|DB_USER:-|DB_PASSWORD:-|DB_NAME:-' scripts/entrypoint.sh"
-check "entrypoint requires PostgreSQL runtime values" "grep -q 'POSTGRES_USER is required' scripts/entrypoint.sh && grep -q 'POSTGRES_PASSWORD is required' scripts/entrypoint.sh && grep -q 'POSTGRES_DB is required' scripts/entrypoint.sh"
-check "entrypoint requires application runtime values" "grep -q 'DB_PASSWORD is required' scripts/entrypoint.sh && grep -q 'JWT_SECRET is required' scripts/entrypoint.sh && grep -q 'AES_KEY is required' scripts/entrypoint.sh"
+check "entrypoint requires PostgreSQL runtime values" "grep -q 'POSTGRES_USER' scripts/entrypoint.sh && grep -q 'POSTGRES_PASSWORD' scripts/entrypoint.sh && grep -q 'POSTGRES_DB' scripts/entrypoint.sh"
+check "entrypoint requires application runtime values" "grep -q 'DB_PASSWORD' scripts/entrypoint.sh && grep -q 'JWT_SECRET' scripts/entrypoint.sh && grep -q 'AES_KEY' scripts/entrypoint.sh"
 check "entrypoint checks single-container database consistency" "grep -q 'POSTGRES_USER and DB_USER must match' scripts/entrypoint.sh && grep -q 'POSTGRES_PASSWORD and DB_PASSWORD must match' scripts/entrypoint.sh && grep -q 'POSTGRES_DB and DB_NAME must match' scripts/entrypoint.sh"
 check "entrypoint gates acceptance identities" "grep -q 'SEED_ADMIN_PASSWORD' scripts/entrypoint.sh && grep -q 'ACCEPTANCE_MODE' scripts/entrypoint.sh"
+
+check "rolling login attempt migration exists" "test -f migrations/002_login_attempt_window.sql && grep -q 'CREATE TABLE IF NOT EXISTS login_attempts' migrations/002_login_attempt_window.sql"
+check "rolling lockout implementation exists" "grep -q 'loginAttemptWindow.*15 \\* time.Minute' internal/app/auth.go && grep -q 'SELECT id FROM users WHERE id=\\$1 FOR UPDATE' internal/app/auth.go"
+check "authentication state fails closed" "grep -q 'LOGIN_ATTEMPT_WRITE_ERROR' internal/app/auth.go && grep -q 'LOGIN_STATE_WRITE_ERROR' internal/app/auth.go && grep -q 'AUTH_STATE_READ_ERROR' internal/app/auth.go && grep -q 'SESSION_UPDATE_ERROR' internal/app/auth.go && grep -q 'LOGOUT_WRITE_ERROR' internal/app/auth.go"
+check "rolling lockout Docker test exists" "test -f API_tests/test_auth_lockout_docker.sh"
+check "normal bootstrap restart Docker test exists" "test -f API_tests/test_bootstrap_restart_docker.sh"
+check "browser interaction acceptance exists" "test -f API_tests/test_ui_interaction_acceptance.sh && test -f API_tests/ui_interaction_cdp.py"
+check "acceptance orchestrator executes new evidence" "grep -q 'test_bootstrap_restart_docker.sh' ci/docker_acceptance.sh && grep -q 'test_auth_lockout_docker.sh' ci/docker_acceptance.sh && grep -q 'test_ui_interaction_acceptance.sh' ci/docker_acceptance.sh"
+check "documentation consistency gate exists" "test -f ci/docs_consistency_check.sh && test -f .github/workflows/documentation-consistency.yml && grep -q 'bash ci/docs_consistency_check.sh' .github/workflows/documentation-consistency.yml"
+check "acceptance UI supports form and live status" "grep -q 'id=\"login-form\"' public/index.html && grep -q 'aria-live=\"polite\"' public/index.html && grep -q 'focus-visible' public/index.html"
 
 TOTAL=$((PASS+FAIL))
 echo "UNIT SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"

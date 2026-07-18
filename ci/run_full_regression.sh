@@ -5,8 +5,7 @@ OUT_DIR=${1:-artifacts/regression}
 LOG_DIR="$OUT_DIR/logs"
 RESULTS="$OUT_DIR/results.tsv"
 mkdir -p "$LOG_DIR"
-printf 'stage	status	duration_seconds	log
-' > "$RESULTS"
+printf 'stage\tstatus\tduration_seconds\tlog\n' > "$RESULTS"
 
 print_failure_log_tail() {
   local stage="$1"
@@ -39,8 +38,7 @@ run_stage() {
     echo "FAIL $stage (${elapsed}s); see artifact log $log"
     print_failure_log_tail "$stage" "$log"
   fi
-  printf '%s	%s	%s	%s
-' "$stage" "$status" "$elapsed" "$log" >> "$RESULTS"
+  printf '%s\t%s\t%s\t%s\n' "$stage" "$status" "$elapsed" "$log" >> "$RESULTS"
   return "$status"
 }
 
@@ -107,6 +105,6 @@ run_stage go_vet bash -lc 'go vet ./...'
 run_stage go_test_race bash -lc 'go test -mod=mod -race ./...'
 run_stage shell_syntax bash ci/shell_syntax_check.sh
 run_stage docker_build bash -lc 'docker build --progress=plain -t ironpage-vault:regression .'
-run_stage docker_acceptance bash ci/docker_acceptance.sh
+run_stage docker_acceptance env IRONPAGE_UI_EVIDENCE_DIR="$OUT_DIR/ui-interaction" bash ci/docker_acceptance.sh
 
 write_summary
