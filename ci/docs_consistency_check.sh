@@ -34,8 +34,11 @@ for path in "${required_docs[@]}"; do
   fi
 done
 
-check_absent "legacy test directory path" "API_tests/|unit_tests/" README.md docs ci tests run_tests.sh .github
-check_absent "removed duplicate UI path" "/ui/manual-test\\.html|public/manual-test\\.html" README.md docs ci tests public
+# Repository contracts validate the physical test/UI layout. These scans cover
+# user-facing and workflow documentation without matching the guard patterns in
+# this file itself.
+check_absent "legacy test directory path" "API_tests/|unit_tests/" README.md docs run_tests.sh .github
+check_absent "removed duplicate UI path" "/ui/manual-test\\.html|public/manual-test\\.html" README.md docs public
 check_absent "stale redaction behavior" "marker-only|marker only|does not perform forensic content removal" README.md docs
 check_absent "stale Bates behavior" "does not draw visible Bates|no visible Bates|Bates numbers are not visible" README.md docs
 check_absent "stale comparison behavior" "binary-only|does not perform text extraction|no bounding-box reporting" README.md docs
@@ -43,17 +46,15 @@ check_absent "stale backup behavior" "metadata-only backup|metadata snapshot is 
 check_absent "obsolete security blocker" "unsafe runtime defaults.*(block|fail)|security-accepted until those defaults" docs/questions.md docs/requirement-check.md
 check_absent "untracked process narration" "Next action|Future work|Conversation record|agent process|tool failure|branch failure|PR failure|This patch addresses|This patch closes" README.md docs
 check_absent "false current evidence claim" "current HEAD.*(passed|PASS)|full regression.*current.*passed" README.md docs
-check_absent "cloud deployment outside project scope" "AWS|EKS|Lambda|CloudFormation|serverless deployment" README.md docs ci scripts tests
+check_absent "cloud deployment outside project scope" "AWS|EKS|Lambda|CloudFormation|serverless deployment" README.md docs scripts Dockerfile docker-compose.yml
 
 if [ -e deploy/aws ] || [ -e docs/aws-deployment.md ]; then
   echo "ERROR: cloud deployment material conflicts with the air-gapped single-container scope"
   fail=1
 fi
-if [ -d docs/review-fixes ]; then
-  if find docs/review-fixes -type f -print -quit | grep -q .; then
-    echo "ERROR: obsolete review-fix process documents remain under docs/review-fixes"
-    fail=1
-  fi
+if [ -d docs/review-fixes ] && find docs/review-fixes -type f -print -quit | grep -q .; then
+  echo "ERROR: obsolete review-fix process documents remain under docs/review-fixes"
+  fail=1
 fi
 if [ ! -f public/index.html ] || [ -e public/manual-test.html ]; then
   echo "ERROR: public/ must contain one canonical acceptance UI at public/index.html"
