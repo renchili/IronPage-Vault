@@ -3,6 +3,9 @@
 .env
 README.local.md
 .tmp
+artifacts
+reports
+coverage
 *.log
 coverage.out
 node_modules
