@@ -19,10 +19,11 @@ read_env_value() {
 }
 
 create_runtime_env() {
-  local db_password jwt_secret aes_key admin_password
+  local db_password jwt_secret aes_key admin_username admin_password
   db_password=$(random_hex)
   jwt_secret=$(random_hex)
   aes_key=$(random_hex)
+  admin_username="admin_$(random_hex | cut -c1-12)"
   admin_password="$(random_hex)$(random_hex)"
 
   mkdir -p "$(dirname -- "$ENV_FILE")"
@@ -36,7 +37,7 @@ DB_NAME=ironpage
 JWT_SECRET=$jwt_secret
 AES_KEY=$aes_key
 ACCEPTANCE_MODE=false
-BOOTSTRAP_ADMIN_USERNAME=admin
+BOOTSTRAP_ADMIN_USERNAME=$admin_username
 BOOTSTRAP_ADMIN_PASSWORD=$admin_password
 EOF
   chmod 600 "$ENV_FILE"
