@@ -43,7 +43,7 @@ validate_runtime_env() {
 
 create_runtime_env() {
   local installation_id db_password jwt_secret aes_key
-  local admin_username admin_password db_port http_port host_port
+  local admin_username admin_password db_port http_port host_port host_bind_address
   local app_root postgres_root data_root
 
   installation_id=$(random_hex | cut -c1-12)
@@ -53,12 +53,23 @@ create_runtime_env() {
   admin_username="admin_$installation_id"
   # bcrypt accepts at most 72 bytes; one random_hex value is 64 ASCII bytes.
   admin_password=$(random_hex)
+
+  host_bind_address=$(getent ahostsv4 localhost | awk 'NR == 1 {print $1}')
+  if [ -z "$host_bind_address" ]; then
+    echo "ERROR: unable to resolve the local loopback address" >&2
+    exit 1
+  fi
+
   db_port=$(random_port)
   http_port=$(random_port)
   while [ "$http_port" = "$db_port" ]; do
     http_port=$(random_port)
   done
   host_port=$(random_port)
+  while [ "$host_port" = "$db_port" ] || [ "$host_port" = "$http_port" ]; do
+    host_port=$(random_port)
+  done
+
   app_root="/opt/ironpage-$installation_id"
   postgres_root="/var/lib/postgresql-$installation_id"
   data_root="/var/lib/ironpage-$installation_id"
@@ -66,10 +77,10 @@ create_runtime_env() {
   mkdir -p "$(dirname -- "$ENV_FILE")"
   umask 077
   cat >"$ENV_FILE" <<EOF
-HOST_BIND_ADDRESS=127.0.0.1
+HOST_BIND_ADDRESS=$host_bind_address
 HOST_PORT=$host_port
 HTTP_PORT=$http_port
-HTTP_ADDR=0.0.0.0:$http_port
+HTTP_ADDR=:$http_port
 DB_PORT=$db_port
 DB_USER=ironpage_$installation_id
 DB_PASSWORD=$db_password
