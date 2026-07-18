@@ -24,7 +24,8 @@ create_runtime_env() {
   jwt_secret=$(random_hex)
   aes_key=$(random_hex)
   admin_username="admin_$(random_hex | cut -c1-12)"
-  admin_password="$(random_hex)$(random_hex)"
+  # bcrypt accepts at most 72 bytes; one random_hex value is 64 ASCII bytes.
+  admin_password=$(random_hex)
 
   mkdir -p "$(dirname -- "$ENV_FILE")"
   umask 077
