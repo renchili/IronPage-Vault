@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u -o pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FAIL=0
 
 check_absent() {
