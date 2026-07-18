@@ -4,7 +4,7 @@ set -euo pipefail
 PASS=0
 FAIL=0
 
-. API_tests/lib.sh
+. tests/api/lib.sh
 
 : "${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD is required for acceptance tests}"
 : "${SEED_EDITOR_PASSWORD:?SEED_EDITOR_PASSWORD is required for acceptance tests}"
@@ -35,8 +35,7 @@ export REVIEWER_TOKEN="$(cat /tmp/ironpage_reviewer_token.out)"
 run_case() {
   local name="$1"
   local script="$2"
-  chmod +x "$script"
-  if "$script"; then
+  if bash "$script"; then
     echo "PASS api-suite: $name"
     PASS=$((PASS+1))
   else
@@ -45,9 +44,9 @@ run_case() {
   fi
 }
 
-run_case "auth and RBAC" "API_tests/test_auth_rbac.sh"
-run_case "documents and review" "API_tests/test_documents_review.sh"
-run_case "audit notifications backup" "API_tests/test_audit_notify_backup.sh"
+run_case "auth and RBAC" "tests/api/test_auth_rbac.sh"
+run_case "documents and review" "tests/api/test_documents_review.sh"
+run_case "audit notifications backup" "tests/api/test_audit_notify_backup.sh"
 
 TOTAL=$((PASS+FAIL))
 echo "API SUMMARY total_suites=$TOTAL passed_suites=$PASS failed_suites=$FAIL"
