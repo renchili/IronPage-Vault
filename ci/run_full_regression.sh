@@ -21,7 +21,7 @@ print_failure_log_tail() {
 
 write_summary() {
   python3 - "$OUT_DIR" "$RESULTS" <<'PY'
-import csv, datetime, json, os, sys
+import csv, datetime, json, os, subprocess, sys
 out, results_path = sys.argv[1:]
 rows = []
 with open(results_path, newline='', encoding='utf-8') as f:
@@ -32,6 +32,7 @@ with open(results_path, newline='', encoding='utf-8') as f:
 passed = bool(rows) and all(row['status'] == 0 for row in rows)
 payload = {
     'generated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
     'overall_status': 'passed' if passed else 'failed',
     'total_stages': len(rows),
     'stages': rows,
@@ -40,6 +41,7 @@ with open(os.path.join(out, 'summary.json'), 'w', encoding='utf-8') as f:
     json.dump(payload, f, indent=2)
 with open(os.path.join(out, 'summary.md'), 'w', encoding='utf-8') as f:
     f.write('# Full Regression Result\n\n')
+    f.write(f"Commit: `{payload['commit']}`\n\n")
     f.write(f"Generated: `{payload['generated_at']}`\n\n")
     f.write(f"Overall: **{'PASSED' if passed else 'FAILED'}**\n\n")
     f.write('| Stage | Result | Duration | Log |\n|---|---:|---:|---|\n')
@@ -78,8 +80,9 @@ if [ "${IRONPAGE_REGRESSION_CONTRACT_PROBE:-}" = "1" ]; then
   run_stage contract_fail bash -lc 'echo IRONPAGE_REGRESSION_CONTRACT_FAIL_SENTINEL >&2; false'
 fi
 
-# Every stage is deliberately sequential. A failed stage records its result,
-# writes the summary, and exits before any later build, test, or upload can start.
+# Every stage is sequential. A failed stage records its result, writes the
+# summary, and exits before any later build, test, or upload can start.
+run_stage source_inventory python3 ci/source_inventory.py "$OUT_DIR/source-inventory.json"
 run_stage documentation_consistency bash ci/docs_consistency_check.sh
 run_stage regression_failure_contract bash ci/regression_contract_check.sh
 run_stage local_entrypoint_contract bash ci/run_tests_contract_check.sh
