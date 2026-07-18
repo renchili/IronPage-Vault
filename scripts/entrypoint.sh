@@ -5,6 +5,7 @@ required_runtime_values=(
   POSTGRES_USER
   POSTGRES_PASSWORD
   POSTGRES_DB
+  PGPORT
   DB_PORT
   DB_USER
   DB_PASSWORD
@@ -41,12 +42,23 @@ if [ "$POSTGRES_DB" != "$DB_NAME" ]; then
   exit 1
 fi
 
+if [ "$PGPORT" != "$DB_PORT" ]; then
+  echo "ERROR: PGPORT and DB_PORT must match in the single-container deployment" >&2
+  exit 1
+fi
+
 case "$DB_PORT" in
   ''|*[!0-9]*)
     echo "ERROR: DB_PORT must be numeric" >&2
     exit 1
     ;;
 esac
+
+db_port_number=$((10#$DB_PORT))
+if [ "$db_port_number" -lt 1024 ] || [ "$db_port_number" -gt 65535 ]; then
+  echo "ERROR: DB_PORT must be an unprivileged TCP port between 1024 and 65535" >&2
+  exit 1
+fi
 
 case "${ACCEPTANCE_MODE:-false}" in
   1|true|TRUE|True)
