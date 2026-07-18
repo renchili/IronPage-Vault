@@ -5,9 +5,9 @@ description: Generic hard-gated methodology for accepting a complete software pr
 
 # Full Project Acceptance Hard Gates
 
-Use this skill to accept or reject a complete repository, generated project, ZIP package, branch, commit, or pull request output.
+Use this skill to decide whether a complete software project should be accepted or rejected. The review target may be a repository, generated project, ZIP archive, branch, commit, or pull request.
 
-The skill is project-agnostic. Apply it to the target project at runtime. Do not encode project names, repository names, PR numbers, conversation history, or project-specific conclusions into this file.
+Keep the rules in this file reusable across different projects. Apply them to the project currently being reviewed, but record project names, repository identifiers, pull request numbers, conversation history, and project-specific findings only in the acceptance report or working notes—not in this Skill.
 
 ## Core rule
 
