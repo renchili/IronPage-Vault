@@ -3,7 +3,8 @@
 
 GitHub Actions history is the persistent control record. A reviewed fix commit
 changes the SHA and clears the failure latch. A deliberate workflow_dispatch
-with the unlock input may replay the same SHA once.
+with the unlock input may replay the same SHA once. New fix revisions wait out
+any remaining target cooldown instead of being recorded as false failures.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import datetime as dt
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -48,6 +50,25 @@ def run_target(run: dict[str, object]) -> str:
     return str(head_branch or "")
 
 
+def fetch_runs(repository: str, token: str) -> list[dict[str, object]]:
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}/actions/runs?per_page=100",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "ironpage-ci-execution-guard",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+    except (urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"unable to inspect GitHub Actions history: {exc}") from exc
+    runs = payload.get("workflow_runs", [])
+    return [run for run in runs if isinstance(run, dict)]
+
+
 def main() -> int:
     repository = required("GITHUB_REPOSITORY")
     target = required("IRONPAGE_CI_TARGET")
@@ -65,28 +86,16 @@ def main() -> int:
         )
         return 1
 
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{repository}/actions/runs?per_page=100",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "ironpage-ci-execution-guard",
-        },
-    )
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            payload = json.load(response)
-    except (urllib.error.URLError, json.JSONDecodeError) as exc:
-        print(f"ERROR: unable to inspect GitHub Actions history: {exc}", file=sys.stderr)
+        runs = fetch_runs(repository, token)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     previous_runs = [
         run
-        for run in payload.get("workflow_runs", [])
-        if isinstance(run, dict)
-        and int(run.get("id", 0)) != current_run_id
-        and run_target(run) == target
+        for run in runs
+        if int(run.get("id", 0)) != current_run_id and run_target(run) == target
     ]
     previous_runs.sort(
         key=lambda run: parse_time(run.get("run_started_at") or run.get("created_at"))
@@ -113,19 +122,23 @@ def main() -> int:
         return 1
 
     now = dt.datetime.now(dt.timezone.utc)
-    recent = []
-    for run in previous_runs:
-        started = parse_time(run.get("run_started_at") or run.get("created_at"))
-        if started and 0 <= (now - started).total_seconds() < COOLDOWN_SECONDS:
-            recent.append(run)
-    if recent:
-        run = recent[0]
-        print(
-            f"ERROR: target {target} already started verification within the 10-minute cooldown "
-            f"({run.get('html_url')})",
-            file=sys.stderr,
-        )
-        return 1
+    latest_started = next(
+        (
+            parse_time(run.get("run_started_at") or run.get("created_at"))
+            for run in previous_runs
+            if parse_time(run.get("run_started_at") or run.get("created_at"))
+        ),
+        None,
+    )
+    if latest_started is not None:
+        elapsed = max(0.0, (now - latest_started).total_seconds())
+        remaining = max(0, int(COOLDOWN_SECONDS - elapsed + 0.999))
+        if remaining:
+            print(
+                f"WAIT: target {target} has {remaining}s remaining in the 10-minute "
+                "start cooldown; no validation stage will begin before it expires"
+            )
+            time.sleep(remaining)
 
     print(f"PASS: CI cooldown and failed-revision latch for target {target}")
     return 0
