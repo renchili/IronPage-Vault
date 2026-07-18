@@ -2,11 +2,9 @@
 
 ## Source of truth
 
-Route-level Swaggo annotations under `internal/app/swagger_*.go` are the API contract source of truth.
+Route-level Swaggo annotations under `internal/app/swagger_*.go` are the API contract source of truth. Generated files under `docs/swagger/` are local or CI build artifacts created by `scripts/generate_swagger.sh`.
 
-Generated files under `docs/swagger/` are build/test artifacts. They may be created locally or in CI by `scripts/generate_swagger.sh`.
-
-## Why generation is required before tests
+## Generation before compilation
 
 The application imports the generated package:
 
@@ -14,25 +12,23 @@ The application imports the generated package:
 _ "ironpage-vault/docs/swagger"
 ```
 
-A fresh checkout can therefore fail to compile if `docs/swagger/docs.go` does not exist. Every entrypoint that compiles the application must prepare generated Swagger files first.
+Every supported entrypoint that compiles the application must therefore create the package and generate the Swagger artifacts first.
 
-## Required behavior by entrypoint
+## Entrypoint behavior
 
-| Entrypoint | Required Swagger behavior |
+| Entrypoint | Required behavior |
 |---|---|
-| `run_tests.sh` | Create `docs/swagger/docs.go` stub and run `scripts/generate_swagger.sh` before `go test` |
-| Docker build | Create `docs/swagger/docs.go` stub and generate Swagger before building the server |
-| PR CI app tests | Run `scripts/generate_swagger.sh` before app package tests |
-| Full regression | Prepare generated Swagger before full gofmt/vet/race tests |
-| Local contract probe | Remove `docs/swagger`, run `run_tests.sh` probe mode, and verify regenerated files exist |
+| `run_tests.sh` | Prepare `docs/swagger/docs.go`, generate Swagger, then run selected checks |
+| Docker builder | Generate Swagger in the builder stage before compiling the server |
+| `ci/run_full_regression.sh` | Generate Swagger before route coverage, vet, race tests, and Docker validation |
+| `ci/run_tests_contract_check.sh` | Start from a clean generated-artifact state and verify the local entrypoint recreates the files |
 
-## CI guards
+## Contract guards
 
-- `ci/run_tests_contract_check.sh` verifies local entrypoint behavior from a clean `docs/swagger` state.
-- `ci/swagger_contract_check.sh` validates generated `docs/swagger/swagger.yaml` against every route-level `@Router` annotation.
-- `Pull Request CI` runs the local entrypoint contract when `run_tests.sh`, Swagger generation, or Swagger artifacts change.
-- `Pull Request CI` runs the generated Swagger contract when route annotations, Swagger generation, or the contract checker changes.
+- `ci/swagger_contract_check.sh` compares generated routes with route-level `@Router` annotations.
+- `tests/contracts/swagger_route_coverage.sh` checks route coverage in the generated contract.
+- `.github/workflows/ci.yml` is the sole workflow and reaches these checks through the sequential complete-regression entrypoint.
 
-## Do not rely on stale generated files
+## Evidence boundary
 
-Do not treat an existing `docs/swagger/swagger.yaml` from a prior run as sufficient evidence. CI and local entrypoints must regenerate Swagger as part of the relevant workflow.
+Generated Swagger files from an earlier revision are not proof for the current source. An API-contract claim must identify the revision and the generated contract or successful complete-regression artifact that belongs to it.
