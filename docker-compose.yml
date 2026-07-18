@@ -5,14 +5,14 @@ services:
     ports:
       - "8080:8080"
     environment:
-      POSTGRES_USER: ironpage
+      POSTGRES_USER: ${DB_USER:-ironpage}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
-      POSTGRES_DB: ironpage
-      DB_HOST: 127.0.0.1
-      DB_PORT: 5432
-      DB_USER: ironpage
+      POSTGRES_DB: ${DB_NAME:-ironpage}
+      DB_HOST: ${DB_HOST:-127.0.0.1}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-ironpage}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
-      DB_NAME: ironpage
+      DB_NAME: ${DB_NAME:-ironpage}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       AES_KEY: ${AES_KEY:?AES_KEY is required}
       ACCEPTANCE_MODE: ${ACCEPTANCE_MODE:-false}

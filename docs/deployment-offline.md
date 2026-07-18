@@ -1,43 +1,101 @@
 # Offline Deployment
 
-IronPage Vault runs as one local Compose service in an air-gapped environment.
+IronPage Vault runs as one local Compose service in an air-gapped environment. The service container includes PostgreSQL, the Go API, migrations, local PDF storage, local backup storage, and acceptance-only browser assets.
 
-## Required configuration
+## One-command first deployment
 
-The service requires externally supplied values for:
+From the repository root:
 
-```text
-DB_PASSWORD
-JWT_SECRET
-AES_KEY
+```bash
+bash scripts/deploy.sh
 ```
 
-There are no built-in fallback values. Compose and application startup reject missing or weak values.
+No database, signing, encryption, or initial Admin values need to be exported before this command. On the first run, the deployer:
 
-## First normal-mode startup
+1. creates `.env` with file mode `0600`;
+2. generates random `DB_PASSWORD`, `JWT_SECRET`, `AES_KEY`, and initial Admin password values;
+3. writes the complete embedded PostgreSQL and API configuration;
+4. builds and starts the single Compose service in the background;
+5. waits until `http://localhost:8080/healthz` succeeds; and
+6. prints the initial Admin credentials once.
 
-A new empty database also requires:
+The generated `.env` is excluded by both `.gitignore` and `.dockerignore`. It is not committed and is not sent into the Docker build context.
+
+Running the same command again reuses the existing runtime file:
+
+```bash
+bash scripts/deploy.sh
+```
+
+This prevents an ordinary restart from silently rotating the database password, JWT signing material, or AES encryption key.
+
+## Verify startup
+
+```text
+http://localhost:8080/healthz
+http://localhost:8080/swagger/index.html
+```
+
+A successful health response means application configuration passed validation and the embedded PostgreSQL instance is reachable.
+
+## Generated database configuration
+
+The one-command deployer creates these database values in `.env`:
+
+| Variable | Initial value | Use |
+|---|---|---|
+| `DB_HOST` | `127.0.0.1` | PostgreSQL inside the same container |
+| `DB_PORT` | `5432` | Embedded PostgreSQL port |
+| `DB_USER` | `ironpage` | PostgreSQL role and API connection user |
+| `DB_PASSWORD` | Randomly generated | PostgreSQL and API connection password |
+| `DB_NAME` | `ironpage` | PostgreSQL database and API connection database |
+
+`docker-compose.yml` maps the PostgreSQL initialization variables from the same application values:
+
+```text
+POSTGRES_USER     <- DB_USER
+POSTGRES_PASSWORD <- DB_PASSWORD
+POSTGRES_DB       <- DB_NAME
+```
+
+The container entrypoint checks those pairs before PostgreSQL starts. A mismatch fails startup instead of allowing PostgreSQL and the API to use different credentials.
+
+The runtime file also contains randomly generated `JWT_SECRET` and `AES_KEY` values. The application itself still rejects missing or weak sensitive values and contains no built-in sensitive fallback.
+
+## Initial Admin
+
+A new empty database needs one initial Admin. The one-command deployer generates:
 
 ```text
 BOOTSTRAP_ADMIN_USERNAME
 BOOTSTRAP_ADMIN_PASSWORD
 ```
 
-The application uses this pair only when the user table is empty. After the first Admin is created and verified, remove the bootstrap variables from the deployment environment. Existing databases with users do not require them.
+The pair is used only while the user table is empty. After the initial Admin can log in, remove both lines from `.env`. Existing users are preserved and subsequent restarts do not create or overwrite another Admin.
 
-Normal mode does not create acceptance fixture users and does not serve the backend test UI.
+## Custom clean installation
 
-## Startup
+To generate the runtime file without starting the service:
 
 ```bash
-docker compose up --build
+IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh
 ```
 
-After startup, verify:
+Edit `.env`, preserving strong unique secret values, then start:
 
-```text
-http://localhost:8080/healthz
-http://localhost:8080/swagger/index.html
+```bash
+bash scripts/deploy.sh
+```
+
+Database identity changes are intended for a clean installation. Do not edit only `DB_PASSWORD`, `DB_USER`, or `DB_NAME` after PostgreSQL has initialized persistent data. Existing PostgreSQL credentials must be migrated deliberately. Do not change `AES_KEY` for an existing installation because previously encrypted metadata depends on it.
+
+## Manual Compose operation
+
+The deployment script is the supported first-run path. Once `.env` exists, manual operation is available:
+
+```bash
+docker compose --env-file .env up --build -d
+docker compose --env-file .env down
 ```
 
 ## Acceptance mode
@@ -51,7 +109,7 @@ SEED_EDITOR_PASSWORD
 SEED_REVIEWER_PASSWORD
 ```
 
-All three fixture values are required and must be supplied externally. Bootstrap variables and acceptance fixture variables cannot be used together.
+All three fixture values must be supplied externally for an acceptance run. Bootstrap variables and acceptance fixture variables cannot be used together.
 
 Only acceptance mode serves:
 
@@ -62,8 +120,6 @@ http://localhost:8080/ui/
 The repository and browser pages contain no fixture values.
 
 ## Runtime layout
-
-The image contains PostgreSQL, the Go API, migrations, local PDF storage, local backup storage, and acceptance UI assets.
 
 Persistent volumes:
 
@@ -81,15 +137,9 @@ Container paths:
 /var/lib/ironpage/backups
 ```
 
-## Other runtime variables
+Other supported runtime variables:
 
 ```text
-POSTGRES_USER
-POSTGRES_DB
-DB_HOST
-DB_PORT
-DB_USER
-DB_NAME
 STORAGE_DIR
 BACKUP_DIR
 MIGRATIONS_DIR
@@ -102,22 +152,32 @@ HTTP_ADDR
 Stop while preserving data:
 
 ```bash
-docker compose down
+docker compose --env-file .env down
 ```
 
 Remove local volumes for a clean re-test:
 
 ```bash
-docker compose down -v
+docker compose --env-file .env down -v
 ```
 
-A clean normal-mode database again requires the bootstrap pair. A clean acceptance run again requires externally supplied acceptance fixture values.
+To generate a completely new disposable installation, remove the volumes and the old `.env`, then run:
+
+```bash
+bash scripts/deploy.sh
+```
+
+Do not remove `.env` while retaining real persistent data unless the database password and encryption keys have been backed up securely.
 
 ## Acceptance checks
 
-- missing required runtime values prevent startup.
-- an empty normal-mode database requires explicit initial Admin configuration.
-- seed users require explicit acceptance mode.
-- bootstrap and acceptance identity modes are mutually exclusive.
-- the test UI is unavailable in normal mode and contains no embedded credentials.
+- a fresh checkout can generate complete runtime configuration without pre-exported secrets;
+- generated sensitive values are random, meet application length requirements, and are stored with mode `0600`;
+- the runtime file is excluded from source control and Docker build context;
+- the one-command path starts a healthy single-container deployment;
+- an empty normal-mode database creates one generated initial Admin;
+- rerunning deployment reuses the same database and cryptographic values;
+- restart without bootstrap values preserves the existing Admin;
+- acceptance fixtures still require explicit acceptance mode;
+- the test UI remains unavailable in normal mode; and
 - no external identity, PDF, database, storage, notification, or network service is required.

@@ -8,7 +8,14 @@ set -euo pipefail
 # stage log content is printed to stdout.
 
 probe_dir="$(mktemp -d)"
-trap 'rm -rf "$probe_dir"' EXIT
+deploy_probe_dir=""
+cleanup() {
+  rm -rf "$probe_dir"
+  if [ -n "$deploy_probe_dir" ]; then
+    rm -rf "$deploy_probe_dir"
+  fi
+}
+trap cleanup EXIT
 
 set +e
 IRONPAGE_REGRESSION_CONTRACT_PROBE=1 bash ci/run_full_regression.sh "$probe_dir" >"$probe_dir/probe.log" 2>&1
@@ -47,6 +54,76 @@ if stages.get('contract_fail', {}).get('status') == 0:
 PY
 
 grep -q 'Overall: \*\*FAILED\*\*' "$probe_dir/summary.md"
+
+# A fresh checkout must have a real one-command normal deployment path. The
+# deployer generates random external runtime values, stores them outside the
+# image, reuses them on repeated runs, and leaves application fallback checks
+# intact.
+test -f scripts/deploy.sh
+bash -n scripts/deploy.sh
+grep -Fxq '.env' .gitignore
+grep -Fxq '.env' .dockerignore
+grep -q 'scripts/deploy.sh' API_tests/test_bootstrap_restart_docker.sh
+
+deploy_probe_dir="$(mktemp -d)"
+deploy_env="$deploy_probe_dir/runtime.env"
+IRONPAGE_ENV_FILE="$deploy_env" IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh >"$deploy_probe_dir/first.log"
+test -s "$deploy_env"
+cp "$deploy_env" "$deploy_probe_dir/runtime.before"
+IRONPAGE_ENV_FILE="$deploy_env" IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh >"$deploy_probe_dir/second.log"
+cmp "$deploy_probe_dir/runtime.before" "$deploy_env"
+
+docker compose --env-file "$deploy_env" config >/dev/null
+
+python3 - "$deploy_env" <<'PY'
+from pathlib import Path
+import stat
+import sys
+
+path = Path(sys.argv[1])
+values = {}
+for line in path.read_text(encoding="utf-8").splitlines():
+    if not line or line.startswith("#"):
+        continue
+    key, separator, value = line.partition("=")
+    if not separator:
+        raise SystemExit(f"malformed runtime line: {line!r}")
+    values[key] = value
+
+required = {
+    "DB_HOST",
+    "DB_PORT",
+    "DB_USER",
+    "DB_PASSWORD",
+    "DB_NAME",
+    "JWT_SECRET",
+    "AES_KEY",
+    "ACCEPTANCE_MODE",
+    "BOOTSTRAP_ADMIN_USERNAME",
+    "BOOTSTRAP_ADMIN_PASSWORD",
+}
+missing = sorted(required - values.keys())
+if missing:
+    raise SystemExit(f"generated runtime configuration is missing: {missing}")
+if values["DB_HOST"] != "127.0.0.1" or values["DB_PORT"] != "5432":
+    raise SystemExit("generated database endpoint does not target the embedded PostgreSQL service")
+if values["DB_USER"] != "ironpage" or values["DB_NAME"] != "ironpage":
+    raise SystemExit("generated database identity is inconsistent")
+if len(values["DB_PASSWORD"]) < 16:
+    raise SystemExit("generated DB_PASSWORD is too short")
+if len(values["JWT_SECRET"]) < 32 or len(values["AES_KEY"]) < 32:
+    raise SystemExit("generated cryptographic runtime values are too short")
+if values["ACCEPTANCE_MODE"] != "false":
+    raise SystemExit("one-command deployment must default to normal mode")
+bootstrap_password_length = len(values["BOOTSTRAP_ADMIN_PASSWORD"].encode("utf-8"))
+if not values["BOOTSTRAP_ADMIN_USERNAME"] or bootstrap_password_length < 16:
+    raise SystemExit("generated initial Admin configuration is incomplete")
+if bootstrap_password_length > 72:
+    raise SystemExit("generated initial Admin password exceeds bcrypt's 72-byte limit")
+mode = stat.S_IMODE(path.stat().st_mode)
+if mode != 0o600:
+    raise SystemExit(f"runtime configuration mode must be 0600, got {mode:o}")
+PY
 
 # The Docker acceptance runner must generate execution-scoped runtime values,
 # explicitly enable acceptance mode, and pass fixture values into the test
