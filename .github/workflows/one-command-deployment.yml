@@ -1,0 +1,45 @@
+name: One-Command Deployment Acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/one-command-deployment.yml'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - 'scripts/deploy.sh'
+      - 'scripts/entrypoint.sh'
+      - 'API_tests/test_bootstrap_restart_docker.sh'
+      - 'internal/app/config.go'
+      - 'internal/app/database.go'
+      - 'migrations/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-command-deployment-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  one-command-deployment:
+    name: Build and exercise one-command deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Compose service
+        shell: bash
+        run: |
+          set -euo pipefail
+          random_hex() {
+            od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
+          }
+          export DB_PASSWORD="$(random_hex)"
+          export JWT_SECRET="$(random_hex)"
+          export AES_KEY="$(random_hex)"
+          docker compose build ironpage
+      - name: Exercise generated configuration, login, rerun, and restart
+        shell: bash
+        run: bash API_tests/test_bootstrap_restart_docker.sh
