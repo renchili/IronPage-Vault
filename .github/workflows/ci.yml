@@ -1,330 +1,57 @@
-name: Pull Request CI
+name: Repository Verification
 
 on:
   pull_request:
-    paths-ignore:
-      - '**/*.md'
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      unlock_failed_revision:
+        description: Allow one reviewed manual replay of the same failed revision
+        required: false
+        default: false
+        type: boolean
 
 permissions:
+  actions: read
   contents: read
   pull-requests: read
 
 concurrency:
-  group: pr-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ironpage-verification-${{ github.repository }}-${{ github.event.pull_request.base.ref || github.event.merge_group.base_ref || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  changes:
-    name: Detect changed areas
+  verification:
+    name: Serialized fail-fast verification
     runs-on: ubuntu-latest
-    outputs:
-      swagger: ${{ steps.filter.outputs.swagger }}
-      format: ${{ steps.filter.outputs.format }}
-      core: ${{ steps.filter.outputs.core }}
-      platform: ${{ steps.filter.outputs.platform }}
-      service: ${{ steps.filter.outputs.service }}
-      app: ${{ steps.filter.outputs.app }}
-      repository: ${{ steps.filter.outputs.repository }}
-      static_rules: ${{ steps.filter.outputs.static_rules }}
-      docker_build: ${{ steps.filter.outputs.docker_build }}
-      regression_flow: ${{ steps.filter.outputs.regression_flow }}
-      local_entrypoint: ${{ steps.filter.outputs.local_entrypoint }}
+    timeout-minutes: 60
+    env:
+      IRONPAGE_CI_UNLOCK: ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_failed_revision || false }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            swagger:
-              - 'cmd/server/main.go'
-              - 'internal/app/server.go'
-              - 'internal/app/swagger_*.go'
-              - 'scripts/generate_swagger.sh'
-              - 'docs/swagger/**'
-              - 'ci/swagger_contract_check.sh'
-              - 'go.mod'
-              - 'go.sum'
-            format:
-              - '**/*.go'
-            core:
-              - 'internal/core/**'
-              - 'go.mod'
-              - 'go.sum'
-            platform:
-              - 'internal/platform/**'
-              - 'go.mod'
-              - 'go.sum'
-            service:
-              - 'internal/service/**'
-              - 'internal/platform/**'
-              - 'go.mod'
-              - 'go.sum'
-            app:
-              - 'cmd/**'
-              - 'internal/app/**'
-              - 'internal/core/**'
-              - 'internal/platform/**'
-              - 'internal/service/**'
-              - 'internal/repository/**'
-              - 'internal/store/**'
-              - 'migrations/**'
-              - 'go.mod'
-              - 'go.sum'
-            repository:
-              - 'internal/repository/**'
-              - 'internal/store/**'
-              - 'migrations/**'
-              - 'go.mod'
-              - 'go.sum'
-            static_rules:
-              - '.github/workflows/**'
-              - 'ci/**'
-              - 'scripts/**'
-              - 'API_tests/**'
-              - 'unit_tests/**'
-              - 'run_tests.sh'
-              - 'internal/**'
-              - 'cmd/**'
-              - 'migrations/**'
-              - 'docs/**'
-              - 'public/**'
-              - 'go.mod'
-              - 'go.sum'
-            docker_build:
-              - 'Dockerfile'
-              - 'docker-compose.yml'
-              - '.dockerignore'
-              - 'cmd/**'
-              - 'internal/**'
-              - 'migrations/**'
-              - 'public/**'
-              - 'scripts/**'
-              - 'go.mod'
-              - 'go.sum'
-            regression_flow:
-              - '.github/workflows/full-regression-reusable.yml'
-              - '.github/workflows/merge-queue-regression.yml'
-              - '.github/workflows/post-merge-regression.yml'
-              - 'ci/run_full_regression.sh'
-              - 'ci/docker_acceptance.sh'
-              - 'ci/run_project_api_regression.sh'
-              - 'ci/Dockerfile.acceptance'
-              - 'ci/regression_contract_check.sh'
-            local_entrypoint:
-              - '.github/workflows/ci.yml'
-              - 'run_tests.sh'
-              - 'ci/run_tests_contract_check.sh'
-              - 'scripts/generate_swagger.sh'
-              - 'cmd/server/main.go'
-              - 'internal/app/swagger_*.go'
-              - 'docs/swagger/**'
-
-  change-impact:
-    name: Change impact and coverage gate
-    needs: changes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Analyze changed surface and required coverage
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash ci/change_impact_check.sh
-
-  regression-flow:
-    name: Regression flow contract
-    needs: changes
-    if: needs.changes.outputs.regression_flow == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Execute regression failure contract probe
-        run: bash ci/regression_contract_check.sh
-
-  local-entrypoint:
-    name: Local test entrypoint contract
-    needs: changes
-    if: needs.changes.outputs.local_entrypoint == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: Verify run_tests fresh-checkout contract
-        run: bash ci/run_tests_contract_check.sh
-      - name: Upload local acceptance report artifact
-        if: always()
+      - name: Enforce cooldown and failed-revision latch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 ci/ci_execution_guard.py
+      - name: Install workflow linter
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+      - name: Validate the single workflow definition
+        run: "$(go env GOPATH)/bin/actionlint -color=false"
+      - name: Run complete regression in fail-fast order
+        run: bash ci/run_full_regression.sh artifacts/regression
+      - name: Retain successful regression evidence
         uses: actions/upload-artifact@v4
         with:
-          name: local-acceptance-${{ github.run_id }}-${{ github.sha }}
-          path: artifacts/local-acceptance/**
-          if-no-files-found: warn
-          retention-days: 30
-
-  swagger:
-    name: Swagger contract
-    needs: changes
-    if: needs.changes.outputs.swagger == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
-      - run: |
-          bash scripts/generate_swagger.sh
-          bash ci/swagger_contract_check.sh
-
-  format:
-    name: Go format
-    needs: changes
-    if: needs.changes.outputs.format == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check changed Go source formatting
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          mapfile -t files < <(git diff --name-only "$BASE_SHA"...HEAD -- '*.go')
-          test "${#files[@]}" -gt 0
-          gofmt -l "${files[@]}" | tee /tmp/gofmt.out
-          test ! -s /tmp/gofmt.out
-
-  core:
-    name: Core tests and vet
-    needs: changes
-    if: needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - run: go vet ./internal/core
-      - run: go test -mod=mod ./internal/core
-
-  platform:
-    name: Platform tests and vet
-    needs: changes
-    if: needs.changes.outputs.platform == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - run: go vet ./internal/platform
-      - run: go test -mod=mod ./internal/platform
-
-  service:
-    name: Service tests
-    needs: changes
-    if: needs.changes.outputs.service == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - run: go test -mod=mod ./internal/service
-
-  app:
-    name: App tests
-    needs: changes
-    if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
-      - run: bash scripts/generate_swagger.sh
-      - run: go test -mod=mod ./internal/app ./cmd/...
-
-  repository:
-    name: Repository tests
-    needs: changes
-    if: needs.changes.outputs.repository == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - run: go test -mod=mod ./internal/repository ./internal/store
-
-  static-rules:
-    name: CI static guards
-    needs: changes
-    if: needs.changes.outputs.static_rules == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check shell script syntax without executing project test entrypoints
-        run: bash ci/shell_syntax_check.sh
-      - name: Verify scheduled backup contract
-        run: bash ci/scheduled_backup_contract_check.sh
-      - name: Verify metadata storage contract
-        run: bash ci/metadata_storage_check.sh
-
-  docker-build:
-    name: Docker build
-    needs: changes
-    if: needs.changes.outputs.docker_build == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t ironpage-vault:pr .
-
-  pr-gate:
-    name: Pull request gate
-    if: always()
-    needs:
-      - changes
-      - change-impact
-      - regression-flow
-      - local-entrypoint
-      - swagger
-      - format
-      - core
-      - platform
-      - service
-      - app
-      - repository
-      - static-rules
-      - docker-build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Reject detector or selected-job failures
-        env:
-          CHANGES: ${{ needs.changes.result }}
-          CHANGE_IMPACT: ${{ needs.change-impact.result }}
-          REGRESSION_FLOW: ${{ needs.regression-flow.result }}
-          LOCAL_ENTRYPOINT: ${{ needs.local-entrypoint.result }}
-          SWAGGER: ${{ needs.swagger.result }}
-          FORMAT: ${{ needs.format.result }}
-          CORE: ${{ needs.core.result }}
-          PLATFORM: ${{ needs.platform.result }}
-          SERVICE: ${{ needs.service.result }}
-          APP: ${{ needs.app.result }}
-          REPOSITORY: ${{ needs.repository.result }}
-          STATIC_RULES: ${{ needs.static-rules.result }}
-          DOCKER_BUILD: ${{ needs.docker-build.result }}
-        run: |
-          failed=0
-          for result in "$CHANGES" "$CHANGE_IMPACT" "$REGRESSION_FLOW" "$LOCAL_ENTRYPOINT" "$SWAGGER" "$FORMAT" "$CORE" "$PLATFORM" "$SERVICE" "$APP" "$REPOSITORY" "$STATIC_RULES" "$DOCKER_BUILD"; do
-            case "$result" in
-              success|skipped) ;;
-              *) echo "required CI stage failed or was cancelled: $result"; failed=1 ;;
-            esac
-          done
-          exit "$failed"
+          name: full-regression-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts/regression
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish successful regression summary
+        run: cat artifacts/regression/summary.md >> "$GITHUB_STEP_SUMMARY"
