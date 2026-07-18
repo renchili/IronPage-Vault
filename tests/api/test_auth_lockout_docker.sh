@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-. API_tests/lib.sh
+. tests/api/lib.sh
 
 APP_SERVICE=${APP_SERVICE:-ironpage}
+: "${IRONPAGE_ENV_FILE:?IRONPAGE_ENV_FILE is required}"
 : "${SEED_EDITOR_PASSWORD:?SEED_EDITOR_PASSWORD is required}"
 
-DB_USER_IN_CONTAINER=$(docker compose exec -T "$APP_SERVICE" printenv POSTGRES_USER | tr -d '\r')
-DB_NAME_IN_CONTAINER=$(docker compose exec -T "$APP_SERVICE" printenv POSTGRES_DB | tr -d '\r')
+compose() {
+  docker compose --env-file "$IRONPAGE_ENV_FILE" "$@"
+}
+
+DB_USER_IN_CONTAINER=$(compose exec -T "$APP_SERVICE" printenv POSTGRES_USER | tr -d '\r')
+DB_NAME_IN_CONTAINER=$(compose exec -T "$APP_SERVICE" printenv POSTGRES_DB | tr -d '\r')
 
 psql_exec() {
-  docker compose exec -T "$APP_SERVICE" \
+  compose exec -T "$APP_SERVICE" \
     psql -X -v ON_ERROR_STOP=1 -U "$DB_USER_IN_CONTAINER" -d "$DB_NAME_IN_CONTAINER" "$@"
 }
 
