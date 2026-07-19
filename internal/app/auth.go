@@ -52,7 +52,7 @@ func (a *App) login(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "DB_READ_ERROR", "could not read user")
 	}
 	if bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(req.Password)) != nil {
-		locked, err := a.recordFailedLogin(ctx, u.ID, now)
+		locked, err := a.recordFailedLogin(c, u.ID, now)
 		if err != nil {
 			return apiErr(c, http.StatusInternalServerError, "LOGIN_ATTEMPT_WRITE_ERROR", "could not record failed login")
 		}
@@ -65,7 +65,6 @@ func (a *App) login(c echo.Context) error {
 	if err := openUserPII(a.cfg.AESKey, &u); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "DB_READ_ERROR", "could not read user")
 	}
-
 	jti := makeIdentifier("jti")
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":      u.ID,
@@ -79,12 +78,9 @@ func (a *App) login(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "TOKEN_SIGN_ERROR", "could not sign token")
 	}
-
-	if err := a.completeSuccessfulLogin(ctx, u.ID, jti, now); err != nil {
+	if err := a.completeSuccessfulLogin(c, u.ID, jti, now, u.Username); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "LOGIN_STATE_WRITE_ERROR", "could not persist successful login")
 	}
-
-	a.audit(c, u.ID, "LOGIN", "", map[string]interface{}{"username": u.Username})
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"token":              signed,
 		"token_type":         "Bearer",
@@ -98,7 +94,8 @@ func (a *App) login(c echo.Context) error {
 	})
 }
 
-func (a *App) recordFailedLogin(ctx context.Context, userID string, attemptedAt time.Time) (bool, error) {
+func (a *App) recordFailedLogin(c echo.Context, userID string, attemptedAt time.Time) (bool, error) {
+	ctx := c.Request().Context()
 	tx, err := a.db.BeginTxx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return false, err
@@ -109,7 +106,6 @@ func (a *App) recordFailedLogin(ctx context.Context, userID string, attemptedAt 
 	if err := tx.GetContext(ctx, &lockedUserID, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, userID); err != nil {
 		return false, err
 	}
-
 	cutoff := attemptedAt.Add(-loginAttemptWindow)
 	if _, err := tx.ExecContext(ctx, `DELETE FROM login_attempts WHERE user_id=$1 AND attempted_at < $2`, userID, cutoff); err != nil {
 		return false, err
@@ -117,12 +113,10 @@ func (a *App) recordFailedLogin(ctx context.Context, userID string, attemptedAt 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO login_attempts(user_id,attempted_at) VALUES($1,$2)`, userID, attemptedAt); err != nil {
 		return false, err
 	}
-
 	var attempts int
 	if err := tx.GetContext(ctx, &attempts, `SELECT COUNT(*) FROM login_attempts WHERE user_id=$1 AND attempted_at >= $2`, userID, cutoff); err != nil {
 		return false, err
 	}
-
 	locked := attempts >= loginAttemptLimit
 	var lockedUntil interface{}
 	if locked {
@@ -131,19 +125,22 @@ func (a *App) recordFailedLogin(ctx context.Context, userID string, attemptedAt 
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET failed_attempts=$2, locked_until=$3, updated_at=$4 WHERE id=$1`, userID, attempts, lockedUntil, attemptedAt); err != nil {
 		return false, err
 	}
+	if err := a.auditWithExecutor(c, tx, userID, "LOGIN_FAILED", "", map[string]interface{}{"attempts_in_window": attempts, "locked": locked}); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
 	return locked, nil
 }
 
-func (a *App) completeSuccessfulLogin(ctx context.Context, userID, jti string, now time.Time) error {
+func (a *App) completeSuccessfulLogin(c echo.Context, userID, jti string, now time.Time, username string) error {
+	ctx := c.Request().Context()
 	tx, err := a.db.BeginTxx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer rollbackQuietly(tx)
-
 	if _, err := tx.ExecContext(ctx, `DELETE FROM login_attempts WHERE user_id=$1`, userID); err != nil {
 		return err
 	}
@@ -159,6 +156,9 @@ func (a *App) completeSuccessfulLogin(ctx context.Context, userID, jti string, n
 		return fmt.Errorf("expected to reset one user, reset %d", rows)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions(jti,user_id,last_seen_at,expires_at,created_at) VALUES($1,$2,$3,$4,$3)`, jti, userID, now, now.Add(a.cfg.SessionTTL)); err != nil {
+		return err
+	}
+	if err := a.auditWithExecutor(c, tx, userID, "LOGIN", "", map[string]interface{}{"username": username, "jti": jti}); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -205,7 +205,6 @@ func (a *App) authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		if jti == "" || sub == "" {
 			return apiErr(c, http.StatusUnauthorized, "TOKEN_INVALID", "token claims are incomplete")
 		}
-
 		var blacklisted int
 		if err := a.db.GetContext(ctx, &blacklisted, `SELECT COUNT(*) FROM jwt_blacklist WHERE jti=$1`, jti); err != nil {
 			return apiErr(c, http.StatusInternalServerError, "AUTH_STATE_READ_ERROR", "could not read token state")
@@ -213,7 +212,6 @@ func (a *App) authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		if blacklisted > 0 {
 			return apiErr(c, http.StatusUnauthorized, "TOKEN_REVOKED", "token has been revoked")
 		}
-
 		reqID := currentRequestID(c)
 		res, err := a.db.ExecContext(ctx, `INSERT INTO request_replay_guard(request_id,jti,seen_at) VALUES($1,$2,NOW()) ON CONFLICT DO NOTHING`, reqID, jti)
 		if err != nil {
@@ -226,7 +224,6 @@ func (a *App) authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		if rows == 0 {
 			return apiErr(c, http.StatusConflict, "REPLAY_DETECTED", "request id was already used")
 		}
-
 		now := time.Now().UTC()
 		res, err = a.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at=$2 WHERE jti=$1 AND revoked_at IS NULL AND last_seen_at > $3 AND (expires_at IS NULL OR expires_at > $2)`, jti, now, now.Add(-a.cfg.SessionTTL))
 		if err != nil {
@@ -239,7 +236,6 @@ func (a *App) authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		if rows == 0 {
 			return apiErr(c, http.StatusUnauthorized, "SESSION_EXPIRED", "session is expired or revoked")
 		}
-
 		c.Set("principal", Principal{UserID: sub, Username: username, Role: role, JTI: jti})
 		return next(c)
 	}
@@ -253,7 +249,6 @@ func (a *App) logout(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "LOGOUT_WRITE_ERROR", "could not start logout")
 	}
 	defer rollbackQuietly(tx)
-
 	if _, err := tx.ExecContext(ctx, `INSERT INTO jwt_blacklist(jti,created_at) VALUES($1,NOW()) ON CONFLICT DO NOTHING`, p.JTI); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "LOGOUT_WRITE_ERROR", "could not revoke token")
 	}
@@ -268,11 +263,12 @@ func (a *App) logout(c echo.Context) error {
 	if rows != 1 {
 		return apiErr(c, http.StatusInternalServerError, "LOGOUT_WRITE_ERROR", "session revocation did not affect one active session")
 	}
+	if err := a.auditWithExecutor(c, tx, p.UserID, "LOGOUT", "", map[string]interface{}{"jti": p.JTI}); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "LOGOUT_WRITE_ERROR", "could not record logout audit")
+	}
 	if err := tx.Commit(); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "LOGOUT_WRITE_ERROR", "could not complete logout")
 	}
-
-	a.audit(c, p.UserID, "LOGOUT", "", map[string]interface{}{})
 	return c.JSON(http.StatusOK, map[string]interface{}{"status": "logged_out"})
 }
 
