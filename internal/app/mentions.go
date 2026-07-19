@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 
 	"github.com/jmoiron/sqlx"
 
@@ -16,11 +17,12 @@ func extractMentionUsernames(text string) []string {
 }
 
 // notifyMentionedUsersWithExecutor creates local notifications for annotation
-// mentions inside the parent mutation's database boundary. A missing username is
-// ignored as user input, while database and notification failures abort the
-// mutation so a successful annotation cannot silently lose required side effects.
+// mentions inside the parent mutation's database boundary. Recipients are sorted
+// before user-row locking so concurrent annotations use a deterministic lock order.
 func (a *App) notifyMentionedUsersWithExecutor(ctx context.Context, executor sqlx.ExtContext, comment string, documentID string, authorID string) error {
-	for _, username := range extractMentionUsernames(comment) {
+	usernames := append([]string(nil), extractMentionUsernames(comment)...)
+	sort.Strings(usernames)
+	for _, username := range usernames {
 		var userID string
 		err := sqlx.GetContext(ctx, executor, &userID, `SELECT id FROM users WHERE username=$1`, piiLookupKey(a.cfg.AESKey, username))
 		if errors.Is(err, sql.ErrNoRows) {
