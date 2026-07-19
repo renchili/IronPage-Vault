@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -94,7 +95,7 @@ func openAuditPII(secret string, row *auditLogResponse) error {
 		metadata = `{}`
 	}
 	if !json.Valid([]byte(metadata)) {
-		return &json.SyntaxError{}
+		return fmt.Errorf("audit metadata is not valid JSON")
 	}
 	row.SourceIP = sourceIP
 	row.Metadata = json.RawMessage(metadata)
