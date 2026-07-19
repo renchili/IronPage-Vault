@@ -1,7 +1,7 @@
 name: Repository Static Acceptance
 
 run-name: >-
-  static-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
+  static-${{ github.event_name == 'workflow_dispatch' && inputs.target != '' && inputs.target || github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
   ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_failed_run_id != '' && format('unlock-{0}', inputs.unlock_failed_run_id) || 'automatic' }}
 
 on:
@@ -11,6 +11,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      target:
+        description: Exact target key, such as pr-112 or main
+        required: true
+        type: string
       unlock_failed_run_id:
         description: Exact failed run ID authorized for one replay of the same revision
         required: false
@@ -28,7 +32,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ironpage-static-acceptance-${{ github.repository }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
+  group: ironpage-static-acceptance-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.target != '' && inputs.target || github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -37,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      IRONPAGE_CI_TARGET: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
+      IRONPAGE_CI_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target != '' && inputs.target || github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
       IRONPAGE_CI_UNLOCK_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_failed_run_id || '' }}
       IRONPAGE_CI_UNLOCK_REASON: ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_reason || '' }}
     steps:
@@ -62,14 +66,19 @@ jobs:
             }
 
             function runTarget(run) {
+              const title = String(run.display_title || '');
+              const titleMatch = /^static-(.+)\s+(?:automatic|unlock-\d+)$/.exec(title);
+              if (titleMatch) {
+                return titleMatch[1];
+              }
               if (Array.isArray(run.pull_requests) && run.pull_requests.length > 0) {
                 return `pr-${run.pull_requests[0].number}`;
               }
               return String(run.head_branch || '');
             }
 
-            if (!target) {
-              await cancelCurrent('CI target could not be resolved.');
+            if (!target || /\s/.test(target)) {
+              await cancelCurrent('CI target must be a non-empty key without whitespace.');
               return;
             }
             if (currentAttempt > 1) {
