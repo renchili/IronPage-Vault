@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -32,8 +31,7 @@ func normalizeWorkflowDefinitions(inputs []workflowDefinitionInput) ([]workflowS
 			return nil, fmt.Errorf("workflow status names must be unique")
 		}
 		seen[key] = true
-		definition := workflowStatusResponse{Name: name, Position: index + 1, Mutable: input.Mutable}
-		definitions = append(definitions, definition)
+		definitions = append(definitions, workflowStatusResponse{Name: name, Position: index + 1, Mutable: input.Mutable})
 	}
 	if definitions[0].Name != StatusDraft || !definitions[0].Mutable {
 		return nil, fmt.Errorf("Draft must remain the first mutable status")
@@ -80,7 +78,6 @@ func (a *App) replaceWorkflowStatuses(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
-
 	activeStatuses := []string{}
 	if err := tx.SelectContext(c.Request().Context(), &activeStatuses, `SELECT DISTINCT status FROM documents`); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_QUERY_ERROR", "could not inspect active document statuses")
@@ -94,7 +91,6 @@ func (a *App) replaceWorkflowStatuses(c echo.Context) error {
 			return apiErr(c, http.StatusConflict, "WORKFLOW_STATUS_IN_USE", "new workflow must retain every status used by an existing document")
 		}
 	}
-
 	if _, err := tx.ExecContext(c.Request().Context(), `DELETE FROM workflow_status_definitions`); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_UPDATE_ERROR", "could not replace workflow statuses")
 	}
@@ -114,8 +110,4 @@ func (a *App) replaceWorkflowStatuses(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit workflow definitions")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": definitions})
-}
-
-func workflowDefinitionNotFound(err error) bool {
-	return err == sql.ErrNoRows
 }
