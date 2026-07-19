@@ -7,6 +7,8 @@ func TestNormalizeWorkflowDefinitionsAssignsOrderedPositions(t *testing.T) {
 		{Name: StatusDraft, Mutable: true},
 		{Name: StatusUnderReview, Mutable: true},
 		{Name: "Quality Review", Mutable: true},
+		{Name: StatusRedactionPending, Mutable: true},
+		{Name: StatusApproved, Mutable: true},
 		{Name: StatusFinalized, Mutable: false},
 	})
 	if err != nil {
@@ -25,6 +27,9 @@ func TestNormalizeWorkflowDefinitionsAssignsOrderedPositions(t *testing.T) {
 func TestNormalizeWorkflowDefinitionsRejectsMutableFinalized(t *testing.T) {
 	_, err := normalizeWorkflowDefinitions([]workflowDefinitionInput{
 		{Name: StatusDraft, Mutable: true},
+		{Name: StatusUnderReview, Mutable: true},
+		{Name: StatusRedactionPending, Mutable: true},
+		{Name: StatusApproved, Mutable: true},
 		{Name: StatusFinalized, Mutable: true},
 	})
 	if err == nil {
@@ -35,8 +40,11 @@ func TestNormalizeWorkflowDefinitionsRejectsMutableFinalized(t *testing.T) {
 func TestNormalizeWorkflowDefinitionsRejectsDuplicateNames(t *testing.T) {
 	_, err := normalizeWorkflowDefinitions([]workflowDefinitionInput{
 		{Name: StatusDraft, Mutable: true},
+		{Name: StatusUnderReview, Mutable: true},
 		{Name: "Review", Mutable: true},
 		{Name: " review ", Mutable: true},
+		{Name: StatusRedactionPending, Mutable: true},
+		{Name: StatusApproved, Mutable: true},
 		{Name: StatusFinalized, Mutable: false},
 	})
 	if err == nil {
@@ -46,12 +54,37 @@ func TestNormalizeWorkflowDefinitionsRejectsDuplicateNames(t *testing.T) {
 
 func TestNormalizeWorkflowDefinitionsRequiresTerminalBoundaries(t *testing.T) {
 	cases := [][]workflowDefinitionInput{
-		{{Name: "New", Mutable: true}, {Name: StatusFinalized, Mutable: false}},
-		{{Name: StatusDraft, Mutable: true}, {Name: "Done", Mutable: false}},
+		{
+			{Name: "New", Mutable: true},
+			{Name: StatusUnderReview, Mutable: true},
+			{Name: StatusRedactionPending, Mutable: true},
+			{Name: StatusApproved, Mutable: true},
+			{Name: StatusFinalized, Mutable: false},
+		},
+		{
+			{Name: StatusDraft, Mutable: true},
+			{Name: StatusUnderReview, Mutable: true},
+			{Name: StatusRedactionPending, Mutable: true},
+			{Name: StatusApproved, Mutable: true},
+			{Name: "Done", Mutable: false},
+		},
 	}
 	for _, inputs := range cases {
 		if _, err := normalizeWorkflowDefinitions(inputs); err == nil {
 			t.Fatalf("invalid workflow boundaries must be rejected: %#v", inputs)
 		}
+	}
+}
+
+func TestNormalizeWorkflowDefinitionsPreservesRequiredOrder(t *testing.T) {
+	_, err := normalizeWorkflowDefinitions([]workflowDefinitionInput{
+		{Name: StatusDraft, Mutable: true},
+		{Name: StatusRedactionPending, Mutable: true},
+		{Name: StatusUnderReview, Mutable: true},
+		{Name: StatusApproved, Mutable: true},
+		{Name: StatusFinalized, Mutable: false},
+	})
+	if err == nil {
+		t.Fatalf("required domain status order must be preserved")
 	}
 }
