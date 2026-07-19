@@ -44,6 +44,9 @@ func Run(cfg Config) error {
 	if err := RunMigrations(db, cfg.MigrationsDir); err != nil {
 		return err
 	}
+	if err := EnsureAuditSourceIPLookups(context.Background(), db, cfg.AESKey); err != nil {
+		return err
+	}
 	if err := EnsureRuntimeConfiguration(context.Background(), db, cfg); err != nil {
 		return err
 	}
