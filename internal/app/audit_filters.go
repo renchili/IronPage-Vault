@@ -25,15 +25,18 @@ func (a *App) auditLogsFiltered(c echo.Context) error {
 	if !validateAuditTimeFilter(c.QueryParam("created_from")) || !validateAuditTimeFilter(c.QueryParam("created_to")) {
 		return apiErr(c, http.StatusBadRequest, "INVALID_AUDIT_TIME_FILTER", "created_from and created_to must be RFC3339 timestamps")
 	}
-	page, size := parsePage(c, a.cfg)
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	sourceIP := strings.TrimSpace(c.QueryParam("source_ip"))
 	filters := repository.AuditLogFilters{
-		ActorUserID:    c.QueryParam("actor_user_id"),
-		DocumentID:     c.QueryParam("document_id"),
-		ActionType:     c.QueryParam("action_type"),
-		RequestID:      c.QueryParam("request_id"),
-		CreatedFrom:    c.QueryParam("created_from"),
-		CreatedTo:      c.QueryParam("created_to"),
+		ActorUserID: c.QueryParam("actor_user_id"),
+		DocumentID:  c.QueryParam("document_id"),
+		ActionType:  c.QueryParam("action_type"),
+		RequestID:   c.QueryParam("request_id"),
+		CreatedFrom: c.QueryParam("created_from"),
+		CreatedTo:   c.QueryParam("created_to"),
 	}
 	if sourceIP != "" {
 		filters.SourceIPLookup = piiLookupKey(a.cfg.AESKey, sourceIP)
