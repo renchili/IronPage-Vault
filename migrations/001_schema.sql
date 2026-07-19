@@ -127,11 +127,13 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   action_type TEXT NOT NULL,
   request_id TEXT NOT NULL,
   source_ip TEXT NOT NULL DEFAULT '',
+  source_ip_lookup TEXT NOT NULL DEFAULT '',
   source_ip_ciphertext TEXT NOT NULL DEFAULT '',
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   metadata_ciphertext TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS audit_logs_source_ip_lookup_idx ON audit_logs(source_ip_lookup);
 
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
@@ -183,7 +185,6 @@ INSERT INTO notification_templates(id,key,subject,body) VALUES
 ON CONFLICT(key) DO NOTHING;
 
 INSERT INTO config_entries(key,value) VALUES
-('backup.local_volume','/var/lib/ironpage/backups'),
 ('pagination.default_page_size','25'),
 ('pagination.max_page_size','100')
 ON CONFLICT(key) DO NOTHING;
