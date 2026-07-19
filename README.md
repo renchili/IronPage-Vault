@@ -11,26 +11,30 @@ The backend implements:
 - local identity, rolling failed-login lockout, server-side sessions, token revocation, freshness validation, and replay protection;
 - Admin, Editor, and Reviewer authorization boundaries;
 - PDF intake, local binary storage, version history, and revision limits;
-- Draft → Under Review → Redaction Pending → Approved → Finalized workflow with terminal immutability;
-- staged redaction followed by confirmed PDF burn-in;
-- reviewer annotations and dispositions;
-- visible Bates numbering and auditable sequence allocation;
-- document comparison, audit records, notifications, configuration, backup, and restore.
+- an Admin-managed persisted workflow chain with terminal Finalized immutability;
+- staged redaction followed by confirmed strict PDF burn-in;
+- reviewer annotations, dispositions, and local mention notifications;
+- visible Bates numbering with transactional page-range allocation;
+- structured text/page/bounding-box comparison;
+- encrypted audit source/metadata with Admin filtering and decrypted responses;
+- configuration, strict backup, staged restore, and explicit restore lifecycle records.
 
-Implementation claims and test evidence are revision-specific. A historical successful run is not evidence for another commit.
+Material database mutations include their required audit, history, and notification side effects in the same transaction. File-producing mutations remove generated output when database persistence fails.
+
+Implementation claims and execution evidence are revision-specific. A historical successful run is not evidence for another commit.
 
 ## Repository layout
 
 ```text
 cmd/server/          process entrypoint
-internal/app/        Echo routes, middleware, HTTP mapping, runtime configuration
-internal/core/       domain rules, roles, workflow, access policy, validation
+internal/app/        Echo routes, transaction assembly, HTTP mapping, runtime configuration
+internal/core/       domain rules, roles, default workflow compatibility, access policy, validation
 internal/service/    use-case orchestration
-internal/repository/ repository interfaces and persistence operations
-internal/store/      SQL-facing storage helpers
-internal/platform/   PDF, crypto, digest, filesystem, backup, restore adapters
-migrations/          PostgreSQL schema
-tests/api/           stateful HTTP, Docker, and browser acceptance flows
+internal/repository/ persistence operations and query models
+internal/store/      SQL-facing helpers
+internal/platform/   PDF, crypto, digest, filesystem, backup, staged restore adapters
+migrations/          PostgreSQL schema and upgrade migrations
+tests/api/           stateful HTTP, Docker, and browser acceptance definitions
 tests/contracts/     repository, structure, and generated-contract checks
 testdata/            local PDF and CSV fixtures
 ci/                  static workflow contracts and manual regression helpers
@@ -39,16 +43,9 @@ docs/                API, design, security, deployment, testing, and operations 
 public/index.html    canonical acceptance-only browser probe
 ```
 
-Start with `cmd/server/main.go`, `internal/app/server.go`, `internal/app/config.go`, `docker-compose.yml`, and `docs/api-spec.md`.
-
 ## Prerequisites
 
-The supported deployment path requires:
-
-- Docker with Docker Compose v2;
-- Bash and standard local tools including `od`, `sed`, `tr`, `cut`, `awk`, `getent`, and `timeout`.
-
-No external database, identity provider, PDF service, object store, notification service, or runtime internet connection is required.
+The supported deployment path requires Docker with Docker Compose v2, Bash, and standard local tools including `od`, `sed`, `tr`, `cut`, `awk`, `getent`, and `timeout`. No external database, identity provider, PDF service, object store, notification service, or runtime internet connection is required.
 
 ## One-command deployment
 
@@ -58,38 +55,13 @@ From the repository root:
 bash scripts/deploy.sh
 ```
 
-The first run:
+The first run resolves an IPv4 loopback address, selects a currently unused loopback host port, creates `.env` with mode `0600`, generates installation-specific database identity/ports/paths/secrets/Admin credentials, builds the image, starts the one service, waits for health, and prints the actual URLs and initial Admin pair.
 
-1. resolves `localhost` to an IPv4 loopback address;
-2. selects a currently unused random loopback host port;
-3. creates `.env` with mode `0600`;
-4. generates installation-specific database identity, container ports, filesystem targets, JWT material, AES material, and initial Admin credentials;
-5. builds the image with the generated application root and HTTP port;
-6. starts the single Compose service;
-7. waits for health; and
-8. prints the actual API, health, and Swagger URLs plus the initial Admin pair.
-
-The generated `.env` is excluded from Git and from the Docker build context. Re-running the command reuses it instead of rotating persistent configuration.
-
-Do not assume `localhost:8080`. Read the printed URL or inspect these generated values:
-
-```text
-HOST_BIND_ADDRESS
-HOST_PORT
-```
-
-The corresponding endpoints are:
-
-```text
-http://<HOST_BIND_ADDRESS>:<HOST_PORT>/healthz
-http://<HOST_BIND_ADDRESS>:<HOST_PORT>/swagger/index.html
-```
-
-The availability probe reduces first-start port collisions but cannot remove the operating-system race between probing and Docker binding. Docker Compose remains the final authority and fails rather than silently changing the persisted port.
+The generated `.env` is excluded from Git and the Docker context. Re-running the command reuses it. Do not assume `localhost:8080`; read `HOST_BIND_ADDRESS` and `HOST_PORT`. The availability probe reduces initial collisions, while Docker remains the final bind authority.
 
 ## Runtime configuration ownership
 
-The deployment layer writes every local runtime value to `.env`; the image, Compose file, and Go application do not provide an alternative fixed local configuration.
+The deployment layer supplies every local runtime value. The schema does not seed a fixed machine backup path. After migrations, startup persists the generated `BACKUP_DIR` and paging limits into `config_entries`.
 
 | Area | Variables |
 |---|---|
@@ -103,27 +75,17 @@ The deployment layer writes every local runtime value to `.env`; the image, Comp
 | Product storage | `IRONPAGE_VOLUME_ROOT`, `STORAGE_DIR`, `BACKUP_DIR` |
 | Acceptance fixtures | `ACCEPTANCE_MODE`, `SEED_ADMIN_PASSWORD`, `SEED_EDITOR_PASSWORD`, `SEED_REVIEWER_PASSWORD` |
 
-Compose maps `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `PGPORT` from the same generated `DB_*` values used by the API. Startup fails if required values are missing or inconsistent.
-
-To inspect or customize a clean installation before startup:
+To generate and inspect a clean installation file before startup:
 
 ```bash
 IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh
-# Edit .env before the first build.
-bash scripts/deploy.sh
 ```
 
-Do not change database identity, database password, AES key, image paths, volume targets, or listener ports after data exists without a deliberate migration.
-
-After verifying the first Admin login, remove the bootstrap pair from `.env`. Existing users remain unchanged across restart.
-
-See `docs/deployment-offline.md` for the complete deployment contract.
+Do not change database identity/password, AES key, persistent paths, or listener ports after data exists without a deliberate migration. After verifying the first Admin login, remove the bootstrap pair from `.env`.
 
 ## Normal and acceptance modes
 
-Normal mode is generated by default and does not create fixture identities or serve `/ui/`.
-
-Acceptance mode is isolated validation only. It requires execution-scoped values for all three fixture passwords and cannot be combined with bootstrap values. In that mode, the canonical browser probe is available at:
+Normal mode creates no fixture identities and does not serve `/ui/`. Acceptance mode requires execution-scoped fixture passwords and serves the canonical probe at:
 
 ```text
 http://<HOST_BIND_ADDRESS>:<HOST_PORT>/ui/
@@ -131,85 +93,87 @@ http://<HOST_BIND_ADDRESS>:<HOST_PORT>/ui/
 
 The browser page contains no fixture credential.
 
-## Verification entrypoints
-
-Local source and report entrypoint:
-
-```bash
-bash run_tests.sh
-```
-
-Without `BASE_URL` and all three execution-scoped `SEED_*_PASSWORD` values, stateful rows are recorded as `SKIP`, the report is `INCOMPLETE`, and the command exits with status `2`. A skipped stage is never reported as a local PASS.
-
-Complete serialized regression remains a manual or normal-lifecycle command:
-
-```bash
-bash ci/run_full_regression.sh artifacts/regression
-```
-
-GitHub verification is defined only in `.github/workflows/ci.yml` and is **static acceptance only**. The workflow:
-
-- resolves one target key across pull requests, merge groups, `main` pushes, and manual dispatches;
-- uses target concurrency with `cancel-in-progress: true` to collapse superseded active events;
-- performs admission before checkout or repository-controlled code;
-- cancels denied admission immediately instead of sleeping inside a runner;
-- paginates the complete workflow history used for duplicate, cooldown, and failure-latch decisions;
-- applies a ten-minute cooldown only to duplicate events for the same target and revision;
-- latches a failed target/revision so the same revision cannot repeat automatically;
-- admits a new revision immediately so a corrective commit can be checked;
-- rejects ordinary rerun attempts;
-- permits one reviewed replay only when `target`, `unlock_failed_run_id`, and `unlock_reason` identify the exact authorization;
-- runs static syntax, formatting, inventory, documentation, and contract gates sequentially; and
-- retains the source-inventory artifact only after all static gates succeed.
-
-GitHub creates a workflow-run object before repository YAML can execute admission. The repository workflow therefore guarantees pre-checkout admission and active-run collapse, not literal pre-dispatch prevention. Any requirement for zero run-object or runner creation needs separate platform-level evidence.
-
-`run_tests.sh` reports only stage rows that actually executed. Its lightweight contract probe is not full-regression evidence. Static CI is not Docker, API, browser-interaction, deployment, or full-regression acceptance.
-
-## Roles
+## Roles and workflow
 
 | Role | Responsibility |
 |---|---|
-| Admin | local user management, configuration, workflow definitions, templates, backup operations |
-| Editor | PDF upload, versions, redaction confirmation, Bates numbering, finalization |
+| Admin | local users, configuration, persisted workflow definitions, templates, backup/restore operations |
+| Editor | owned-document upload, versions, redaction confirmation, Bates numbering, finalization |
 | Reviewer | document retrieval, annotations, dispositions, permitted review transitions |
 
-Admin is intentionally not treated as a document editor.
+Admin is not treated as a document editor.
 
-## Document lifecycle
+The initial chain is:
 
 ```text
 Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
 ```
 
-Finalized is terminal. Replacement upload, rollback, redaction, annotation mutation, Bates numbering, workflow transition, and metadata mutation must be rejected after finalization.
+Admin can read and replace the ordered chain:
 
-## Storage and recovery
+```text
+GET /api/admin/workflow-statuses
+PUT /api/admin/workflow-statuses
+```
 
-PostgreSQL stores metadata, identity/session state, workflow history, audit records, notifications, configuration, and backup records. The local filesystem stores PDF binaries and transformed versions. All concrete container paths are generated into `.env` for each installation.
+`Draft` must remain first and mutable; `Finalized` must remain last and immutable; existing document statuses cannot be removed. Runtime transitions read the persisted order. A transition/finalization commits document state, history, audit, and owner notification together.
 
-Strict backup requires both a PostgreSQL custom-format dump and a tar snapshot of PDF storage. Restore requires both artifacts.
+## Audit and notification integrity
+
+Audit source IP and structured metadata are stored in ciphertext columns. Source IP also has a deterministic equality lookup. Startup backfills the lookup for older rows. The Admin audit route decrypts source IP and JSON metadata before response; compatibility plaintext columns are not the source of truth.
+
+User/config/template/workflow changes, upload/rollback, workflow/finalization, redaction, annotation, Bates, backup, notification acknowledgement, failed login, successful login, and logout all fail rather than report success if their required audit cannot be persisted. Workflow and mention notifications share the parent mutation transaction.
+
+## Storage, backup, and restore
+
+PostgreSQL stores metadata/security/workflow/audit/notification/configuration/backup state. The local filesystem stores PDF versions and transformed output.
+
+Strict backup requires a PostgreSQL custom dump, filesystem tar, metadata snapshot, backup job, and audit. Failed job/audit persistence removes the generated artifacts.
+
+Strict restore safely extracts the archive to staging, rejects path traversal, links, and special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. PostgreSQL failure restores the previous filesystem directory. The API records Requested followed by Completed or Failed; success is returned only after completion state and audit are stored.
 
 See `docs/backup-recovery.md` and `docs/pitr.md`.
 
+## Verification entrypoints
+
+Local staged report:
+
+```bash
+bash run_tests.sh
+```
+
+Without `BASE_URL` and all three `SEED_*_PASSWORD` values, stateful rows are `SKIP`, the report is `INCOMPLETE`, and exit status is `2`.
+
+Manual/normal-lifecycle complete regression:
+
+```bash
+bash ci/run_full_regression.sh artifacts/regression
+```
+
+GitHub verification is defined only in `.github/workflows/ci.yml` and is static acceptance only. Admission precedes checkout. Automatic targets are derived from the event. A manual target must equal the selected branch or identify the same-repository open PR whose branch and head SHA match the selected ref. The workflow collapses active duplicates, paginates scoped history, applies cooldown/latching to the canonical target/revision, rejects ordinary reruns, and permits one exact reviewed unlock.
+
+The later job runs static syntax, formatting, inventory, documentation, and contract gates. It does not run Docker, API, browser, deployment, or complete regression. GitHub creates the run object before repository YAML executes, so repository admission is pre-checkout rather than platform-level pre-dispatch prevention.
+
+A static reviewer reads source and existing evidence only and must not trigger, run, retry, wait for, or validate execution to fill gaps.
+
 ## Generated API documentation
 
-Swaggo annotations in Go source are authoritative:
+Swaggo annotations in Go source are authoritative. Supported execution entrypoints generate files under `docs/swagger/`:
 
 ```bash
 bash scripts/generate_swagger.sh
 ```
 
-Generated files are written under `docs/swagger/`.
+Static review does not authorize generation.
 
 ## Documentation
 
 - `docs/api-spec.md` — API contract and examples
-- `docs/design.md` — architecture and boundaries
+- `docs/design.md` — architecture and transaction boundaries
 - `docs/security.md` — security model
 - `docs/rbac.md` — role and object-access rules
 - `docs/usage.md` — operational API examples
-- `docs/testing.md` — test and evidence boundaries
+- `docs/testing.md` — test and static evidence boundaries
 - `docs/deployment-offline.md` — generated offline deployment
-- `docs/backup-recovery.md` — strict backup and restore
+- `docs/backup-recovery.md` — strict backup and staged restore
 - `docs/pitr.md` — recovery strategy and limitations
