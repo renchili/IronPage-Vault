@@ -118,16 +118,32 @@ if re.search(r"time\.sleep|\bsleep\s+\d+", workflow):
     stop("admission must reject rather than sleep")
 
 for path, phrases in {
-    "README.md": ["PUT /api/admin/workflow-statuses", "same-repository open PR", "audit source IP and structured metadata", "pg_restore --single-transaction"],
-    "docs/design.md": ["same transaction", "page-number range", "safe archive extraction", "same-repository open PR"],
-    "docs/requirement-check.md": ["Admin GET/PUT route", "deterministic source-IP lookup/backfill", "canonical manual target validation"],
-    "docs/testing.md": ["exact same-repository open PR", "audit source IP/metadata", "staged restore"],
-    "docs/api-spec.md": ["PUT | `/api/admin/workflow-statuses`", "source_ip", "start_number", "end_number"],
-    "docs/backup-recovery.md": ["safe", "--single-transaction", "Requested", "Completed", "Failed"],
+    "README.md": [
+        "PUT /api/admin/workflow-statuses", "same-repository open PR",
+        "audit source IP and structured metadata", "pg_restore --single-transaction",
+        "under review", "redaction pending", "approved",
+    ],
+    "docs/design.md": [
+        "same transaction", "page-number range", "safe archive extraction",
+        "same-repository open PR", "required domain order",
+    ],
+    "docs/requirement-check.md": [
+        "admin get/put route", "deterministic source-ip lookup/backfill",
+        "canonical manual target validation", "required legal workflow states",
+    ],
+    "docs/testing.md": [
+        "exact same-repository open PR", "audit source ip/metadata",
+        "staged restore", "required domain states",
+    ],
+    "docs/api-spec.md": [
+        "put | `/api/admin/workflow-statuses`", "source_ip",
+        "start_number", "end_number", "required legal states",
+    ],
+    "docs/backup-recovery.md": ["safe", "--single-transaction", "requested", "completed", "failed"],
 }.items():
-    text = Path(path).read_text(encoding="utf-8")
+    text = Path(path).read_text(encoding="utf-8").lower()
     for phrase in phrases:
-        if phrase not in text:
+        if phrase.lower() not in text:
             stop(f"{path} missing current implementation claim: {phrase}")
 
 credential = re.compile(r'''(?i)\b[A-Za-z0-9_]*(?:password|passphrase|secret|token|api_key|signing_key|encryption_key)[A-Za-z0-9_]*\b\s*[:=]\s*["']([^"']+)["']''')
