@@ -21,6 +21,7 @@ check "rule entrypoint roles are unambiguous" "grep -q 'mandatory repository ent
 check "metadata exists" "test -f metadata.json"
 check "canonical API test layout" "test -d tests/api && test -f tests/api/lib.sh && test ! -e API_tests"
 check "canonical contract layout" "test -d tests/contracts && test ! -e unit_tests"
+check "upload audit follows document commit" "bash tests/contracts/upload_audit_order.sh"
 check "single acceptance UI" "test -f public/index.html && test ! -e public/manual-test.html"
 check "air-gapped deployment scope" "test ! -e deploy/aws && test ! -e docs/aws-deployment.md && ! grep -RInE 'AWS|EKS|Lambda|CloudFormation' README.md docs scripts Dockerfile docker-compose.yml"
 check "obsolete review process docs removed" "test ! -d docs/review-fixes || test -z \"\$(find docs/review-fixes -type f -print -quit)\""
