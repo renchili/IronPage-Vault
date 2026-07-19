@@ -1,33 +1,29 @@
 # Testing Guide
 
-IronPage Vault separates static repository acceptance, Go unit tests, repository contracts, stateful API/browser acceptance, local report generation, and complete retained regression evidence. Every result applies only to the exact revision that produced it.
+IronPage Vault separates static repository acceptance, Go unit tests, repository contracts, stateful API/browser acceptance, local report generation, and complete regression evidence. Every execution result applies only to the revision that produced it.
 
 ## Test locations
 
 ```text
 internal/**/*_test.go  colocated Go unit and package tests
-tests/contracts/       repository, structure, and generated-contract checks
-tests/api/             real HTTP, PostgreSQL, filesystem, PDF, bootstrap, auth, and browser flows
+tests/contracts/       repository, transaction-shape, structure, and generated-contract checks
+tests/api/             HTTP, PostgreSQL, filesystem, PDF, bootstrap, auth, backup and browser flows
 ci/                    static workflow contracts and manual full-regression helpers
 ```
 
-`run_tests.sh` is the local report entrypoint. `ci/run_full_regression.sh` is the complete regression entrypoint. Neither is called by the GitHub static-acceptance workflow.
+`run_tests.sh` is the local report entrypoint. `ci/run_full_regression.sh` is the complete regression entrypoint. Neither is called by the GitHub static workflow.
 
 ## Static reviewer boundary
 
-A static acceptance reviewer reads source and pre-existing evidence only. The reviewer must not run tests, scripts, generators, builds, containers, databases, browsers, deployments, or CI to fill evidence gaps.
-
-Missing runtime execution is not a blocker for the static verdict. Static inspection judges the implementation and test definitions; it must not claim that runtime behavior was executed.
+A static acceptance reviewer reads source and pre-existing evidence only. The reviewer must not run tests, scripts, generators, formatters, builds, containers, databases, browsers, deployments, or CI to fill evidence gaps. Missing execution does not alter the static verdict, and static inspection must not claim runtime execution.
 
 ## Local report entrypoint
-
-The normal local command is:
 
 ```bash
 bash run_tests.sh
 ```
 
-Stateful API and browser stages additionally require an already running isolated acceptance service and explicit execution-scoped values:
+Stateful stages additionally require an isolated acceptance service and:
 
 ```text
 BASE_URL
@@ -36,89 +32,66 @@ SEED_EDITOR_PASSWORD
 SEED_REVIEWER_PASSWORD
 ```
 
-When those values are absent, `run_tests.sh` records the affected stages as `SKIP`, marks the report `INCOMPLETE`, and exits with status `2`. A skipped stage can never contribute to a local PASS.
-
-The generated report records only the stages actually present in `results.tsv`. A lightweight entrypoint probe may list only Swagger preparation and the probe stage. It must not claim RBAC, PDF, backup, browser, Docker, or full-regression coverage unless those rows were executed.
-
-Generated local files are written under:
-
-```text
-artifacts/local-acceptance/
-```
+When absent, affected stages are `SKIP`, the report is `INCOMPLETE`, and exit status is `2`. The report describes only rows in `results.tsv`; a probe cannot claim unexecuted RBAC, PDF, backup, browser, Docker, or full-regression coverage.
 
 ## Static GitHub acceptance
 
-`.github/workflows/ci.yml` is the sole GitHub workflow and is limited to static acceptance.
+`.github/workflows/ci.yml` is the sole GitHub workflow and performs static acceptance only.
 
 Admission behavior:
 
-- one target key is shared by pull request, merge-group, `main` push, and manual events;
-- target concurrency uses `cancel-in-progress: true` to collapse superseded active runs;
-- admission runs before checkout and repository-controlled code;
-- denied admission is cancelled immediately rather than sleeping in a runner;
-- workflow history is fully paginated;
-- completed non-cancelled runs enforce a ten-minute cooldown only for the same target and revision;
-- failed target/revision pairs remain latched against automatic repetition of that revision;
-- a new revision is admitted immediately so a corrective commit can be checked;
-- ordinary rerun attempts are denied;
-- a manual unlock must name the exact target and failed run, include a reviewed reason, and is consumed once.
+- automatic targets are derived from pull-request, merge-group, or `main` push context;
+- manual `target` must equal the selected branch, or identify the exact same-repository open PR whose branch and head SHA equal the selected ref;
+- target concurrency uses `cancel-in-progress: true`;
+- admission occurs before checkout and repository-controlled code;
+- denied admission is cancelled rather than sleeping;
+- history pagination is limited to the current workflow;
+- cooldown and failure latching apply to the canonical target and exact revision;
+- a different corrective revision is admitted immediately;
+- ordinary reruns are denied;
+- one-time unlock requires the canonical target, exact failed run ID, reviewed reason, same revision, and unused marker.
 
-Static gates then check workflow syntax, shell syntax, Python syntax, Go formatting, source inventory, documentation consistency, repository/structure contracts, backup contracts, metadata contracts, and Swagger route coverage.
+The later job defines static checks for workflow/shell/Python syntax, Go formatting, source inventory, documentation, repository/structure contracts, backup/metadata contracts, and Swagger routes. The successful source inventory is retained only after every static gate succeeds.
 
-The successful source manifest is written to:
+GitHub creates a workflow-run object before YAML admission executes. The repository provides pre-checkout rejection and active-run collapse, not platform-level pre-dispatch prevention.
 
-```text
-artifacts/static-acceptance/source-inventory.json
-```
+## Transaction and state-integrity definitions
 
-It is uploaded only after all static gates succeed. It records the commit, every tracked file, mode, size, SHA-256, contamination findings, path-hygiene findings, and explicit naming exceptions.
+Static contracts require:
 
-GitHub creates a workflow-run object before repository YAML can execute. The repository proves pre-checkout admission and active-run collapse, not literal pre-dispatch prevention. A stricter requirement needs separate platform-level evidence.
+- upload document/version/audit to share one transaction and remove an orphan directory on failure;
+- workflow/finalization document/history/audit/notification to share one transaction;
+- Admin workflow PUT to validate ordered definitions and runtime transitions to query persisted definitions;
+- redaction proposal/confirmation and annotation/mention side effects to check every write;
+- Bates page-range reservation, job, version, document pointer and audit to commit together;
+- audit source IP/metadata to use ciphertext, deterministic source lookup/backfill, and response decryption;
+- backup artifact cleanup when job/audit persistence fails;
+- staged restore path validation, filesystem rollback, PostgreSQL single-transaction mode and explicit restore lifecycle audit.
 
-## Source and repository contracts
+`internal/app/workflow_definitions_test.go` defines ordered-chain validation. `internal/app/pii_storage_test.go` defines encrypted and legacy audit response opening. `tests/api/test_admin_ops.sh` defines Admin workflow replacement, non-Admin denial, opened audit fields, strict backup and restore lifecycle checks.
 
-Static and full-regression helpers cover:
-
-- Go formatting and package-oriented source checks;
-- repository and structure contracts under `tests/contracts/`;
-- generated Swagger route coverage;
-- migration, protected-metadata, PDF, and backup contracts;
-- shell syntax parsing;
-- documentation consistency and fixed-sensitive-value scanning;
-- tracked source contamination and path naming.
-
-Static checks establish source properties but do not replace real PostgreSQL/API interaction.
-
-## Docker and API acceptance
+## Docker and API acceptance definitions
 
 ```bash
 bash ci/docker_acceptance.sh
 ```
 
-The acceptance orchestrator creates independent generated runtime files. It does not depend on a fixed host port, database identity, path, credential, or image-local runtime fallback.
+The orchestrator is defined to create independent generated runtime files without fixed port, database identity, path, credential, or image fallback. The API suite defines:
 
-`tests/api/test_bootstrap_restart_docker.sh` defines normal-mode clean-storage coverage:
+- generated bootstrap/restart behavior;
+- rolling lockout, login/session/logout failure handling and audit;
+- role and object-access positive/negative paths;
+- persisted workflow management, transitions, history, notification and terminal immutability;
+- strict redaction, transactional Bates numbering and structured comparison;
+- audit filtering/decryption, annotations, mention notifications and read acknowledgement;
+- backup artifacts, restore state and recovery;
+- uniform errors and pagination.
 
-1. generate the complete installation configuration;
-2. build and start through `scripts/deploy.sh`;
-3. log in with the generated initial Admin;
-4. verify `/ui/` is absent;
-5. rerun without rotating `.env`;
-6. restart after removing bootstrap values; and
-7. verify the original Admin remains unique and usable.
+These are test definitions. Only an existing execution artifact proves what ran for its exact revision.
 
-`tests/api/test_auth_lockout_docker.sh` defines the rolling login window and fail-closed authentication persistence flows. The broader API suite defines RBAC, object access, workflow, finalization, redaction, Bates numbering, comparison, audit, notifications, pagination, error envelopes, backup, restore, and strict dependency flows.
+## Browser acceptance definitions
 
-The definitions describe intended coverage. Runtime artifacts, when they already exist, identify what was actually executed for a revision; they are optional context for static acceptance.
-
-## Browser acceptance
-
-The only browser asset is `public/index.html`, served at `/ui/` only in acceptance mode.
-
-- `tests/api/test_ui_screenshot_acceptance.sh` defines rendering evidence and a screenshot manifest.
-- `tests/api/test_ui_interaction_acceptance.sh` defines validation, keyboard focus, incorrect credentials, successful login, network failure guidance, recovery, retry, and evidence capture through Chrome DevTools Protocol.
-
-A static screenshot or script definition is not interaction execution evidence.
+`public/index.html` is served at `/ui/` only in acceptance mode. Screenshot definitions cover rendering; the CDP interaction definition covers input validation, focus, incorrect/successful login, network failure, recovery and retry. A source file or static screenshot is not interaction execution evidence.
 
 ## Complete regression
 
@@ -126,26 +99,8 @@ A static screenshot or script definition is not interaction execution evidence.
 bash ci/run_full_regression.sh artifacts/regression
 ```
 
-The runner is designed to be sequential and fail-fast. On the first failed stage it records that stage, writes a failed summary, and exits before later validation starts. A successful run is expected to write:
-
-```text
-artifacts/regression/results.tsv
-artifacts/regression/summary.json
-artifacts/regression/summary.md
-artifacts/regression/source-inventory.json
-artifacts/regression/logs/
-artifacts/regression/ui-interaction/
-```
-
-An existing successful artifact can support runtime claims for its exact tested revision. Static acceptance does not require that artifact and does not run the regression.
+The runner is defined as sequential and fail-fast, with stage results, truthful summary, source inventory, logs and UI evidence directories under `artifacts/regression/`. A static reviewer does not execute it or require its artifact.
 
 ## Evidence boundary
 
-A reviewer-written report is a static summary, not test evidence. When describing an existing execution artifact, record:
-
-- tested commit SHA;
-- workflow run and job IDs;
-- generated summary status;
-- artifact name, size, and digest;
-- any difference between the evidence revision and the inspected revision; and
-- checks that were not executed and why.
+A reviewer report is a static summary. When optional existing execution evidence is cited, record tested SHA, run/job, generated status, artifact identity/digest, tree differences and omitted checks.
