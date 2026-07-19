@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +39,25 @@ func RunMigrations(db *sqlx.DB, dir string) error {
 		}
 		if _, err := db.Exec(string(raw)); err != nil {
 			return fmt.Errorf("migration %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// EnsureRuntimeConfiguration records deployment-owned paths and paging limits in
+// PostgreSQL after migrations. The schema never seeds a machine-specific path.
+func EnsureRuntimeConfiguration(ctx context.Context, db *sqlx.DB, cfg Config) error {
+	entries := map[string]string{
+		"backup.local_volume":             cfg.BackupDir,
+		"pagination.default_page_size":   strconv.Itoa(cfg.DefaultPageSize),
+		"pagination.max_page_size":       strconv.Itoa(cfg.MaxPageSize),
+	}
+	for key, value := range entries {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("runtime configuration %s is empty", key)
+		}
+		if _, err := db.ExecContext(ctx, `INSERT INTO config_entries(key,value,updated_by,updated_at) VALUES($1,$2,NULL,NOW()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=NULL,updated_at=NOW()`, key, value); err != nil {
+			return fmt.Errorf("persist runtime configuration %s: %w", key, err)
 		}
 	}
 	return nil
