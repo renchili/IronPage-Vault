@@ -16,11 +16,12 @@ type workflowDefinitionInput struct {
 }
 
 func normalizeWorkflowDefinitions(inputs []workflowDefinitionInput) ([]workflowStatusResponse, error) {
-	if len(inputs) < 2 {
-		return nil, fmt.Errorf("workflow requires at least Draft and Finalized")
+	if len(inputs) < 5 {
+		return nil, fmt.Errorf("workflow must retain Draft, Under Review, Redaction Pending, Approved, and Finalized")
 	}
 	definitions := make([]workflowStatusResponse, 0, len(inputs))
 	seen := map[string]bool{}
+	positions := map[string]int{}
 	for index, input := range inputs {
 		name := strings.TrimSpace(input.Name)
 		if name == "" || len(name) > 100 {
@@ -31,6 +32,7 @@ func normalizeWorkflowDefinitions(inputs []workflowDefinitionInput) ([]workflowS
 			return nil, fmt.Errorf("workflow status names must be unique")
 		}
 		seen[key] = true
+		positions[name] = index
 		definitions = append(definitions, workflowStatusResponse{Name: name, Position: index + 1, Mutable: input.Mutable})
 	}
 	if definitions[0].Name != StatusDraft || !definitions[0].Mutable {
@@ -44,6 +46,18 @@ func normalizeWorkflowDefinitions(inputs []workflowDefinitionInput) ([]workflowS
 		if !definition.Mutable {
 			return nil, fmt.Errorf("only Finalized may be immutable")
 		}
+	}
+	requiredOrder := []string{StatusDraft, StatusUnderReview, StatusRedactionPending, StatusApproved, StatusFinalized}
+	previous := -1
+	for _, required := range requiredOrder {
+		position, ok := positions[required]
+		if !ok {
+			return nil, fmt.Errorf("workflow must retain required status %s", required)
+		}
+		if position <= previous {
+			return nil, fmt.Errorf("required workflow statuses must preserve their domain order")
+		}
+		previous = position
 	}
 	return definitions, nil
 }
@@ -78,6 +92,9 @@ func (a *App) replaceWorkflowStatuses(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(c.Request().Context(), `LOCK TABLE workflow_status_definitions IN ACCESS EXCLUSIVE MODE`); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_LOCK_ERROR", "could not lock workflow definitions")
+	}
 	activeStatuses := []string{}
 	if err := tx.SelectContext(c.Request().Context(), &activeStatuses, `SELECT DISTINCT status FROM documents`); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_QUERY_ERROR", "could not inspect active document statuses")
