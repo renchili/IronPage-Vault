@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a retained tracked-source manifest and reject repository contamination."""
+"""Generate a retained tracked-source manifest and reject repository hazards."""
 
 from __future__ import annotations
 
@@ -135,22 +135,11 @@ def path_hygiene_findings(files: list[Path]) -> tuple[list[str], list[str]]:
                         + ", ".join(sorted(pair))
                     )
 
-    return findings, allowed_exceptions
+    return sorted(set(findings)), sorted(set(allowed_exceptions))
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: source_inventory.py OUTPUT_JSON", file=sys.stderr)
-        return 2
-
-    output = Path(sys.argv[1])
-    files = tracked_files()
+def contamination_findings(files: list[Path]) -> list[str]:
     findings: list[str] = []
-    entries: list[dict[str, object]] = []
-
-    path_findings, allowed_exceptions = path_hygiene_findings(files)
-    findings.extend(path_findings)
-
     for path in files:
         relative = path.as_posix()
         parts = set(path.parts)
@@ -164,8 +153,24 @@ def main() -> int:
             findings.append(f"forbidden tracked generated artifact: {relative}")
         if not path.is_file():
             findings.append(f"tracked path is not a regular file: {relative}")
-            continue
+    return sorted(set(findings))
 
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: source_inventory.py OUTPUT_JSON", file=sys.stderr)
+        return 2
+
+    output = Path(sys.argv[1])
+    files = tracked_files()
+    path_findings, allowed_exceptions = path_hygiene_findings(files)
+    contamination = contamination_findings(files)
+    entries: list[dict[str, object]] = []
+
+    for path in files:
+        if not path.is_file():
+            continue
+        relative = path.as_posix()
         mode = stat.S_IMODE(path.stat().st_mode)
         entries.append(
             {
@@ -182,14 +187,16 @@ def main() -> int:
         ).strip(),
         "tracked_file_count": len(entries),
         "files": entries,
-        "contamination_findings": sorted(set(findings)),
-        "allowed_path_exceptions": sorted(set(allowed_exceptions)),
+        "contamination_findings": contamination,
+        "path_hygiene_findings": path_findings,
+        "allowed_path_exceptions": allowed_exceptions,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
-    if findings:
-        for finding in sorted(set(findings)):
+    all_findings = contamination + path_findings
+    if all_findings:
+        for finding in all_findings:
             print(f"ERROR: {finding}", file=sys.stderr)
         return 1
     print(f"PASS: source inventory contains {len(entries)} tracked files")
