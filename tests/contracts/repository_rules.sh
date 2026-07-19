@@ -17,7 +17,7 @@ check() {
 }
 
 check "rule entrypoints exist" "test -f AGENTS.md && test -f AGENT.md"
-check "rule entrypoint roles are unambiguous" "grep -q 'mandatory repository entrypoint' AGENTS.md && grep -q 'Project-adapted rules belong in `AGENT.md`' AGENTS.md && grep -q '# AGENT Rules for IronPage Vault' AGENT.md"
+check "rule entrypoint roles are unambiguous" "grep -q 'mandatory repository entrypoint' AGENTS.md && grep -q 'Project-adapted rules belong in \`AGENT.md\`' AGENTS.md && grep -q '# AGENT Rules for IronPage Vault' AGENT.md"
 check "metadata exists" "test -f metadata.json"
 check "canonical API test layout" "test -d tests/api && test -f tests/api/lib.sh && test ! -e API_tests"
 check "canonical contract layout" "test -d tests/contracts && test ! -e unit_tests"
@@ -46,12 +46,13 @@ check "rolling lockout and fail-closed errors" "grep -q 'loginAttemptWindow.*15 
 
 check "single serialized workflow" "test \"\$(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) | wc -l | tr -d ' ')\" = 1 && test -f .github/workflows/ci.yml"
 check "workflow has target lock cooldown and failure latch" "grep -q 'concurrency:' .github/workflows/ci.yml && grep -q 'cancel-in-progress: false' .github/workflows/ci.yml && grep -q 'IRONPAGE_CI_TARGET' .github/workflows/ci.yml && grep -q 'COOLDOWN_SECONDS = 10 \* 60' ci/ci_execution_guard.py && grep -q 'failed_same_revision' ci/ci_execution_guard.py"
-check "workflow starts no post-failure action" "! grep -RIn 'if: always()' .github/workflows && grep -q 'run_full_regression.sh' .github/workflows/ci.yml"
-check "full regression is fail fast" "grep -q 'summary, and exits' ci/run_full_regression.sh && grep -q 'exit \"\$status\"' ci/run_full_regression.sh"
-check "source inventory is retained" "test -f ci/source_inventory.py && grep -q 'source_inventory' ci/run_full_regression.sh && grep -q 'tracked_file_count' ci/source_inventory.py"
+check "workflow is static and fail-fast" "! grep -RIn 'if: always()' .github/workflows && ! grep -q 'run_full_regression.sh' .github/workflows/ci.yml && ! grep -Eq 'go test|go vet|docker (build|compose)|run_tests.sh' .github/workflows/ci.yml"
+check "workflow exposes static gates" "grep -q 'shell_syntax_check.sh' .github/workflows/ci.yml && grep -q 'source_inventory.py' .github/workflows/ci.yml && grep -q 'docs_consistency_check.sh' .github/workflows/ci.yml && grep -q 'tests/contracts/repository_rules.sh' .github/workflows/ci.yml"
+check "full regression helper remains fail fast" "grep -q 'summary, and exits' ci/run_full_regression.sh && grep -q 'exit \"\$status\"' ci/run_full_regression.sh"
+check "source inventory is retained" "test -f ci/source_inventory.py && grep -q 'tracked_file_count' ci/source_inventory.py"
 check "local report derives executed stages" "grep -q 'executed_stages' run_tests.sh && grep -q 'Executed stages' run_tests.sh && ! grep -q 'This local report covers Swagger generation' run_tests.sh"
 
-check "documentation consistency gate is in regression" "grep -q 'documentation_consistency' ci/run_full_regression.sh && test -f ci/docs_consistency_check.sh"
+check "documentation consistency gate is in static workflow" "grep -q 'docs_consistency_check.sh' .github/workflows/ci.yml && test -f ci/docs_consistency_check.sh"
 check "browser interaction acceptance" "test -f tests/api/test_ui_interaction_acceptance.sh && test -f tests/api/ui_interaction_cdp.py && grep -q 'id=\"login-form\"' public/index.html"
 check "generated API documentation path" "test -f scripts/generate_swagger.sh && test -f tests/contracts/swagger_route_coverage.sh"
 
