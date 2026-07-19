@@ -11,8 +11,8 @@ import (
 var ErrBatesSequenceOverlap = errors.New("requested Bates start overlaps an allocated sequence")
 
 // AllocateBatesRange locks the global sequence and reserves every page number
-// used by one Bates job. The caller supplies its transaction so the reservation,
-// job, document version, document pointer, and audit record commit together.
+// used by one Bates job. The caller must supply the parent transaction so the
+// reservation, job, document version, document pointer, and audit commit together.
 func AllocateBatesRange(ctx context.Context, executor sqlx.ExtContext, requested int, count int) (int, error) {
 	if count < 1 {
 		return 0, fmt.Errorf("Bates allocation count must be positive")
@@ -35,8 +35,4 @@ func AllocateBatesRange(ctx context.Context, executor sqlx.ExtContext, requested
 		return 0, err
 	}
 	return start, nil
-}
-
-func (r Repository) AllocateBatesStart(ctx context.Context, requested int) (int, error) {
-	return AllocateBatesRange(ctx, r.DB, requested, 1)
 }
