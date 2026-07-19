@@ -1,5 +1,9 @@
 name: Repository Static Acceptance
 
+run-name: >-
+  static-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
+  ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_failed_run_id != '' && format('unlock-{0}', inputs.unlock_failed_run_id) || 'automatic' }}
+
 on:
   pull_request:
   merge_group:
@@ -7,38 +11,161 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      unlock_failed_revision:
-        description: Allow one reviewed manual replay of the same failed revision
+      unlock_failed_run_id:
+        description: Exact failed run ID authorized for one replay of the same revision
         required: false
-        default: false
-        type: boolean
+        default: ''
+        type: string
+      unlock_reason:
+        description: Reviewed reason for the one-time replay
+        required: false
+        default: ''
+        type: string
 
 permissions:
-  actions: read
+  actions: write
   contents: read
   pull-requests: read
 
 concurrency:
   group: ironpage-static-acceptance-${{ github.repository }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  static-acceptance:
-    name: Serialized static acceptance
+  admission:
+    name: Static acceptance admission
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     env:
       IRONPAGE_CI_TARGET: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
-      IRONPAGE_CI_UNLOCK: ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_failed_revision || false }}
+      IRONPAGE_CI_UNLOCK_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_failed_run_id || '' }}
+      IRONPAGE_CI_UNLOCK_REASON: ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_reason || '' }}
+    steps:
+      - name: Admit one target revision without checking out repository code
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const currentRunId = Number(context.runId);
+            const currentAttempt = Number(process.env.GITHUB_RUN_ATTEMPT || '1');
+            const currentSha = context.sha;
+            const target = (process.env.IRONPAGE_CI_TARGET || '').trim();
+            const unlockRunId = (process.env.IRONPAGE_CI_UNLOCK_RUN_ID || '').trim();
+            const unlockReason = (process.env.IRONPAGE_CI_UNLOCK_REASON || '').trim();
+            const cooldownMs = 10 * 60 * 1000;
+            const failedConclusions = new Set(['failure', 'timed_out', 'action_required']);
+
+            async function cancelCurrent(message) {
+              core.error(message);
+              await github.rest.actions.cancelWorkflowRun({owner, repo, run_id: currentRunId});
+            }
+
+            function runTarget(run) {
+              if (Array.isArray(run.pull_requests) && run.pull_requests.length > 0) {
+                return `pr-${run.pull_requests[0].number}`;
+              }
+              return String(run.head_branch || '');
+            }
+
+            if (!target) {
+              await cancelCurrent('CI target could not be resolved.');
+              return;
+            }
+            if (currentAttempt > 1) {
+              await cancelCurrent('GitHub rerun attempts are not admitted; use a new revision or a one-time workflow_dispatch authorization.');
+              return;
+            }
+
+            const current = await github.rest.actions.getWorkflowRun({owner, repo, run_id: currentRunId});
+            const workflowId = current.data.workflow_id;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const previous = runs
+              .filter(run => Number(run.id) !== currentRunId)
+              .filter(run => Number(run.workflow_id) === Number(workflowId))
+              .filter(run => runTarget(run) === target)
+              .sort((left, right) => {
+                const leftTime = Date.parse(left.run_started_at || left.created_at || 0);
+                const rightTime = Date.parse(right.run_started_at || right.created_at || 0);
+                return rightTime - leftTime;
+              });
+
+            for (const run of previous.filter(run => run.status === 'queued' || run.status === 'in_progress')) {
+              await github.rest.actions.cancelWorkflowRun({owner, repo, run_id: run.id});
+              core.notice(`Cancelled superseded active run ${run.id} for ${target}.`);
+            }
+
+            const latestCompleted = previous.find(run =>
+              run.status === 'completed' &&
+              run.conclusion &&
+              run.conclusion !== 'cancelled' &&
+              run.conclusion !== 'skipped'
+            );
+            if (latestCompleted) {
+              const startedAt = Date.parse(latestCompleted.run_started_at || latestCompleted.created_at || 0);
+              const remainingMs = cooldownMs - (Date.now() - startedAt);
+              if (remainingMs > 0) {
+                const remainingSeconds = Math.ceil(remainingMs / 1000);
+                await cancelCurrent(`Target ${target} is inside the ten-minute admission cooldown (${remainingSeconds}s remaining).`);
+                return;
+              }
+            }
+
+            const failedSameRevision = previous.filter(run =>
+              run.head_sha === currentSha && failedConclusions.has(run.conclusion)
+            );
+
+            if (unlockRunId) {
+              if (context.eventName !== 'workflow_dispatch') {
+                await cancelCurrent('Unlock authorization is valid only for workflow_dispatch.');
+                return;
+              }
+              if (!/^\d+$/.test(unlockRunId)) {
+                await cancelCurrent('unlock_failed_run_id must be a numeric GitHub Actions run ID.');
+                return;
+              }
+              if (unlockReason.length < 12) {
+                await cancelCurrent('unlock_reason must contain a reviewed explanation of at least 12 characters.');
+                return;
+              }
+
+              const authorizedRun = failedSameRevision.find(run => Number(run.id) === Number(unlockRunId));
+              if (!authorizedRun) {
+                await cancelCurrent(`Run ${unlockRunId} is not a failed run for target ${target} at revision ${currentSha}.`);
+                return;
+              }
+
+              const marker = `unlock-${unlockRunId}`;
+              const alreadyConsumed = previous.some(run =>
+                run.event === 'workflow_dispatch' && String(run.display_title || '').includes(marker)
+              );
+              if (alreadyConsumed) {
+                await cancelCurrent(`One-time unlock for failed run ${unlockRunId} has already been consumed.`);
+                return;
+              }
+
+              core.notice(`Accepted one-time unlock for failed run ${unlockRunId}: ${unlockReason}`);
+            } else if (failedSameRevision.length > 0) {
+              await cancelCurrent(`Revision ${currentSha} is latched by failed run ${failedSameRevision[0].id}; push a new revision or authorize that exact run once.`);
+              return;
+            }
+
+            core.notice(`Admitted static acceptance for ${target} at ${currentSha}.`);
+
+  static-acceptance:
+    name: Serialized static acceptance
+    needs: admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
           show-progress: false
-      - name: Enforce target cooldown and failed-revision latch
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 ci/ci_execution_guard.py
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
@@ -49,13 +176,13 @@ jobs:
       - name: Validate shell syntax
         run: bash ci/shell_syntax_check.sh
       - name: Validate Python syntax
-        run: python3 -m py_compile ci/ci_execution_guard.py ci/source_inventory.py tests/api/ui_interaction_cdp.py
+        run: python3 -m py_compile ci/source_inventory.py tests/api/ui_interaction_cdp.py
       - name: Validate Go formatting
         run: |
           find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l | tee /tmp/ironpage-gofmt.out
           test ! -s /tmp/ironpage-gofmt.out
       - name: Validate tracked source inventory
-        run: python3 ci/source_inventory.py /tmp/ironpage-source-inventory.json
+        run: python3 ci/source_inventory.py artifacts/static-acceptance/source-inventory.json
       - name: Validate documentation consistency
         run: bash ci/docs_consistency_check.sh
       - name: Validate repository contracts
@@ -68,3 +195,10 @@ jobs:
         run: bash ci/metadata_storage_check.sh
       - name: Validate Swagger route coverage
         run: bash tests/contracts/swagger_route_coverage.sh
+      - name: Retain successful static inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-source-inventory-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts/static-acceptance/source-inventory.json
+          if-no-files-found: error
+          retention-days: 90
