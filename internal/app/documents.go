@@ -132,7 +132,10 @@ func (a *App) batchUploadDocuments(c echo.Context) error {
 
 func (a *App) listDocuments(c echo.Context) error {
 	p := principal(c)
-	page, size := parsePage(c, a.cfg)
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []Document{}
 	where, args := documentListWhereClause(p)
 	args = append(args, size, (page-1)*size)
