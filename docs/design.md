@@ -84,10 +84,10 @@ Backup success requires both a PostgreSQL custom dump and a local filesystem arc
 
 Go tests remain colocated with their packages. Stateful acceptance is under `tests/api/`; repository and generated-contract checks are under `tests/contracts/`.
 
-`.github/workflows/ci.yml` is the sole GitHub workflow and performs static acceptance only. A checkout-free admission job collapses active duplicates, applies the target cooldown, evaluates the failed-revision latch from paginated history, and consumes exact one-time unlocks. A later sequential job runs only static syntax, formatting, inventory, documentation, and contract gates. The successful source inventory is retained after all static gates pass.
+`.github/workflows/ci.yml` is the sole GitHub workflow and performs static acceptance only. A checkout-free admission job collapses active duplicates, applies cooldown and failure latching to an exact target/revision pair, immediately admits a different corrective revision, paginates complete workflow history, and consumes exact one-time unlocks. A later sequential job runs only static syntax, formatting, inventory, documentation, and contract gates. The successful source inventory is retained after all static gates pass.
 
 `ci/run_full_regression.sh`, Docker acceptance, API flows, browser interaction, databases, and deployments remain separate manual or normal-lifecycle execution paths. The static workflow does not call or claim them.
 
-A static reviewer reads source and pre-existing evidence only and must not run project code or CI to fill gaps. A route, screenshot, static contract, reviewer report, or historical artifact is not by itself current runtime acceptance.
+A static reviewer reads source and pre-existing evidence only and must not run project code or CI to fill gaps. Missing external execution does not alter the static verdict, and a route, screenshot, static contract, reviewer report, or historical artifact is not itself proof that runtime behavior was executed for the current revision.
 
 GitHub creates a workflow-run object before repository YAML runs. The repository design provides pre-checkout admission and active-run collapse, not platform-level pre-dispatch prevention.

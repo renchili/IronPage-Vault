@@ -17,7 +17,7 @@ ci/                    static workflow contracts and manual full-regression help
 
 A static acceptance reviewer reads source and pre-existing evidence only. The reviewer must not run tests, scripts, generators, builds, containers, databases, browsers, deployments, or CI to fill evidence gaps.
 
-When no current execution artifact exists, the corresponding runtime or interaction requirement is `NOT VERIFIED`. Static source presence does not become runtime evidence.
+Missing runtime execution is not a blocker for the static verdict. Static inspection judges the implementation and test definitions; it must not claim that runtime behavior was executed.
 
 ## Local report entrypoint
 
@@ -57,8 +57,9 @@ Admission behavior:
 - admission runs before checkout and repository-controlled code;
 - denied admission is cancelled immediately rather than sleeping in a runner;
 - workflow history is fully paginated;
-- completed non-cancelled runs enforce a ten-minute target cooldown;
-- failed target/revision pairs remain latched;
+- completed non-cancelled runs enforce a ten-minute cooldown only for the same target and revision;
+- failed target/revision pairs remain latched against automatic repetition of that revision;
+- a new revision is admitted immediately so a corrective commit can be checked;
 - ordinary rerun attempts are denied;
 - a manual unlock must name the exact target and failed run, include a reviewed reason, and is consumed once.
 
@@ -108,7 +109,7 @@ The acceptance orchestrator creates independent generated runtime files. It does
 
 `tests/api/test_auth_lockout_docker.sh` defines the rolling login window and fail-closed authentication persistence flows. The broader API suite defines RBAC, object access, workflow, finalization, redaction, Bates numbering, comparison, audit, notifications, pagination, error envelopes, backup, restore, and strict dependency flows.
 
-The definitions prove intended coverage only. A PASS requires a retained executed artifact for the exact revision.
+The definitions describe intended coverage. Runtime artifacts, when they already exist, identify what was actually executed for a revision; they are optional context for static acceptance.
 
 ## Browser acceptance
 
@@ -117,7 +118,7 @@ The only browser asset is `public/index.html`, served at `/ui/` only in acceptan
 - `tests/api/test_ui_screenshot_acceptance.sh` defines rendering evidence and a screenshot manifest.
 - `tests/api/test_ui_interaction_acceptance.sh` defines validation, keyboard focus, incorrect credentials, successful login, network failure guidance, recovery, retry, and evidence capture through Chrome DevTools Protocol.
 
-A static screenshot or script definition is not interaction evidence.
+A static screenshot or script definition is not interaction execution evidence.
 
 ## Complete regression
 
@@ -136,11 +137,11 @@ artifacts/regression/logs/
 artifacts/regression/ui-interaction/
 ```
 
-A complete PASS requires pre-existing `summary.json` with `overall_status=passed`, every recorded stage status equal to zero, and a clean source inventory tied to the exact inspected revision.
+An existing successful artifact can support runtime claims for its exact tested revision. Static acceptance does not require that artifact and does not run the regression.
 
 ## Evidence boundary
 
-A reviewer-written report is a static summary, not test evidence. A historical run proves only its tested SHA. Before declaring runtime acceptance, record:
+A reviewer-written report is a static summary, not test evidence. When describing an existing execution artifact, record:
 
 - tested commit SHA;
 - workflow run and job IDs;
