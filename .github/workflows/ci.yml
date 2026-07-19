@@ -53,7 +53,6 @@ jobs:
             const repo = context.repo.repo;
             const currentRunId = Number(context.runId);
             const currentAttempt = Number(process.env.GITHUB_RUN_ATTEMPT || '1');
-            const currentSha = context.sha;
             const target = (process.env.IRONPAGE_CI_TARGET || '').trim();
             const unlockRunId = (process.env.IRONPAGE_CI_UNLOCK_RUN_ID || '').trim();
             const unlockReason = (process.env.IRONPAGE_CI_UNLOCK_REASON || '').trim();
@@ -88,6 +87,7 @@ jobs:
 
             const current = await github.rest.actions.getWorkflowRun({owner, repo, run_id: currentRunId});
             const workflowId = current.data.workflow_id;
+            const currentSha = current.data.head_sha;
             const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
               owner,
               repo,
