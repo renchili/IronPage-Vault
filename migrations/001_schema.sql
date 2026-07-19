@@ -133,6 +133,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   metadata_ciphertext TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE audit_logs
+  ADD COLUMN IF NOT EXISTS source_ip_lookup TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS audit_logs_source_ip_lookup_idx ON audit_logs(source_ip_lookup);
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -175,9 +177,16 @@ CREATE TABLE IF NOT EXISTS backup_jobs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO workflow_status_definitions(name, position, mutable) VALUES
-('Draft',1,true),('Under Review',2,true),('Redaction Pending',3,true),('Approved',4,true),('Finalized',5,false)
-ON CONFLICT(name) DO NOTHING;
+INSERT INTO workflow_status_definitions(name, position, mutable)
+SELECT seed.name, seed.position, seed.mutable
+FROM (VALUES
+  ('Draft',1,true),
+  ('Under Review',2,true),
+  ('Redaction Pending',3,true),
+  ('Approved',4,true),
+  ('Finalized',5,false)
+) AS seed(name,position,mutable)
+WHERE NOT EXISTS (SELECT 1 FROM workflow_status_definitions);
 
 INSERT INTO notification_templates(id,key,subject,body) VALUES
 ('tpl_workflow_transition','workflow.transition','Workflow transition','Document status changed'),
