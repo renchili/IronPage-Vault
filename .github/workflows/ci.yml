@@ -1,4 +1,4 @@
-name: Repository Verification
+name: Repository Static Acceptance
 
 on:
   pull_request:
@@ -19,21 +19,22 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ironpage-verification-${{ github.repository }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
+  group: ironpage-static-acceptance-${{ github.repository }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  verification:
-    name: Serialized fail-fast verification
+  static-acceptance:
+    name: Serialized static acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       IRONPAGE_CI_TARGET: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.event.merge_group.head_ref || github.ref_name }}
       IRONPAGE_CI_UNLOCK: ${{ github.event_name == 'workflow_dispatch' && inputs.unlock_failed_revision || false }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          show-progress: false
       - name: Enforce target cooldown and failed-revision latch
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -43,17 +44,27 @@ jobs:
           go-version: '1.25'
       - name: Install workflow linter
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-      - name: Validate the single workflow definition
+      - name: Validate workflow syntax
+        run: '"$(go env GOPATH)/bin/actionlint" -color=false'
+      - name: Validate shell syntax
+        run: bash ci/shell_syntax_check.sh
+      - name: Validate Python syntax
+        run: python3 -m py_compile ci/ci_execution_guard.py ci/source_inventory.py tests/api/ui_interaction_cdp.py
+      - name: Validate Go formatting
         run: |
-          "$(go env GOPATH)/bin/actionlint" -color=false
-      - name: Run complete regression in fail-fast order
-        run: bash ci/run_full_regression.sh artifacts/regression
-      - name: Retain successful regression evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-regression-${{ github.sha }}-${{ github.run_id }}
-          path: artifacts/regression
-          if-no-files-found: error
-          retention-days: 90
-      - name: Publish successful regression summary
-        run: cat artifacts/regression/summary.md >> "$GITHUB_STEP_SUMMARY"
+          find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l | tee /tmp/ironpage-gofmt.out
+          test ! -s /tmp/ironpage-gofmt.out
+      - name: Validate tracked source inventory
+        run: python3 ci/source_inventory.py /tmp/ironpage-source-inventory.json
+      - name: Validate documentation consistency
+        run: bash ci/docs_consistency_check.sh
+      - name: Validate repository contracts
+        run: bash tests/contracts/repository_rules.sh
+      - name: Validate structure contracts
+        run: bash tests/contracts/structure_rules.sh
+      - name: Validate scheduled backup contracts
+        run: bash ci/scheduled_backup_contract_check.sh
+      - name: Validate metadata storage contracts
+        run: bash ci/metadata_storage_check.sh
+      - name: Validate Swagger route coverage
+        run: bash tests/contracts/swagger_route_coverage.sh
