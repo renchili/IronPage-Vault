@@ -32,6 +32,9 @@ func (a *App) transitionDocument(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(c.Request().Context(), `LOCK TABLE workflow_status_definitions IN SHARE MODE`); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_LOCK_ERROR", "could not lock workflow definitions")
+	}
 	var d Document
 	if err := tx.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1 FOR UPDATE`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
@@ -83,6 +86,9 @@ func (a *App) finalizeDocument(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(c.Request().Context(), `LOCK TABLE workflow_status_definitions IN SHARE MODE`); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_LOCK_ERROR", "could not lock workflow definitions")
+	}
 	var d Document
 	if err := tx.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1 FOR UPDATE`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
