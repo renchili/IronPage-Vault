@@ -17,9 +17,13 @@ func notificationTrimCount(unread int, limit int) int {
 }
 
 // createNotificationWithExecutor stores a local in-app notification using the
-// caller's database boundary. Passing a transaction keeps notification trimming
-// and insertion atomic with the parent mutation.
+// caller's database boundary. The receiver row lock serializes unread-cap
+// accounting across concurrent parent transactions.
 func (a *App) createNotificationWithExecutor(ctx context.Context, executor sqlx.ExtContext, userID, documentID, templateKey, message string) error {
+	var lockedUserID string
+	if err := sqlx.GetContext(ctx, executor, &lockedUserID, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, userID); err != nil {
+		return err
+	}
 	var unread int
 	if err := sqlx.GetContext(ctx, executor, &unread, `SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND read_at IS NULL`, userID); err != nil {
 		return err
