@@ -41,18 +41,24 @@ PY
 
 grep -q 'Overall: \*\*FAILED\*\*' "$probe_dir/summary.md"
 
-# The repository has one executable workflow. Concurrency, cooldown, failure
-# latching, and all validation therefore share a single control plane.
+# The repository has one static workflow. Admission and all validation share one
+# target namespace, while cooldown and failure latching are exact-revision rules.
 mapfile -t workflows < <(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \))
 test "${#workflows[@]}" -eq 1
 test "${workflows[0]}" = ".github/workflows/ci.yml"
-grep -q 'cancel-in-progress: false' .github/workflows/ci.yml
-grep -q 'IRONPAGE_CI_TARGET' .github/workflows/ci.yml
-grep -q 'ci/ci_execution_guard.py' .github/workflows/ci.yml
-grep -q 'ci/run_full_regression.sh' .github/workflows/ci.yml
-grep -q 'COOLDOWN_SECONDS = 10 \* 60' ci/ci_execution_guard.py
-grep -q 'failed_same_revision' ci/ci_execution_guard.py
+grep -q 'cancel-in-progress: true' .github/workflows/ci.yml
+grep -q 'actions/github-script@v7' .github/workflows/ci.yml
+grep -q 'github.paginate' .github/workflows/ci.yml
+grep -q 'latestCompletedSameRevision' .github/workflows/ci.yml
+grep -q 'run.head_sha === currentSha' .github/workflows/ci.yml
+grep -q 'same-revision admission cooldown' .github/workflows/ci.yml
+grep -q 'failedSameRevision' .github/workflows/ci.yml
+grep -q 'alreadyConsumed' .github/workflows/ci.yml
+! grep -q 'ci_execution_guard.py' .github/workflows/ci.yml
+! grep -q 'ci/run_full_regression.sh' .github/workflows/ci.yml
 ! grep -RIn 'if: always()' .github/workflows
+
+test "$(grep -n 'actions/github-script@v7' .github/workflows/ci.yml | head -1 | cut -d: -f1)" -lt "$(grep -n 'actions/checkout@v4' .github/workflows/ci.yml | head -1 | cut -d: -f1)"
 
 # A fresh checkout generates every local runtime value without retaining fixed
 # identities, ports, paths, credentials, or container names in Compose/code.

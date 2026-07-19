@@ -153,9 +153,10 @@ GitHub verification is defined only in `.github/workflows/ci.yml` and is **stati
 - uses target concurrency with `cancel-in-progress: true` to collapse superseded active events;
 - performs admission before checkout or repository-controlled code;
 - cancels denied admission immediately instead of sleeping inside a runner;
-- paginates the complete workflow history used for cooldown and failure-latch decisions;
-- applies a ten-minute target cooldown;
-- latches a failed target/revision;
+- paginates the complete workflow history used for duplicate, cooldown, and failure-latch decisions;
+- applies a ten-minute cooldown only to duplicate events for the same target and revision;
+- latches a failed target/revision so the same revision cannot repeat automatically;
+- admits a new revision immediately so a corrective commit can be checked;
 - rejects ordinary rerun attempts;
 - permits one reviewed replay only when `target`, `unlock_failed_run_id`, and `unlock_reason` identify the exact authorization;
 - runs static syntax, formatting, inventory, documentation, and contract gates sequentially; and

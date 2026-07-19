@@ -8,7 +8,7 @@ The workflow performs repository static acceptance only. It does not run project
 
 Runtime and interaction evidence remain separate manual or lifecycle artifacts. A static workflow conclusion must never be presented as runtime acceptance.
 
-## Target admission
+## Target and revision admission
 
 All pull request, merge-group, `main` push, and manual events resolve to one explicit target key. The same target key is used by the workflow concurrency group and by admission history matching.
 
@@ -18,13 +18,14 @@ The workflow uses:
 - an admission job before checkout or repository-controlled code;
 - complete Actions-history pagination rather than a first-page scan;
 - immediate cancellation when admission is denied, never a sleep inside the runner;
-- a ten-minute target cooldown based on the latest completed non-cancelled run;
+- a ten-minute cooldown for duplicate events of the same target and revision;
 - a failed target/revision latch;
+- a new revision is admitted immediately so a corrective commit can be checked;
 - rejection of ordinary GitHub rerun attempts;
 - a one-time manual unlock bound to the exact target, current revision, failed run ID, and reviewed reason;
 - the run-name marker `unlock-<failed-run-id>` as the auditable consumption record.
 
-A second manual dispatch using the same failed-run authorization is rejected.
+A failure blocks automatic repetition of that exact revision. It does not block a different revision pushed to the same pull request or branch. A second manual dispatch using the same failed-run authorization is rejected.
 
 ## Platform limitation
 

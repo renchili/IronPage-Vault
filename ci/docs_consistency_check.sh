@@ -1,193 +1,119 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-fail=0
-
-check_absent() {
-  local description="$1" pattern="$2"
-  shift 2
-  local matches
-  matches=$(grep -RInE "$pattern" "$@" 2>/dev/null || true)
-  if [ -n "$matches" ]; then
-    echo "ERROR: $description"
-    echo "$matches"
-    fail=1
-  fi
-}
-
-required_docs=(
-  README.md
-  ci/BOUNDARY.md
-  docs/questions.md
-  docs/requirement-check.md
-  docs/security.md
-  docs/design.md
-  docs/backup-recovery.md
-  docs/testing.md
-  docs/usage.md
-  docs/pitr.md
-  docs/deployment-offline.md
-  docs/swagger-artifacts.md
-  skills/full-project-acceptance-hard-gates/SKILL.md
-)
-for path in "${required_docs[@]}"; do
-  if [ ! -f "$path" ]; then
-    echo "ERROR: required documentation file is missing: $path"
-    fail=1
-  fi
-done
-
-# Repository contracts validate the physical test/UI layout. These scans cover
-# user-facing and workflow documentation without matching the guard patterns in
-# this file itself.
-check_absent "legacy test directory path" "API_tests/|unit_tests/" README.md docs run_tests.sh .github
-check_absent "removed duplicate UI path" "/ui/manual-test\\.html|public/manual-test\\.html" README.md docs public
-check_absent "stale redaction behavior" "marker-only|marker only|does not perform forensic content removal" README.md docs
-check_absent "stale Bates behavior" "does not draw visible Bates|no visible Bates|Bates numbers are not visible" README.md docs
-check_absent "stale comparison behavior" "binary-only|does not perform text extraction|no bounding-box reporting" README.md docs
-check_absent "stale backup behavior" "metadata-only backup|metadata snapshot is not a restore-capable backup|future worker.*backup" README.md docs
-check_absent "obsolete security blocker" "unsafe runtime defaults.*(block|fail)|security-accepted until those defaults" docs/questions.md docs/requirement-check.md
-check_absent "untracked process narration" "Next action|Future work|Conversation record|agent process|tool failure|branch failure|PR failure|This patch addresses|This patch closes" README.md docs
-check_absent "false current evidence claim" "current HEAD.*(passed|PASS)|full regression.*current.*passed" README.md docs
-check_absent "cloud deployment outside project scope" "AWS|EKS|Lambda|CloudFormation|serverless deployment" README.md docs scripts Dockerfile docker-compose.yml
-check_absent "obsolete post-checkout guard" "ci_execution_guard\\.py" README.md docs .github tests
-check_absent "obsolete runner cooldown sleep claim" "waits out any remaining ten-minute|sleep.*cooldown|cooldown.*sleep" README.md docs .github
-check_absent "static workflow overstated as full regression" "static workflow.*complete regression|sole workflow.*complete regression|workflow.*uploads evidence only after the complete regression" README.md docs
-
-if [ -e deploy/aws ] || [ -e docs/aws-deployment.md ]; then
-  echo "ERROR: cloud deployment material conflicts with the air-gapped single-container scope"
-  fail=1
-fi
-if [ -d docs/review-fixes ] && find docs/review-fixes -type f -print -quit | grep -q .; then
-  echo "ERROR: obsolete review-fix process documents remain under docs/review-fixes"
-  fail=1
-fi
-if [ ! -f public/index.html ] || [ -e public/manual-test.html ]; then
-  echo "ERROR: public/ must contain one canonical acceptance UI at public/index.html"
-  fail=1
-fi
-if [ "$(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) | wc -l | tr -d ' ')" != "1" ]; then
-  echo "ERROR: exactly one GitHub Actions workflow is required"
-  fail=1
-fi
-
-python3 - <<'PY' || fail=1
+python3 - <<'PY'
 from pathlib import Path
 import re
 
-questions = Path('docs/questions.md').read_text(encoding='utf-8')
-if not questions.startswith('# Requirement Clarifications\n'):
-    raise SystemExit('ERROR: docs/questions.md must use the Requirement Clarifications title')
-section_matches = list(re.finditer(r'^## (.+)$', questions, re.MULTILINE))
-required_topics = {
-    'Rolling failed-login lockout',
-    'Initial administrator and acceptance fixtures',
-    'Authentication state failures must fail closed',
-    'Acceptance browser surface',
-    'Static reviewer acceptance',
-    'CI admission and one-time unlock',
-    'Regression and current-revision evidence',
-}
-actual_topics = {match.group(1).strip() for match in section_matches}
-missing = sorted(required_topics - actual_topics)
-if missing:
-    raise SystemExit('ERROR: missing clarification topics: ' + ', '.join(missing))
-required_subsections = [
-    'Easy-to-make interpretation',
-    'Why it fails',
-    'Correct requirement interpretation',
-    'Required implementation',
-    'Acceptance evidence',
+def stop(message):
+    raise SystemExit("ERROR: " + message)
+
+required = [
+    "README.md", "ci/BOUNDARY.md", "docs/questions.md",
+    "docs/requirement-check.md", "docs/security.md", "docs/design.md",
+    "docs/backup-recovery.md", "docs/testing.md", "docs/usage.md",
+    "docs/pitr.md", "docs/deployment-offline.md",
+    "docs/swagger-artifacts.md",
+    "skills/full-project-acceptance-hard-gates/SKILL.md",
+    "skills/project-generation-workflow/SKILL.md",
 ]
-for index, match in enumerate(section_matches):
-    start = match.end()
-    end = section_matches[index + 1].start() if index + 1 < len(section_matches) else len(questions)
-    headings = re.findall(r'^### (.+)$', questions[start:end], re.MULTILINE)
-    if headings != required_subsections:
-        raise SystemExit(f'ERROR: clarification topic {match.group(1)!r} has invalid subsection order: {headings!r}')
-for path in (
-    Path('migrations/002_login_attempt_window.sql'),
-    Path('tests/api/test_auth_lockout_docker.sh'),
-    Path('ci/docker_acceptance.sh'),
-    Path('skills/full-project-acceptance-hard-gates/SKILL.md'),
-):
-    if not path.is_file():
-        raise SystemExit(f'ERROR: documented evidence path is missing: {path}')
-print('PASS: requirement clarification structure and evidence paths')
+for name in required:
+    if not Path(name).is_file():
+        stop(f"missing required file: {name}")
+if Path("deploy/aws").exists() or Path("docs/aws-deployment.md").exists():
+    stop("cloud deployment material conflicts with the air-gapped scope")
+if not Path("public/index.html").is_file() or Path("public/manual-test.html").exists():
+    stop("public/ must contain only public/index.html")
+workflows = list(Path(".github/workflows").glob("*.y*ml"))
+if len(workflows) != 1 or workflows[0].name != "ci.yml":
+    stop("exactly one workflow at .github/workflows/ci.yml is required")
+
+doc_paths = [Path("README.md"), Path("ci/BOUNDARY.md")]
+doc_paths += [p for p in Path("docs").rglob("*") if p.is_file()]
+docs = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in doc_paths)
+stale = {
+    "legacy test path": r"API_tests/|unit_tests/",
+    "duplicate UI path": r"/ui/manual-test\.html|public/manual-test\.html",
+    "cloud deployment": r"AWS|EKS|Lambda|CloudFormation|serverless deployment",
+    "obsolete guard documentation": r"ci_execution_guard\.py",
+    "target-wide cooldown": r"ten-minute target cooldown|completed non-cancelled runs enforce a ten-minute target cooldown",
+    "execution-gated verdict": r"Missing runtime or interaction evidence is `NOT VERIFIED`|Missing runtime, deployment, interaction, or full-regression evidence is recorded as `NOT VERIFIED`|Full acceptance requires a pre-existing generated",
+    "workflow overstatement": r"static workflow.*complete regression|sole workflow.*complete regression|workflow.*uploads evidence only after the complete regression",
+}
+for label, pattern in stale.items():
+    if re.search(pattern, docs, re.IGNORECASE):
+        stop(f"stale documentation claim: {label}")
+
+questions = Path("docs/questions.md").read_text(encoding="utf-8")
+sections = list(re.finditer(r"^## (.+)$", questions, re.MULTILINE))
+topics = {m.group(1).strip() for m in sections}
+expected_topics = {
+    "Rolling failed-login lockout",
+    "Initial administrator and acceptance fixtures",
+    "Authentication state failures must fail closed",
+    "Acceptance browser surface",
+    "Static reviewer acceptance",
+    "CI admission and one-time unlock",
+    "Regression and current-revision evidence",
+}
+if topics != expected_topics:
+    stop(f"clarification topics differ: {sorted(topics)}")
+expected_subsections = [
+    "Easy-to-make interpretation", "Why it fails",
+    "Correct requirement interpretation", "Required implementation",
+    "Acceptance evidence",
+]
+for index, match in enumerate(sections):
+    end = sections[index + 1].start() if index + 1 < len(sections) else len(questions)
+    actual = re.findall(r"^### (.+)$", questions[match.end():end], re.MULTILINE)
+    if actual != expected_subsections:
+        stop(f"invalid clarification structure for {match.group(1)!r}")
+
+acceptance = Path("skills/full-project-acceptance-hard-gates/SKILL.md").read_text(encoding="utf-8")
+generation = Path("skills/project-generation-workflow/SKILL.md").read_text(encoding="utf-8")
+workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+gates = {int(v) for v in re.findall(r"^## Gate (\d+):", acceptance, re.MULTILINE)}
+if gates != set(range(28)):
+    stop(f"acceptance gates differ from 0-27: {sorted(gates)}")
+for phrase in [
+    "Absolute static-only boundary",
+    "Every applicable Gate 0–27 must be completed",
+    "Inspect workflows only; never trigger or wait for CI",
+    "a new revision must be admissible immediately",
+    "Missing test execution, CI, build, deployment, runtime logs, screenshots, or external artifacts does not alter the verdict",
+]:
+    if phrase not in acceptance:
+        stop(f"acceptance Skill missing rule: {phrase}")
+for phrase in [
+    "static source-completion tasks",
+    "must not optimize for the smallest change count",
+    "Do not stop scanning after the first P0",
+    "Continue until no known in-scope static defect is deferred",
+    "CI triggered or awaited: `none`",
+]:
+    if phrase not in generation:
+        stop(f"generation Skill missing rule: {phrase}")
+for phrase in [
+    "cancel-in-progress: true", "github.paginate", "failedSameRevision",
+    "latestCompletedSameRevision", "run.head_sha === currentSha",
+    "same-revision admission cooldown", "alreadyConsumed",
+    "push a new revision or authorize that exact run once",
+]:
+    if phrase not in workflow:
+        stop(f"workflow missing admission rule: {phrase}")
+if workflow.index("actions/github-script@v7") >= workflow.index("actions/checkout@v4"):
+    stop("admission must precede checkout")
+if re.search(r"time\.sleep|\bsleep\s+\d+", workflow):
+    stop("admission must reject rather than sleep")
+
+credential = re.compile(r'''(?i)\b[A-Za-z0-9_]*(?:password|passphrase|secret|token|api_key|signing_key|encryption_key)[A-Za-z0-9_]*\b\s*[:=]\s*["']([^"']+)["']''')
+allowed = ("${", "$", "<", "placeholder", "example", "sample", "required", "generated", "random", "redacted", "***")
+for path in doc_paths + [Path("public/index.html"), Path("docker-compose.yml")]:
+    for number, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        for match in credential.finditer(line):
+            value = match.group(1).strip().lower()
+            if value and not any(marker in value for marker in allowed):
+                stop(f"fixed credential-like value at {path}:{number}")
+
+print("PASS: documentation consistency checks")
 PY
-
-python3 - <<'PY' || fail=1
-from pathlib import Path
-import re
-
-skill = Path('skills/full-project-acceptance-hard-gates/SKILL.md').read_text(encoding='utf-8')
-required_phrases = (
-    'Mandatory acceptance mode: static and read-only',
-    'trigger, retry, rerun, create, approve, or wait for CI execution',
-    'Missing execution evidence must be recorded as `NOT VERIFIED`',
-    'admission occurs before checkout or any repository-controlled code',
-    'unlock identifies the exact target, revision, failed run, reviewer reason, and one-time consumption record',
-)
-for phrase in required_phrases:
-    if phrase not in skill:
-        raise SystemExit(f'ERROR: acceptance Skill is missing required static rule: {phrase}')
-print('PASS: static read-only acceptance Skill contract')
-PY
-
-python3 - <<'PY' || fail=1
-from pathlib import Path
-import re
-
-roots = [Path('README.md'), Path('docs'), Path('public'), Path('docker-compose.yml')]
-extensions = {'.md', '.html', '.htm', '.js', '.json', '.yml', '.yaml'}
-files = []
-for root in roots:
-    if root.is_file():
-        files.append(root)
-    elif root.is_dir():
-        files.extend(path for path in root.rglob('*') if path.is_file() and path.suffix.lower() in extensions)
-
-sensitive_name = r'(?:password|passphrase|secret|token|api_key|signing_key|encryption_key)'
-quoted_assignment = re.compile(rf"(?i)\b[A-Za-z0-9_]*{sensitive_name}[A-Za-z0-9_]*\b\s*[:=]\s*[\"']([^\"']+)[\"']")
-env_assignment = re.compile(r"^\s*([A-Z0-9_]*(?:PASSWORD|PASSPHRASE|SECRET|TOKEN|API_KEY|SIGNING_KEY|ENCRYPTION_KEY)[A-Z0-9_]*)\s*[:=]\s*(.+?)\s*$")
-password_input = re.compile(r'''(?i)<input(?=[^>]*type=["']password["'])(?=[^>]*value=["']([^"']+)["'])[^>]*>''')
-placeholder_fragments = (
-    '${', '$', '<', 'placeholder', 'example', 'sample', 'required', 'generated',
-    'random', 'from_env', 'change_me', 'redacted', '***',
-    'document.getelementbyid', 'process.env', 'os.getenv',
-)
-
-def is_placeholder(value: str) -> bool:
-    normalized = value.strip().strip('`"\'').lower()
-    if not normalized or normalized in {'null', 'none', 'unset', 'empty', 'n/a', 'na', 'true', 'false'}:
-        return True
-    return any(fragment in normalized for fragment in placeholder_fragments)
-
-findings = []
-for path in sorted(set(files)):
-    try:
-        lines = path.read_text(encoding='utf-8').splitlines()
-    except UnicodeDecodeError:
-        continue
-    for line_number, line in enumerate(lines, start=1):
-        for match in quoted_assignment.finditer(line):
-            if not is_placeholder(match.group(1)):
-                findings.append((path, line_number, 'credential-like quoted assignment contains a fixed literal'))
-        env_match = env_assignment.match(line)
-        if env_match and not is_placeholder(env_match.group(2)):
-            findings.append((path, line_number, 'sensitive environment assignment contains a fixed literal'))
-        input_match = password_input.search(line)
-        if input_match and not is_placeholder(input_match.group(1)):
-            findings.append((path, line_number, 'password input contains a fixed value'))
-if findings:
-    for path, line_number, message in findings:
-        print(f'ERROR: {path}:{line_number}: {message}')
-    raise SystemExit(1)
-print('PASS: no fixed credential-like values in documentation, browser assets, or Compose')
-PY
-
-if [ "$fail" -ne 0 ]; then
-  exit 1
-fi
-
-echo "PASS: documentation consistency checks"

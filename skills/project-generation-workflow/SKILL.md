@@ -1,301 +1,284 @@
 # Prompt-Driven Project Generation Workflow
 
-Use this skill to generate, repair, validate, package, or review a software project from user-provided input. When a target repository is involved, preserve repository hygiene, project structure, agent capability boundaries, and code quality.
+Use this Skill to generate, repair, validate, package, or review a software project from user-provided requirements. Repository work must preserve the existing architecture, project structure, documentation purposes, code quality, and agent capability boundaries.
+
+## Core static-generation rule
+
+Project generation and repair are **static source-completion tasks**.
+
+The agent must complete the strongest implementation that can be derived from the requirements and repository contents without depending on any external execution result.
+
+During generation, repair, validation, or review under this Skill, the agent must not:
+
+- run project code;
+- run unit, integration, API, browser, regression, or acceptance tests;
+- execute repository scripts or generated binaries;
+- build images, packages, applications, or containers;
+- start services, databases, browsers, emulators, or deployment environments;
+- trigger, rerun, retry, dispatch, or wait for CI;
+- treat CI, a build, a deployment, a test run, or another external validator as a prerequisite for continuing work;
+- stop after a minimum patch, first defect, first stage, first commit, or first green external signal;
+- defer statically identifiable work to a later step, follow-up PR, future pass, or CI result.
+
+Existing logs, CI results, test reports, screenshots, artifacts, or deployment records may be inspected read-only when they already exist. They are optional context, not generation dependencies and not permission to stop before the static implementation is complete.
+
+Missing external execution evidence must never produce `ci_pending`, `waiting_for_tests`, `waiting_for_build`, or an equivalent stop state. Continue the static work and describe runtime execution as outside this workflow.
+
+## Complete-delivery rule
+
+The agent must not optimize for the smallest change count, fewest files, shortest plan, or minimum viable patch. Scope is determined by the complete user requirement and repository constraints, not by convenience.
+
+Before delivery:
+
+1. reconstruct the request into atomic requirements;
+2. inspect every repository area materially affected by those requirements;
+3. locate all implementations, tests, schemas, migrations, configuration, deployment, API, documentation, and comments that express the same behavior;
+4. fix every statically identifiable contradiction, omission, unsafe fallback, stale path, incomplete negative path, and documentation mismatch within scope;
+5. update production code, test definitions, static guards, schemas, configuration, and documentation together where the requirement crosses those boundaries;
+6. rescan the complete affected surface after changes;
+7. continue after finding a blocker so the final result contains all independently identifiable issues rather than only the first one.
+
+A narrow change is correct only when the requirement itself is narrow. “Minimal,” “smallest,” “first step,” “good enough for CI,” and “wait for CI” are not valid scope controls.
 
 ## Required inputs
 
 - `{{PROJECT_PROMPT}}`: original prompt, issue text, uploaded metadata, README text, or equivalent requirement source.
 - `{{PROJECT_NAME}}`: optional project name when supplied.
 - `{{TARGET_REPO}}`: optional repository to create, modify, validate, or review.
-- `{{REPO_ROOT}}`: required when working in a repository; repository root for reading, writing, testing, and packaging.
+- `{{REPO_ROOT}}`: repository root when working in a repository.
 - `{{USER_GOAL}}`: generate, repair, validate, package, or review.
-- `{{CONSTRAINTS}}`: optional technical and non-goal constraints.
-- `{{USER_FEEDBACK}}`: optional latest correction or requested change.
+- `{{CONSTRAINTS}}`: technical, product, repository, and non-goal constraints.
+- `{{USER_FEEDBACK}}`: latest correction or requested change.
 
 ## Repository hygiene rules
 
-When `{{TARGET_REPO}}` or `{{REPO_ROOT}}` is present, repository context is mandatory.
+When a repository is involved:
 
-- Treat `{{REPO_ROOT}}` as the only project root.
-- Inspect the file tree, current branch, changed files, tests, scripts, migrations, CI, Docker/deployment files, docs, and generated artifacts before planning.
-- Do not create parallel projects, sample apps, placeholder files, noop files, or unrelated generated outputs.
-- Do not place source code outside `{{REPO_ROOT}}`.
+- Treat the resolved repository root as the only project root.
+- Inspect the file tree, current branch, changed files, source, tests, scripts, migrations, CI, Docker/deployment files, docs, generated artifacts, and ignore rules before editing.
+- Do not create parallel projects, sample apps, placeholder files, noop files, duplicate roots, or unrelated outputs.
+- Do not place source code outside the existing project root.
 - New files must fit existing package, directory, naming, and ownership conventions.
-- Root-level files require a clear repository-convention reason.
-- Exclude accidental files, runtime databases, caches, compiled output, temporary files, and unrelated artifacts from delivery.
+- Root-level files require a repository-convention reason.
+- Exclude runtime databases, caches, compiled output, logs, temporary files, secrets, generated reports, and unrelated artifacts from delivery.
+- Inspect all path names for portability, case-only collisions, accidental spaces, control characters, locale-dependent names, and ambiguous near-duplicates.
 
 ## Generated artifact naming rules
 
-Generated documents and artifacts must use names derived from the request or from existing project conventions.
+Generated documents and artifacts must use names derived from the request or existing project conventions.
 
-- Do not invent arbitrary names for generated documents, reports, exports, ZIP files, PDFs, DOCX files, spreadsheets, slides, screenshots, or evidence bundles.
-- Prefer the user-provided title, project name, repository name, existing document name, task identifier, PR/issue number, or established repository artifact naming pattern.
-- If no stable name is available, use a plain descriptive fallback based on the exact deliverable type, such as `project-report.md`, `acceptance-evidence.zip`, or `api-summary.docx`.
-- Keep generated file names lowercase or repository-conventional, portable across filesystems, and free of local machine names, personal guesses, timestamps, random IDs, or marketing-style names unless explicitly requested.
-- When replacing or updating an existing document, preserve its file name and path unless the user explicitly requests a rename.
-- Report the final artifact path or file name exactly; do not describe a generated artifact with a different display name from the actual file.
+- Prefer the user-provided title, project name, repository name, existing path, task identifier, PR/issue number, or established artifact naming pattern.
+- Do not invent marketing names, random identifiers, local machine names, or timestamps unless explicitly requested.
+- Keep names portable and repository-conventional.
+- Preserve an existing file name and path when updating it unless the user requests a rename.
+- Report final paths exactly as written.
 
 ## Documentation file rules
 
-Documentation files are project artifacts and must follow repository purpose, naming, and evidence rules.
+Documentation is project source and must be checked statically against the implementation.
 
-- Update an existing documentation file before creating a new one when the topic already has a home.
-- Create a new documentation file only when the user asks for it, the task requires a durable record, or the repository has a matching docs convention.
-- Place documentation under the repository's existing docs path, artifact path, or requested path; do not create loose root documents without a repository-convention reason.
-- Documentation file names must follow the generated artifact naming rules and repository naming style.
-- Project documentation must distinguish requirements, implementation notes, validation evidence, checks not run, and pending items when those sections belong to the target document.
-- Do not use documentation to claim completion that is not backed by code, tests, CI, logs, reports, or artifacts.
-- Do not preserve agent execution history, tool failures, PR chronology, repeated experiments, or assistant self-corrections as project decisions.
+- Update an existing documentation home before creating a new document.
+- Create a document only when requested, required by this Skill, or established by repository convention.
+- Do not use documentation to store agent chronology, tool failures, repeated experiments, branch history, assistant self-correction, or untracked future work.
+- Documentation may claim static implementation only when the cited source paths support it.
+- Documentation must not claim an executed test, build, deployment, CI run, browser flow, or runtime result unless that pre-existing artifact was actually inspected.
+- Lack of an external run does not block completing the documentation or implementation.
 
 ## Default documentation outputs
 
-For project generation or repair work, use these fixed documentation targets when the repository does not define a stricter documentation convention:
+When the repository has no stricter convention:
 
-- `docs/api-spec.md`: API usage specification. It documents endpoints, methods, auth model, request fields, response fields, error behavior, examples, command examples, and API acceptance checks.
-- `docs/design.md`: project design and requirement implementation record. It explains the whole project design, how requirements are implemented, architecture, modules, data flow, security boundaries, workflow rules, storage model, constraints, and validation strategy.
-- `docs/questions.md`: requirement clarification and implementation guidance record. It supplements the original requirements with conclusions derived from multi-turn feedback, implementation results, test failures, acceptance gates, and repository constraints.
+- `docs/api-spec.md`: API contract, auth, methods, request/response fields, errors, examples, pagination, and static acceptance mappings.
+- `docs/design.md`: architecture, requirement implementation, module boundaries, data flow, security, workflow, storage, constraints, and static validation strategy.
+- `docs/questions.md`: durable clarification of requirements that were easy to misinterpret or previously implemented inconsistently.
 
-Do not merge these three document purposes into one file unless the user explicitly asks for a single document. If one of these files already exists, update it in place.
+Do not merge these purposes unless explicitly requested.
 
-## Questions document requirement-clarification contract
+## Questions document clarification contract
 
-`docs/questions.md` exists to explain requirement areas that were easy to misunderstand, implemented unsatisfactorily, or shown by testing and acceptance evidence to be incomplete.
+`docs/questions.md` is organized by requirement topic, not Q&A numbering or conversation turns.
 
-It is a durable supplement to the original requirements and a compressed summary of the project-relevant conclusions from multi-turn work. It is not a chronological transcript of that work.
+A topic belongs when:
 
-A clarification belongs in `docs/questions.md` when one or more of these conditions apply:
+- the requirement has a plausible but incorrect or incomplete interpretation;
+- an implementation can appear functional while violating a repository or acceptance rule;
+- static inspection of code, tests, configuration, or documentation exposes an incomplete boundary;
+- user feedback corrects the interpretation;
+- repeated work yields one stable project-level conclusion.
 
-- the original requirement has a plausible but incorrect or incomplete interpretation;
-- the current implementation technically works but violates a repository rule or acceptance gate;
-- a test or realistic acceptance flow exposes behavior that does not satisfy the intended requirement;
-- user feedback corrects the interpretation or implementation boundary;
-- several rounds of implementation or testing produce one stable project-level conclusion that future work must follow.
+Each topic must contain exactly these semantic parts:
 
-### Required content for each clarification
+1. `Easy-to-make interpretation`
+2. `Why it fails`
+3. `Correct requirement interpretation`
+4. `Required implementation`
+5. `Acceptance evidence`
 
-Organize by requirement topic, not as `Q1`, `Q2`, question/answer pairs, or conversation turns.
+`Acceptance evidence` under this Skill means static proof paths and acceptance conditions: production implementation, negative-path logic, test definitions, schemas, configuration, documentation, and expected state or error semantics. It must not require the agent to execute tests, CI, a build, a container, a database, a browser, or deployment.
 
-Each topic must contain:
-
-1. `Easy-to-make interpretation`: the plausible reading or implementation approach that can lead to an unsatisfactory result.
-2. `Why it fails`: the concrete requirement, code-quality rule, security rule, test result, or acceptance gate that the interpretation violates.
-3. `Correct requirement interpretation`: the project behavior or boundary that should actually be implemented.
-4. `Required implementation`: the concrete code, configuration, documentation, workflow, or test changes needed to satisfy the clarification.
-5. `Acceptance evidence`: what tests, state changes, output, error behavior, or realistic interaction must prove the requirement is satisfied.
-
-Example shape:
+Example:
 
 ```markdown
 ## Administrator initialization credentials
 
 ### Easy-to-make interpretation
 
-The requirement for a default administrator can be interpreted as placing one fixed username and password in application code or normal deployment configuration.
+A default administrator can be implemented with one fixed username and password in product code or normal deployment configuration.
 
 ### Why it fails
 
-That implementation fails the repository gate prohibiting hard-coded local credentials and deployment-specific configuration in product code. It also makes every installation share the same long-lived credential.
+That embeds installation-specific identity and credentials in the product and makes separate installations share a long-lived secret.
 
 ### Correct requirement interpretation
 
-A new installation must initialize an administrator automatically, but the credential must be installation-specific or supplied by deployment configuration and must not overwrite an existing administrator on restart.
+A clean installation must initialize an administrator without embedding a fixed deployment credential and must preserve existing identities on restart.
 
 ### Required implementation
 
-Detect whether an administrator exists. Initialize one only for an empty installation, use a deployment-supplied or generated bootstrap credential, and preserve existing credentials on restart and upgrade.
+Detect an empty installation, use deployment-supplied or installation-generated bootstrap values, and never overwrite an existing administrator.
 
 ### Acceptance evidence
 
-Tests must prove first-install login works, separate installations do not share a fixed password, restart does not reset the administrator, and product code contains no hard-coded deployment credential.
+The initialization path is empty-installation-only; restart paths preserve existing users; normal source contains no fixed deployment credential; tests define first-install, separate-installation, and restart cases.
 ```
 
-### Compression and update rules
+Before delivery, reject a questions document containing:
 
-- Summarize the final project-relevant conclusion from multiple rounds; do not list first attempt, second attempt, tool failure, PR history, or conversation chronology.
-- A failed implementation or failed test may trigger a clarification, but the document must describe the requirement risk and correction, not blame or narrate the agent.
-- Do not convert an accidental agent implementation into a project decision. The correct interpretation must be grounded in the original requirement, user feedback, repository constraints, code-quality rules, or acceptance gates.
-- Merge repeated findings about the same requirement into one current topic. Do not append duplicate sections after every iteration.
-- Replace stale conclusions when later implementation or evidence changes the correct project interpretation.
-- Do not add generic `Next action`, `Future work`, `Recommendations`, or `Conversation record` sections.
-- Do not require the user to reconfirm conclusions that can be derived from the original prompt, existing feedback, repository rules, implementation, tests, and acceptance evidence.
-- When evidence supports a requirement boundary but not one mandatory design, describe the allowed solution space and acceptance conditions rather than inventing a single project decision.
-
-### Questions document validation gate
-
-Before delivery, scan the complete file and fail the documentation task when any of these are present:
-
-- numbered Q&A structure or headings such as `Question` and `Answer`;
-- repeated experiment history or chronological agent narration;
-- agent, tool, branch, commit, or PR failures presented as project requirements;
-- a correction that lacks a requirement, repository-rule, test, or acceptance-gate basis;
-- duplicate topics with conflicting current conclusions;
-- next-step or recommendation sections unrelated to a clarified requirement;
-- implementation guidance without a corresponding acceptance condition.
-
-This target-specific contract overrides the generic documentation structure below for `docs/questions.md`.
-
-## Documentation output contract
-
-When writing or updating a documentation file, the agent must produce a reviewable project record, not a loose summary.
-
-Before writing the document:
-
-1. Resolve the exact target path from the user request, existing documentation home, repository convention, or generated artifact naming rules.
-2. State whether the task updates an existing document or creates a new one.
-3. Apply the target-specific structure. Do not force one generic template onto README, API, design, questions, and acceptance reports.
-
-For documents without a stricter target-specific structure, use only the sections needed for the document purpose, such as purpose, requirements, implementation, validation evidence, checks not run, and current limitations.
-
-Operational facts such as commands, failed tool calls, branch state, PR state, and agent corrections belong in the temporary working record or final response. They must not be copied into permanent project documentation unless the requested artifact is explicitly an execution report or historical log.
-
-Final response after writing a document must include the exact document path, whether it was created or updated, checks run, checks not run, and pending evidence.
+- numbered Q&A structure;
+- agent or PR chronology;
+- repeated or conflicting topics;
+- an interpretation without a requirement or repository basis;
+- generic next-step or recommendation sections;
+- implementation guidance without static acceptance conditions;
+- claims that completion depends on a future CI or test result.
 
 ## Working record rules
 
-For multi-turn work, maintain a current working record before changing files or reporting completion.
+Maintain a current working record for multi-turn work containing:
 
-- Track user corrections, confirmed project conclusions, branch state, failed operations, successful operations, user-provided commands, and pending evidence.
-- Treat the latest user feedback as a constraint that overrides earlier assumptions.
-- Carry unresolved feedback forward until it is fixed, explicitly declined by the user, or marked pending with a reason.
-- Do not automatically copy the working record into `docs/questions.md` or another permanent project document.
-- When information is incomplete, make the best evidence-backed determination, continue non-destructive work, and mark unsupported claims as not verified. Do not ask the user to reconfirm conclusions already derivable from available project evidence.
+- target repository, base branch, and working branch;
+- loaded rule paths and stable identifiers;
+- atomic requirement ledger;
+- complete affected-file map;
+- user corrections;
+- changes completed;
+- static checks performed by inspection;
+- unsupported runtime claims explicitly excluded from the static conclusion.
+
+The working record is not permanent project documentation.
+
+The latest user feedback overrides earlier assumptions. Do not ask the user to reconfirm conclusions derivable from the prompt, repository rules, current source, or prior explicit feedback.
 
 ## Repository constraint rules
 
-Before generating code for a repository, read repository constraints from existing files and structure:
+Before changing repository content, read:
 
-- `AGENT.md`, when present.
-- `README.md`, when present.
-- relevant files under `docs/`, when present.
-- existing source layout, tests, scripts, migrations, CI workflows, Docker/deployment files, and artifact conventions.
+- `AGENTS.md` and `AGENT.md` when present;
+- relevant `skills/**/SKILL.md`;
+- README and relevant docs;
+- source layout, tests, scripts, migrations, workflows, deployment files, configuration, and artifact conventions.
 
-Do not replace the repository language, framework, database, build path, test runner, project layout, security model, or deployment model unless the user explicitly asks to change that direction.
+Do not replace the repository language, framework, database, architecture, build path, security model, or deployment model unless explicitly requested.
 
-## Development workflow rules
+## Static development workflow
 
-For code changes inside a repository:
+For repository changes:
 
-1. Identify the base branch and current dirty state before writing.
-2. Summarize the intended file-level change set before large edits.
-3. Modify only files required by the current requirement.
-4. Keep generated code inside the existing project tree and package layout.
-5. Run repository-standard checks when available.
-6. Review the final diff for unrelated files before committing or proposing a PR.
-7. Report exact files changed, checks run, checks not run, and remaining risks.
+1. resolve the base revision and current branch state;
+2. build an atomic requirement ledger;
+3. map every requirement to all affected source, tests, schema, config, deployment, API, docs, and comments;
+4. edit the complete mapped surface, not only the first convenient file;
+5. inspect syntax and consistency from source text without executing repository code or scripts;
+6. review the complete diff for unrelated files and unresolved requirement rows;
+7. repeat static inspection until every row is `STATIC PASS`, `STATIC FAIL`, or justified `N/A`;
+8. deliver without waiting for CI or external execution.
 
-If the user asks the agent to submit code:
+Do not create artificial stages whose purpose is to postpone known work. A plan may organize reasoning, but it cannot reduce the required implementation or create an external waiting point.
 
-1. Use or create a purpose-specific branch from the current base branch.
-2. Commit only the relevant project-compliant changes.
-3. Do not include unrelated cleanup, placeholder files, generated caches, local runtime state, or accidental files.
-4. Open a PR only when requested or clearly required by the task.
-5. PR body must include summary, changed files, validation, not-run checks, and known gaps.
-6. Do not merge, force-push, reset, delete branches, or publish releases without explicit user approval.
+## Submission rules
 
-## Commit message rules
+When the user asks to submit code:
 
-Use concise, reviewable commit messages:
+- use a purpose-specific branch;
+- commit the complete relevant change set;
+- exclude unrelated cleanup and generated state;
+- open a PR only when requested or clearly required;
+- do not wait for or require PR CI before reporting the completed static change;
+- do not merge, force-push, reset, delete branches, or publish releases without explicit approval.
 
-- Format: `<type>: <imperative summary>` or `<type>(<scope>): <imperative summary>`.
-- Allowed types include `feat`, `fix`, `docs`, `test`, `ci`, `refactor`, `chore`, and `skill`.
-- Summary should be specific and normally under 72 characters.
-- Use body lines when needed: `Why`, `What changed`, and `Validation`.
-- Do not use placeholder messages such as `noop`, `update`, `changes`, or `fix stuff`.
+PR text must distinguish static implementation from external runtime evidence and must not say work is pending merely because CI has not run.
 
 ## Agent operation rules
 
-- State which operations were actually executed and which were not.
-- Do not claim tests, builds, CI, container runs, deployment, commits, or PR changes succeeded without tool evidence.
-- If an environment dependency is unavailable, mark the item as `not_executed` or `ci_pending` and provide project-integrated commands or scripts.
-- Do not make repository writes that contain unrelated files, placeholder files, or cleanup noise.
-- Keep branches and commits reviewable and purpose-specific.
-- Ask before risky repository actions that rewrite or publish work.
-- When project information is incomplete, continue with the strongest evidence-backed interpretation and mark unsupported claims as not verified instead of requiring user confirmation.
+- State repository reads and writes actually performed.
+- Do not claim external execution occurred.
+- Do not present `ci_pending`, missing test execution, or missing deployment as a reason to stop static generation.
+- Do not provide “run this and return the result” as a substitute for completing statically identifiable work.
+- Do not reduce the task to a minimal patch unless the user explicitly narrows the scope.
+- Do not stop scanning after the first P0 or first failed requirement.
+- Keep branches and commits purpose-specific, but completeness outranks minimizing file count.
+- Ask only before risky publishing or destructive repository actions.
 
-## Code annotation and schema contract
+## Code, schema, and annotation contract
 
-Code comments and API schemas are part of the deliverable, not optional cleanup.
-
-- Comments must explain intent, invariants, constraints, data contracts, error semantics, or non-obvious domain decisions.
-- Do not add comments that only restate what the next line of code already says.
-- Exported APIs, public handlers, domain rules, migrations, security-sensitive code, workflow transitions, and complex validation logic must have useful comments or annotations.
-- Go exported identifiers must follow Go documentation comment conventions, starting with the identifier name where appropriate.
-- Go HTTP API handlers must use swaggo-compatible annotations when the project exposes HTTP APIs.
-- Go swaggo annotations should include `@Summary`, `@Description`, `@Tags`, `@Accept`, `@Produce`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` when applicable.
-- Go request and response structs used by HTTP APIs must include JSON tags and field comments suitable for generated API documentation.
-- Python request, response, configuration, and persisted data contracts must use Pydantic models instead of raw untyped dictionaries when validation or external interface shape matters.
-- Python API projects must expose an OpenAPI schema and a Swagger-like documentation UI using the convention appropriate for the chosen framework.
-- For FastAPI, use its native OpenAPI generation and keep `/docs` or an equivalent Swagger UI available.
-- For Flask, use a compatible OpenAPI stack such as flask-smorest, flask-restx, apispec, or flasgger when the project does not already define a stricter convention.
-- For Django REST Framework, use a compatible OpenAPI stack such as drf-spectacular or drf-yasg when the project does not already define a stricter convention.
-- For other Python API frameworks, select the framework-compatible OpenAPI documentation approach instead of forcing FastAPI-specific assumptions.
-- Python API documentation must connect the Pydantic models, route definitions, response models, error models, examples, and generated OpenAPI schema.
-- If a repository already has a stricter OpenAPI, swaggo, Pydantic, or schema generation convention, follow the existing convention and preserve compatibility.
+- Preserve package boundaries and dependency direction.
+- Follow existing error, response, logging, configuration, migration, and test conventions.
+- Add or update tests in the existing layout for every changed behavior, including negative paths.
+- Do not hard-code production secrets, deployment-specific values, local absolute paths, ports, hostnames, identities, or machine assumptions.
+- Comments must explain intent, invariants, security boundaries, state transitions, storage contracts, and non-obvious failure handling.
+- Exported APIs and public handlers must use language/framework documentation conventions.
+- API schemas, request/response models, error models, route definitions, and generated-contract source must agree statically.
 
 ## Logging contract
 
-Service logging is part of the deliverable. Logs must be simple to view, reasonable by default, and configurable for local, container, and production use.
+- Use the repository logger rather than ad-hoc prints.
+- Support appropriate levels and configurable format/destination.
+- Include request, actor, resource, operation, dependency, and duration context when available.
+- Never log credentials, secrets, protected document contents, or complete sensitive payloads.
+- Cover startup, shutdown, auth failure, denial, validation failure, state transition, dependency failure, database failure, and background work.
+- Keep logging documentation aligned with code.
 
-- Do not use ad-hoc print statements as the primary logging system.
-- Use the repository's existing logger when present.
-- Go projects should use `slog`, `zap`, `zerolog`, or the existing project logger.
-- Python projects should use `logging`, `structlog`, `loguru`, or the existing project logger.
-- Logs must support levels such as debug, info, warn, and error.
-- Log format must be configurable, with human-readable output for local development and structured JSON output for containers or production when appropriate.
-- Log destination must be configurable, with stdout or stderr as the default for container-friendly operation.
-- Runtime configuration should control log level, format, and destination through config files, flags, or environment variables.
-- Logs must include useful context such as operation, request ID, actor ID, resource ID, component, dependency name, and duration when available.
-- Logs must avoid private values, credentials, full request bodies, file contents, and other sensitive data.
-- Important lifecycle and workflow events should be logged: startup, shutdown, configuration load, request entry, auth failure, permission denial, validation failure, state transition, external dependency failure, database failure, background job start, background job completion, and background job failure.
-- Error logs must include enough context to debug the failure without exposing sensitive data.
-- `docs/design.md` must describe the logging strategy when logging behavior is added or changed.
-- `docs/api-spec.md` must document request ID, trace ID, or correlation header behavior when the API exposes or accepts those fields.
+## Static evidence model
 
-## Code generation standards
+Use this evidence order for generation decisions:
 
-- Preserve existing package boundaries and dependency direction.
-- Use existing error handling, response, logging, configuration, migration, and test conventions.
-- Add tests in the existing test layout for changed behavior.
-- Do not hard-code production secrets, local absolute paths, or machine-specific assumptions.
-- Use portable script execution such as `bash run_tests.sh` or `bash scripts/name.sh`.
-- Add comments for exported APIs, security-sensitive logic, workflow rules, non-obvious domain decisions, SQL migrations, and complex error handling.
-- Avoid comments that merely restate obvious code.
+1. original requirement and explicit user corrections;
+2. repository rule files;
+3. current production source, schema, migrations, configuration, manifests, and deployment files;
+4. current test definitions and static guards;
+5. current documentation and comments;
+6. pre-existing external logs or artifacts, read-only and optional.
 
-## Working state
-
-- `{{REQUIREMENT_LEDGER}}`: requirements from prompt plus project and repository constraints.
-- `{{DELIVERY_PLAN}}`: plan mapped to existing project touchpoints.
-- `{{CHANGE_SET}}`: files changed in the project-compliant plan.
-- `{{EVIDENCE_MAP}}`: proof from code, tests, CI, logs, reports, and artifacts.
+A missing external artifact does not demote a complete static implementation. Conversely, a green external artifact does not excuse a static contradiction.
 
 ## Algorithm
 
-1. Read `{{PROJECT_PROMPT}}`.
-2. Resolve `{{PROJECT_NAME}}`, `{{TARGET_REPO}}`, and `{{REPO_ROOT}}` when supplied.
-3. If a repository is involved, inspect project structure, constraints, dirty state, tests, scripts, CI, deployment files, migrations, docs, and artifacts.
-4. Build `{{REQUIREMENT_LEDGER}}` with source paths and existing project touchpoints.
-5. Build `{{DELIVERY_PLAN}}` that respects project boundaries and architecture.
-6. Modify or generate only files that fit the existing project structure.
-7. Add tests using the existing test layout.
-8. Run available checks through project-standard commands.
-9. Compare evidence back to the ledger and mark anything not executed honestly.
-10. Apply `{{USER_FEEDBACK}}` as corrected ledger items and repeat until verified or explicitly pending.
-
-## Evidence rules
-
-Do not mark a requirement as `verified` only because code exists. Distinguish code existence, test existence, test execution, local acceptance, Docker build, Docker acceptance, CI for the exact commit, logs, reports, and full acceptance execution.
+1. Read the requirement and rule sources.
+2. Resolve repository root, base revision, branch, and complete affected surface.
+3. Build an atomic requirement ledger.
+4. Inspect every mapped implementation and documentation path.
+5. Generate or repair all statically identifiable requirements.
+6. Add or update complete positive, negative, boundary, and failure-path test definitions.
+7. Update schemas, configuration, deployment, comments, and docs consistently.
+8. Perform a complete static rescan and diff review.
+9. Continue until no known in-scope static defect is deferred.
+10. Report the static conclusion without waiting for CI, tests, builds, containers, or deployment.
 
 ## Final response contract
 
-Conclusion: `<verified | partially_verified | implemented_but_evidence_missing | not_fixed>`
+Use one conclusion:
 
-Ledger summary:
-1. `{{REQUIREMENT}}`: `{{STATUS}}`. Touchpoint: `{{EXISTING_TOUCHPOINT}}`. Evidence: `{{EVIDENCE}}`.
-2. `{{REQUIREMENT}}`: `{{STATUS}}`. Touchpoint: `{{EXISTING_TOUCHPOINT}}`. Evidence: `{{EVIDENCE}}`.
-3. `{{REQUIREMENT}}`: `{{STATUS}}`. Touchpoint: `{{EXISTING_TOUCHPOINT}}`. Evidence: `{{EVIDENCE}}`.
+- `STATIC PASS`: all in-scope requirements are implemented and consistent by static inspection.
+- `STATIC FAIL`: one or more in-scope static defects remain; enumerate all known defects.
+- `STATIC INCOMPLETE`: required source or rule material was inaccessible; identify the exact missing path. Do not use this status merely because CI or runtime evidence is absent.
 
-Still pending:
-- `{{PENDING_ITEM}}`
+The final response must include:
 
-Do not claim yet:
-- `{{UNPROVEN_CLAIM}}`
+- exact branch and base revision;
+- exact files changed;
+- loaded rule paths and identifiers;
+- complete static requirement summary;
+- repository writes performed;
+- external execution performed: `none`;
+- CI triggered or awaited: `none`;
+- every remaining static defect or inaccessible source.

@@ -113,22 +113,6 @@ jobs:
               core.notice(`Cancelled superseded active run ${run.id} for ${target}.`);
             }
 
-            const latestCompleted = previous.find(run =>
-              run.status === 'completed' &&
-              run.conclusion &&
-              run.conclusion !== 'cancelled' &&
-              run.conclusion !== 'skipped'
-            );
-            if (latestCompleted) {
-              const startedAt = Date.parse(latestCompleted.run_started_at || latestCompleted.created_at || 0);
-              const remainingMs = cooldownMs - (Date.now() - startedAt);
-              if (remainingMs > 0) {
-                const remainingSeconds = Math.ceil(remainingMs / 1000);
-                await cancelCurrent(`Target ${target} is inside the ten-minute admission cooldown (${remainingSeconds}s remaining).`);
-                return;
-              }
-            }
-
             const failedSameRevision = previous.filter(run =>
               run.head_sha === currentSha && failedConclusions.has(run.conclusion)
             );
@@ -168,6 +152,23 @@ jobs:
             } else if (failedSameRevision.length > 0) {
               await cancelCurrent(`Revision ${currentSha} is latched by failed run ${failedSameRevision[0].id}; push a new revision or authorize that exact run once.`);
               return;
+            } else {
+              const latestCompletedSameRevision = previous.find(run =>
+                run.head_sha === currentSha &&
+                run.status === 'completed' &&
+                run.conclusion &&
+                run.conclusion !== 'cancelled' &&
+                run.conclusion !== 'skipped'
+              );
+              if (latestCompletedSameRevision) {
+                const startedAt = Date.parse(latestCompletedSameRevision.run_started_at || latestCompletedSameRevision.created_at || 0);
+                const remainingMs = cooldownMs - (Date.now() - startedAt);
+                if (remainingMs > 0) {
+                  const remainingSeconds = Math.ceil(remainingMs / 1000);
+                  await cancelCurrent(`Revision ${currentSha} is inside the ten-minute same-revision admission cooldown (${remainingSeconds}s remaining).`);
+                  return;
+                }
+              }
             }
 
             core.notice(`Admitted static acceptance for ${target} at ${currentSha}.`);

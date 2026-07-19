@@ -22,7 +22,7 @@ Persist failed attempts in `login_attempts`. Serialize updates for one user, del
 
 ### Acceptance evidence
 
-`tests/api/test_auth_lockout_docker.sh`, when executed by a normal project lifecycle, must prove that expired failures do not combine with fresh failures, the fifth fresh failure returns `423 ACCOUNT_LOCKED`, the correct password remains blocked during the lock, an expired lock permits login, and successful login clears both event rows and compatibility fields. A static reviewer only inspects existing evidence.
+`tests/api/test_auth_lockout_docker.sh` defines the expiry, fifth-attempt lock, active-lock rejection, recovery, and state-clearing paths. Static acceptance inspects those definitions; an existing lifecycle artifact may be cited only as optional execution context.
 
 ## Initial administrator and acceptance fixtures
 
@@ -44,7 +44,7 @@ The deployment layer must generate installation-specific bootstrap and complete 
 
 ### Acceptance evidence
 
-Configuration and repository contracts can prove source-level rejection paths. Docker evidence must separately prove an empty normal-mode generated volume creates one administrator, removing bootstrap values and restarting preserves that identity, acceptance mode creates only its execution-scoped fixtures, and normal mode does not expose `/ui/`.
+Configuration, source, and repository contracts define empty-installation creation, restart preservation, acceptance fixtures, and normal-mode UI exclusion. Existing Docker evidence is optional context and does not control the static verdict.
 
 ## Authentication state failures must fail closed
 
@@ -66,7 +66,7 @@ Check every database read, write, transaction commit, and affected-row result on
 
 ### Acceptance evidence
 
-Pre-existing Docker fault-injection evidence must force the failed-attempt, login-reset, blacklist, replay, session, and logout persistence paths to fail. Each request must return the documented internal error. A forced logout failure must roll back token blacklisting and leave the session usable; a later successful logout must revoke the same token.
+Source and test definitions cover failed-attempt, login-reset, blacklist, replay, session, and logout persistence failures, including rollback of an incomplete logout. Existing fault-injection artifacts are optional context rather than static acceptance prerequisites.
 
 ## Acceptance browser surface
 
@@ -88,7 +88,7 @@ Keep the canonical UI behind `ACCEPTANCE_MODE`, do not embed fixture values, rem
 
 ### Acceptance evidence
 
-Rendering evidence must be described as rendering only. Interaction acceptance requires pre-existing browser evidence covering missing input, incorrect credentials, successful login, network failure and retry, keyboard navigation, visible focus, and understandable result status, tied to the tested revision. A static reviewer must not create that evidence.
+Static inspection traces missing input, incorrect credentials, successful login, network failure and retry, keyboard navigation, visible focus, and understandable result status through the canonical page and its test definitions. The reviewer does not execute that flow.
 
 ## Static reviewer acceptance
 
@@ -98,62 +98,62 @@ A reviewer can run tests, build containers, trigger CI, or generate reports to c
 
 ### Why it fails
 
-That changes the target environment, creates reviewer-owned evidence, can trigger unrelated work, and blurs the boundary between independent acceptance and project execution. It also makes a missing artifact look like a reviewer responsibility.
+That changes the target environment, creates reviewer-owned evidence, can trigger unrelated work, and turns external execution into a stopping condition instead of completing source inspection.
 
 ### Correct requirement interpretation
 
-Acceptance is static and read-only unless the user explicitly authorizes execution in the current request. Missing runtime, deployment, interaction, or full-regression evidence is recorded as `NOT VERIFIED`.
+Acceptance is static and read-only. Missing runtime, deployment, interaction, CI, or full-regression evidence does not alter the static verdict. `NOT VERIFIED` is reserved for required source, package content, or rule material that was inaccessible or not inspected.
 
 ### Required implementation
 
-`skills/full-project-acceptance-hard-gates/SKILL.md` must prohibit reviewer execution of project code, scripts, tests, builds, containers, databases, browsers, deployments, and CI. It must require read-only inspection of existing completed evidence and forbid waiting for CI.
+`skills/full-project-acceptance-hard-gates/SKILL.md` must prohibit reviewer execution of project code, scripts, tests, builds, containers, databases, browsers, deployments, and CI. It must require complete source inspection, forbid waiting for CI, and continue through every applicable Gate 0–27 after each blocker.
 
 ### Acceptance evidence
 
-The acceptance report must state reviewer execution as none, list any unavailable evidence, and avoid claiming that source inspection proves runtime behavior.
+The acceptance report states reviewer execution as none, distinguishes optional external artifacts from static proof, completes all static gates, and does not claim that source inspection is an executed runtime result.
 
 ## CI admission and one-time unlock
 
 ### Easy-to-make interpretation
 
-A concurrency group plus a guard after checkout can be described as preventing duplicate workflow starts, enforcing pre-dispatch cooldown, and granting one reviewed replay.
+A target-wide cooldown and failure state can be applied to every later commit in the same pull request to prevent repeated execution.
 
 ### Why it fails
 
-GitHub creates a workflow-run object before repository YAML executes. A guard after checkout already allowed repository actions to start. Sleeping consumes a runner instead of rejecting admission. A boolean unlock is repeatable, and a first-page history scan is not durable enough for a long-lived latch.
+That blocks the corrective revision needed to repair a failed check. A new source revision is not a repeat of the failed revision. GitHub also creates a workflow-run object before repository YAML executes; a guard after checkout is too late, sleeping consumes a runner, a boolean unlock is repeatable, and a first-page history scan is not durable.
 
 ### Correct requirement interpretation
 
-Repository CI must collapse superseded active target runs, admit before checkout and repository-controlled code, reject rather than sleep, paginate all relevant history, latch failed target/revision pairs, deny ordinary reruns, and consume one exact unlock tied to target, revision, failed run ID, and reviewed reason.
+Repository CI must collapse superseded active target runs, admit before checkout and repository-controlled code, reject rather than sleep, paginate relevant history, latch failed target/revision pairs, deny ordinary reruns, and consume one exact unlock tied to target, revision, failed run ID, and reviewed reason. Cooldown and failure latching apply to the exact revision; a different corrective revision must be admitted immediately.
 
 ### Required implementation
 
-Use one shared target key, `cancel-in-progress: true`, an admission job before checkout, complete Actions pagination, a ten-minute completed-run cooldown, exact failed-run authorization, and an auditable run-name consumption marker. Upload the static source manifest only after every static gate succeeds.
+Use one shared target key, `cancel-in-progress: true`, an admission job before checkout, complete Actions pagination, a ten-minute same-revision cooldown, exact failed-run authorization, and an auditable run-name consumption marker. Filter cooldown history by `head_sha === currentSha`, and upload the static source manifest only after every static gate succeeds.
 
 Repository YAML must not claim literal pre-dispatch prevention. That stronger property needs external platform controls.
 
 ### Acceptance evidence
 
-Static inspection must confirm the workflow source and documentation agree. A claim that no workflow-run object or admission runner can ever start requires separate platform-level evidence; otherwise that property remains `NOT VERIFIED`.
+Static inspection confirms the workflow and documentation agree that the same failed revision is blocked while a new revision is admitted. A claim that no workflow-run object or admission runner can ever start requires separate platform-level evidence.
 
 ## Regression and current-revision evidence
 
 ### Easy-to-make interpretation
 
-A passing historical run, a passing static job, or a generated reviewer report can be presented as full current-revision acceptance.
+A passing historical run, a passing static job, or a generated reviewer report can be presented as executed runtime proof for the current revision.
 
 ### Why it fails
 
-Evidence from another revision does not prove the inspected tree. A reviewer report summarizes evidence rather than generating it. A static workflow proves repository properties, not runtime behavior. A local entrypoint probe proves only the rows it executes.
+Evidence from another revision does not prove execution of the inspected tree. A reviewer report summarizes static findings rather than generating runtime evidence. A static workflow proves repository properties, not executed product behavior.
 
 ### Correct requirement interpretation
 
-Every full-regression claim must identify the exact tested commit, generated summary, and retained artifact. A later commit may reuse earlier evidence only for unchanged behavior with explicit tree-equivalence and scope caveats; it cannot be called a fresh current-revision run.
+Static acceptance is decided from current source and test definitions without requiring a full-regression artifact. When an existing execution artifact is cited for a runtime claim, it must identify the exact tested commit and scope; tree equivalence must be explicit rather than assumed.
 
 ### Required implementation
 
-Keep `ci/run_full_regression.sh` as a separate manual or normal-lifecycle entrypoint. Keep `.github/workflows/ci.yml` static-only. The static workflow may retain a source inventory, but it must not run or claim full regression, Docker, API, browser, database, or deployment acceptance.
+Keep `ci/run_full_regression.sh` as a separate manual or normal-lifecycle entrypoint. Keep `.github/workflows/ci.yml` static-only. The static workflow must not run or claim full regression, Docker, API, browser, database, or deployment acceptance.
 
 ### Acceptance evidence
 
-Full acceptance requires a pre-existing generated `summary.json` with `overall_status=passed`, all recorded stage statuses equal to zero, and an artifact tied to the tested revision. When the inspected revision differs, the difference and validation scope must be stated rather than hidden. A static reviewer must not run the regression to fill the gap.
+The full-regression definition statically includes all required stages, fail-fast propagation, truthful summaries, revision fields, and artifacts. Existing generated summaries are optional read-only context and do not alter the static verdict.
