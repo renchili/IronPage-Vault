@@ -12,6 +12,8 @@ The standalone deployment packages PostgreSQL and the Go API in one container fo
 
 Database identity, ports, host exposure, API binding, application asset roots, PostgreSQL data roots, product storage roots, credentials, signing material, encryption material, bootstrap identity, and acceptance fixtures are deployment-owned values. The image, Compose file, and Go application do not provide an alternative fixed local configuration.
 
+Fresh configuration accepts only an IPv4 loopback host binding and selects a host port that is not currently accepting loopback TCP connections. Compose remains the final bind authority because port availability can change after the probe.
+
 Compose uses the same generated database identity for PostgreSQL initialization and application access. The entrypoint checks that identity before startup.
 
 ## Data ownership
@@ -82,6 +84,10 @@ Backup success requires both a PostgreSQL custom dump and a local filesystem arc
 
 Go tests remain colocated with their packages. Stateful acceptance is under `tests/api/`; repository and generated-contract checks are under `tests/contracts/`.
 
-`.github/workflows/ci.yml` is the sole workflow. One serialized job applies cooldown and failed-revision latching, then executes the complete regression in fail-fast order. Artifact upload and job-summary publication occur only after all stages pass.
+`.github/workflows/ci.yml` is the sole GitHub workflow and performs static acceptance only. A checkout-free admission job collapses active duplicates, applies the target cooldown, evaluates the failed-revision latch from paginated history, and consumes exact one-time unlocks. A later sequential job runs only static syntax, formatting, inventory, documentation, and contract gates. The successful source inventory is retained after all static gates pass.
 
-A route, screenshot, static contract, reviewer report, or historical artifact is not by itself current project acceptance. Runtime claims require executed evidence tied to the exact tested revision.
+`ci/run_full_regression.sh`, Docker acceptance, API flows, browser interaction, databases, and deployments remain separate manual or normal-lifecycle execution paths. The static workflow does not call or claim them.
+
+A static reviewer reads source and pre-existing evidence only and must not run project code or CI to fill gaps. A route, screenshot, static contract, reviewer report, or historical artifact is not by itself current runtime acceptance.
+
+GitHub creates a workflow-run object before repository YAML runs. The repository design provides pre-checkout admission and active-run collapse, not platform-level pre-dispatch prevention.
