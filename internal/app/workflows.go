@@ -1,20 +1,33 @@
 package app
 
 import (
-	"bytes"
+	"database/sql"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 
-	"ironpage-vault/internal/core"
 	"ironpage-vault/internal/service"
 )
 
 func nextWorkflowStatus(current string) string {
-	return core.NextWorkflowStatus(current)
+	return coreNextWorkflowStatus(current)
+}
+
+func coreNextWorkflowStatus(current string) string {
+	switch current {
+	case StatusDraft:
+		return StatusUnderReview
+	case StatusUnderReview:
+		return StatusRedactionPending
+	case StatusRedactionPending:
+		return StatusApproved
+	case StatusApproved:
+		return StatusFinalized
+	default:
+		return ""
+	}
 }
 
 func (a *App) transitionDocument(c echo.Context) error {
@@ -25,8 +38,16 @@ func (a *App) transitionDocument(c echo.Context) error {
 	if err := c.Bind(&req); err != nil || strings.TrimSpace(req.Status) == "" {
 		return apiErr(c, http.StatusBadRequest, "STATUS_REQUIRED", "target status is required")
 	}
+	req.Status = strings.TrimSpace(req.Status)
+
+	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
+	}
+	defer tx.Rollback()
+
 	var d Document
-	if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, c.Param("id")); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1 FOR UPDATE`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
 	}
 	if !canTransitionDocumentObject(p, d) {
@@ -35,29 +56,51 @@ func (a *App) transitionDocument(c echo.Context) error {
 	if d.Status == StatusFinalized {
 		return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable")
 	}
-	if req.Status != nextWorkflowStatus(d.Status) {
+	next, err := a.nextWorkflowDefinition(c.Request().Context(), tx, d.Status)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return apiErr(c, http.StatusBadRequest, "INVALID_WORKFLOW_TRANSITION", "current status has no configured successor")
+		}
+		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_QUERY_ERROR", "could not resolve configured workflow")
+	}
+	if req.Status != next.Name {
 		return apiErr(c, http.StatusBadRequest, "INVALID_WORKFLOW_TRANSITION", "status must follow the configured chain")
 	}
-	if req.Status == StatusFinalized && p.Role != RoleEditor {
+	if next.Name == StatusFinalized && p.Role != RoleEditor {
 		return apiErr(c, http.StatusForbidden, "EDITOR_REQUIRED", "only editor may finalize")
 	}
 	if p.Role != RoleReviewer && p.Role != RoleEditor {
 		return apiErr(c, http.StatusForbidden, "FORBIDDEN", "role cannot transition documents")
 	}
-	_, err := a.db.ExecContext(c.Request().Context(), `UPDATE documents SET status=$1, finalized_at=CASE WHEN $1='Finalized' THEN NOW() ELSE finalized_at END, updated_at=NOW() WHERE id=$2`, req.Status, d.ID)
-	if err != nil {
+
+	if _, err := tx.ExecContext(c.Request().Context(), `UPDATE documents SET status=$1, finalized_at=CASE WHEN $1='Finalized' THEN NOW() ELSE finalized_at END, updated_at=NOW() WHERE id=$2`, req.Status, d.ID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_UPDATE_ERROR", "workflow transition failed")
 	}
-	_, _ = a.db.ExecContext(c.Request().Context(), `INSERT INTO document_status_history(id,document_id,from_status,to_status,changed_by,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, makeIdentifier("wfh"), d.ID, d.Status, req.Status, p.UserID)
-	a.audit(c, p.UserID, "WORKFLOW_TRANSITION", d.ID, nil)
-	a.notifyUser(c, d.OwnerID, "workflow.transition", "Document moved to "+req.Status, d.ID)
+	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO document_status_history(id,document_id,from_status,to_status,changed_by,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, makeIdentifier("wfh"), d.ID, d.Status, req.Status, p.UserID); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_HISTORY_ERROR", "could not record workflow history")
+	}
+	if err := a.auditWithExecutor(c, tx, p.UserID, "WORKFLOW_TRANSITION", d.ID, map[string]interface{}{"from_status": d.Status, "to_status": req.Status}); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record workflow audit")
+	}
+	if err := a.notifyUserWithExecutor(c, tx, d.OwnerID, "workflow.transition", "Document moved to "+req.Status, d.ID); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_CREATE_ERROR", "could not record workflow notification")
+	}
+	if err := tx.Commit(); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit workflow transition")
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"status": req.Status, "changed_at": time.Now().UTC()})
 }
 
 func (a *App) finalizeDocument(c echo.Context) error {
 	p := principal(c)
+	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
+	}
+	defer tx.Rollback()
+
 	var d Document
-	if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, c.Param("id")); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1 FOR UPDATE`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
 	}
 	if !canEditDocumentObject(p, d) {
@@ -66,26 +109,35 @@ func (a *App) finalizeDocument(c echo.Context) error {
 	if d.Status == StatusFinalized {
 		return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable")
 	}
-	if d.Status != StatusApproved {
-		return apiErr(c, http.StatusBadRequest, "INVALID_WORKFLOW_TRANSITION", "document must be Approved before Finalized")
-	}
-	_, err := a.db.ExecContext(c.Request().Context(), `UPDATE documents SET status='Finalized', finalized_at=NOW(), updated_at=NOW() WHERE id=$1`, d.ID)
+	next, err := a.nextWorkflowDefinition(c.Request().Context(), tx, d.Status)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return apiErr(c, http.StatusBadRequest, "INVALID_WORKFLOW_TRANSITION", "document is not at the configured pre-final status")
+		}
+		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_QUERY_ERROR", "could not resolve configured workflow")
+	}
+	if next.Name != StatusFinalized || next.Mutable {
+		return apiErr(c, http.StatusBadRequest, "INVALID_WORKFLOW_TRANSITION", "document must be at the configured status immediately before Finalized")
+	}
+	if _, err := tx.ExecContext(c.Request().Context(), `UPDATE documents SET status='Finalized', finalized_at=NOW(), updated_at=NOW() WHERE id=$1`, d.ID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "FINALIZE_ERROR", "finalize failed")
 	}
-	a.audit(c, p.UserID, "DOCUMENT_FINALIZE", d.ID, nil)
+	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO document_status_history(id,document_id,from_status,to_status,changed_by,created_at) VALUES($1,$2,$3,'Finalized',$4,NOW())`, makeIdentifier("wfh"), d.ID, d.Status, p.UserID); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_HISTORY_ERROR", "could not record finalization history")
+	}
+	if err := a.auditWithExecutor(c, tx, p.UserID, "DOCUMENT_FINALIZE", d.ID, map[string]interface{}{"from_status": d.Status, "to_status": StatusFinalized}); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record finalization audit")
+	}
+	if err := a.notifyUserWithExecutor(c, tx, d.OwnerID, "workflow.transition", "Document moved to "+StatusFinalized, d.ID); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_CREATE_ERROR", "could not record finalization notification")
+	}
+	if err := tx.Commit(); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit finalization")
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"status": StatusFinalized})
 }
 
-func versionComparisonResult(left DocumentVersion, right DocumentVersion, leftRaw []byte, rightRaw []byte) map[string]interface{} {
-	result := map[string]interface{}{"left_version_id": left.ID, "right_version_id": right.ID, "comparison_kind": "binary_metadata", "text_diff_supported": false, "bbox_supported": false, "same_sha256": left.FileSHA256 == right.FileSHA256, "same_size": left.SizeBytes == right.SizeBytes, "same_page_count": left.PageCount == right.PageCount, "byte_length_delta": len(rightRaw) - len(leftRaw), "added": []interface{}{}, "removed": []interface{}{}, "modified": []interface{}{}}
-	if !bytes.Equal(leftRaw, rightRaw) {
-		result["modified"] = []map[string]interface{}{{"page": 1, "bbox": map[string]int{"x": 0, "y": 0, "w": 0, "h": 0}, "text": "binary content differs between supplied versions"}}
-	}
-	return result
-}
-
-func versionTextComparisonResult(left DocumentVersion, right DocumentVersion, leftRaw []byte, rightRaw []byte) map[string]interface{} {
+func versionTextComparisonResult(left DocumentVersion, right DocumentVersion) map[string]interface{} {
 	return service.CompareVersionFiles(
 		service.VersionFile{ID: left.ID, FilePath: left.FilePath, SHA256: left.FileSHA256, SizeBytes: left.SizeBytes, PageCount: left.PageCount},
 		service.VersionFile{ID: right.ID, FilePath: right.FilePath, SHA256: right.FileSHA256, SizeBytes: right.SizeBytes, PageCount: right.PageCount},
@@ -120,13 +172,5 @@ func (a *App) compareVersions(c echo.Context) error {
 	if !canReadDocumentObject(p, leftDoc) || !canReadDocumentObject(p, rightDoc) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "version comparison is outside this principal scope")
 	}
-	leftRaw, err := os.ReadFile(left.FilePath)
-	if err != nil {
-		return apiErr(c, http.StatusInternalServerError, "LEFT_FILE_READ_ERROR", "could not read left version")
-	}
-	rightRaw, err := os.ReadFile(right.FilePath)
-	if err != nil {
-		return apiErr(c, http.StatusInternalServerError, "RIGHT_FILE_READ_ERROR", "could not read right version")
-	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": versionTextComparisonResult(left, right, leftRaw, rightRaw)})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": versionTextComparisonResult(left, right)})
 }
