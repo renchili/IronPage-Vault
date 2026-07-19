@@ -90,6 +90,16 @@ auth_post_json() {
     -d "$3"
 }
 
+auth_put_json() {
+  curl -s -o "$BODY" -w "%{http_code}" "$BASE_URL$2" \
+    -X PUT \
+    -H "Authorization: Bearer $1" \
+    -H 'Content-Type: application/json' \
+    -H "X-Request-ID: $(reqid)" \
+    -H "X-Request-Timestamp: $(ts)" \
+    -d "$3"
+}
+
 auth_patch_json() {
   curl -s -o "$BODY" -w "%{http_code}" "$BASE_URL$2" \
     -X PATCH \
