@@ -87,15 +87,20 @@ jobs:
 
             const current = await github.rest.actions.getWorkflowRun({owner, repo, run_id: currentRunId});
             const workflowId = current.data.workflow_id;
-            const currentSha = current.data.head_sha;
-            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+            const currentSha = String(current.data.head_sha || '').trim();
+            if (!currentSha) {
+              await cancelCurrent('Current workflow head revision could not be resolved.');
+              return;
+            }
+
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
               owner,
               repo,
+              workflow_id: workflowId,
               per_page: 100,
             });
             const previous = runs
               .filter(run => Number(run.id) !== currentRunId)
-              .filter(run => Number(run.workflow_id) === Number(workflowId))
               .filter(run => runTarget(run) === target)
               .sort((left, right) => {
                 const leftTime = Date.parse(left.run_started_at || left.created_at || 0);
@@ -150,7 +155,9 @@ jobs:
 
               const marker = `unlock-${unlockRunId}`;
               const alreadyConsumed = previous.some(run =>
-                run.event === 'workflow_dispatch' && String(run.display_title || '').includes(marker)
+                run.event === 'workflow_dispatch' &&
+                run.conclusion !== 'cancelled' &&
+                String(run.display_title || '').includes(marker)
               );
               if (alreadyConsumed) {
                 await cancelCurrent(`One-time unlock for failed run ${unlockRunId} has already been consumed.`);
