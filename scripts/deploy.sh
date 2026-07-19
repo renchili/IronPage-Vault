@@ -19,6 +19,31 @@ random_port() {
   printf '%s\n' "$((20000 + value % 30000))"
 }
 
+host_port_available() {
+  local address="$1" port="$2"
+  if timeout 1 bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$address" "$port" 2>/dev/null; then
+    return 1
+  fi
+  return 0
+}
+
+select_available_host_port() {
+  local address="$1" excluded_one="$2" excluded_two="$3" candidate
+  local attempt
+  for attempt in $(seq 1 128); do
+    candidate=$(random_port)
+    if [ "$candidate" = "$excluded_one" ] || [ "$candidate" = "$excluded_two" ]; then
+      continue
+    fi
+    if host_port_available "$address" "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  echo "ERROR: unable to select an unused loopback host port after 128 attempts" >&2
+  return 1
+}
+
 read_env_value() {
   local key="$1"
   sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1
@@ -46,6 +71,11 @@ create_runtime_env() {
   local admin_username admin_password db_port http_port host_port host_bind_address
   local app_root postgres_root data_root
 
+  if ! command -v timeout >/dev/null 2>&1; then
+    echo "ERROR: timeout is required to verify host-port availability" >&2
+    exit 1
+  fi
+
   installation_id=$(random_hex | cut -c1-12)
   db_password=$(random_hex)
   jwt_secret=$(random_hex)
@@ -54,21 +84,21 @@ create_runtime_env() {
   # bcrypt accepts at most 72 bytes; one random_hex value is 64 ASCII bytes.
   admin_password=$(random_hex)
 
-  host_bind_address=$(getent ahostsv4 localhost | awk 'NR == 1 {print $1}')
-  if [ -z "$host_bind_address" ]; then
-    echo "ERROR: unable to resolve the local loopback address" >&2
-    exit 1
-  fi
+  host_bind_address=$(getent ahostsv4 localhost | awk '$1 ~ /^127\./ {print $1; exit}')
+  case "$host_bind_address" in
+    127.*) ;;
+    *)
+      echo "ERROR: localhost did not resolve to an IPv4 loopback address" >&2
+      exit 1
+      ;;
+  esac
 
   db_port=$(random_port)
   http_port=$(random_port)
   while [ "$http_port" = "$db_port" ]; do
     http_port=$(random_port)
   done
-  host_port=$(random_port)
-  while [ "$host_port" = "$db_port" ] || [ "$host_port" = "$http_port" ]; do
-    host_port=$(random_port)
-  done
+  host_port=$(select_available_host_port "$host_bind_address" "$db_port" "$http_port")
 
   app_root="/opt/ironpage-$installation_id"
   postgres_root="/var/lib/postgresql-$installation_id"

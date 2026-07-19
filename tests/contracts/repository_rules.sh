@@ -18,6 +18,7 @@ check() {
 
 check "rule entrypoints exist" "test -f AGENTS.md && test -f AGENT.md"
 check "rule entrypoint roles are unambiguous" "grep -q 'mandatory repository entrypoint' AGENTS.md && grep -q 'Project-adapted rules belong in \`AGENT.md\`' AGENTS.md && grep -q '# AGENT Rules for IronPage Vault' AGENT.md"
+check "acceptance Skill is static and read-only" "grep -q 'Mandatory acceptance mode: static and read-only' skills/full-project-acceptance-hard-gates/SKILL.md && grep -q 'trigger, retry, rerun, create, approve, or wait for CI execution' skills/full-project-acceptance-hard-gates/SKILL.md && grep -q 'Missing execution evidence must be recorded as \`NOT VERIFIED\`' skills/full-project-acceptance-hard-gates/SKILL.md"
 check "metadata exists" "test -f metadata.json"
 check "canonical API test layout" "test -d tests/api && test -f tests/api/lib.sh && test ! -e API_tests"
 check "canonical contract layout" "test -d tests/contracts && test ! -e unit_tests"
@@ -28,6 +29,7 @@ check "obsolete review process docs removed" "test ! -d docs/review-fixes || tes
 check "one-command deployer" "test -f scripts/deploy.sh && bash -n scripts/deploy.sh"
 check "runtime file exclusions" "grep -Fxq '.env' .gitignore && grep -Fxq '.env' .dockerignore"
 check "bootstrap acceptance uses deployer" "grep -q 'scripts/deploy.sh' tests/api/test_bootstrap_restart_docker.sh"
+check "fresh deployment checks loopback host port" "grep -q 'select_available_host_port' scripts/deploy.sh && grep -q 'host_port_available' scripts/deploy.sh && grep -q 'localhost did not resolve to an IPv4 loopback address' scripts/deploy.sh"
 
 check "application local configuration has no fallback" "! grep -Eq 'env\(\"(HTTP_ADDR|DB_PORT|DB_USER|DB_NAME|STORAGE_DIR|BACKUP_DIR|MIGRATIONS_DIR|PUBLIC_DIR)\", \"[^\"]+\"\)' internal/app/config.go && ! grep -q 'DBHost' internal/app/config.go"
 check "sensitive configuration has no fallback" "grep -q 'DBPassword:.*env(\"DB_PASSWORD\", \"\")' internal/app/config.go && grep -q 'JWTSecret:.*env(\"JWT_SECRET\", \"\")' internal/app/config.go && grep -q 'AESKey:.*env(\"AES_KEY\", \"\")' internal/app/config.go"
@@ -44,12 +46,18 @@ check "strict PDF and backup entrypoints" "grep -q 'RewritePDFWithRedactionsStri
 check "encrypted redaction coordinates" "grep -q 'x_ciphertext' internal/app/review.go && grep -q 'EncryptedRedactionRegions' internal/app/coordinate_crypto.go"
 check "rolling lockout and fail-closed errors" "grep -q 'loginAttemptWindow.*15 \* time.Minute' internal/app/auth.go && grep -q 'LOGIN_ATTEMPT_WRITE_ERROR' internal/app/auth.go && grep -q 'LOGIN_STATE_WRITE_ERROR' internal/app/auth.go && grep -q 'AUTH_STATE_READ_ERROR' internal/app/auth.go && grep -q 'SESSION_UPDATE_ERROR' internal/app/auth.go && grep -q 'LOGOUT_WRITE_ERROR' internal/app/auth.go"
 
-check "single serialized workflow" "test \"\$(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) | wc -l | tr -d ' ')\" = 1 && test -f .github/workflows/ci.yml"
-check "workflow has target lock cooldown and failure latch" "grep -q 'concurrency:' .github/workflows/ci.yml && grep -q 'cancel-in-progress: false' .github/workflows/ci.yml && grep -q 'IRONPAGE_CI_TARGET' .github/workflows/ci.yml && grep -q 'COOLDOWN_SECONDS = 10 \* 60' ci/ci_execution_guard.py && grep -q 'failed_same_revision' ci/ci_execution_guard.py"
+check "single static workflow" "test \"\$(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) | wc -l | tr -d ' ')\" = 1 && test -f .github/workflows/ci.yml"
+check "workflow collapses duplicate target runs" "grep -q 'cancel-in-progress: true' .github/workflows/ci.yml && grep -q 'Cancelled superseded active run' .github/workflows/ci.yml"
+check "admission precedes checkout" "test \"\$(grep -n 'actions/github-script@v7' .github/workflows/ci.yml | head -1 | cut -d: -f1)\" -lt \"\$(grep -n 'actions/checkout@v4' .github/workflows/ci.yml | head -1 | cut -d: -f1)\""
+check "admission does not sleep" "! grep -Eq 'time\.sleep|sleep [0-9]' .github/workflows/ci.yml"
+check "workflow paginates complete scoped history" "grep -q 'github.paginate' .github/workflows/ci.yml && grep -q 'listWorkflowRuns' .github/workflows/ci.yml && grep -q 'workflow_id: workflowId' .github/workflows/ci.yml"
+check "one-time unlock is exact and auditable" "grep -q 'unlock_failed_run_id' .github/workflows/ci.yml && grep -q 'unlock_reason' .github/workflows/ci.yml && grep -q 'alreadyConsumed' .github/workflows/ci.yml && grep -q 'One-time unlock.*already been consumed' .github/workflows/ci.yml"
+check "ordinary reruns do not bypass admission" "grep -q 'currentAttempt > 1' .github/workflows/ci.yml"
 check "workflow is static and fail-fast" "! grep -RIn 'if: always()' .github/workflows && ! grep -q 'run_full_regression.sh' .github/workflows/ci.yml && ! grep -Eq 'go test|go vet|docker (build|compose)|run_tests.sh' .github/workflows/ci.yml"
 check "workflow exposes static gates" "grep -q 'shell_syntax_check.sh' .github/workflows/ci.yml && grep -q 'source_inventory.py' .github/workflows/ci.yml && grep -q 'docs_consistency_check.sh' .github/workflows/ci.yml && grep -q 'tests/contracts/repository_rules.sh' .github/workflows/ci.yml"
+check "successful static inventory is retained" "grep -q 'actions/upload-artifact@v4' .github/workflows/ci.yml && grep -q 'artifacts/static-acceptance/source-inventory.json' .github/workflows/ci.yml && grep -q 'retention-days: 90' .github/workflows/ci.yml"
+check "source inventory audits generic path hazards" "grep -q 'non-ASCII tracked path' ci/source_inventory.py && grep -q 'case-only path collision' ci/source_inventory.py && grep -q 'near-duplicate sibling paths' ci/source_inventory.py && grep -q 'mixed hyphen/underscore naming' ci/source_inventory.py && grep -q 'path_hygiene_findings' ci/source_inventory.py && grep -q 'allowed_path_exceptions' ci/source_inventory.py"
 check "full regression helper remains fail fast" "grep -q 'summary, and exits' ci/run_full_regression.sh && grep -q 'exit \"\$status\"' ci/run_full_regression.sh"
-check "source inventory is retained" "test -f ci/source_inventory.py && grep -q 'tracked_file_count' ci/source_inventory.py"
 check "local report derives executed stages" "grep -q 'executed_stages' run_tests.sh && grep -q 'Executed stages' run_tests.sh && ! grep -q 'This local report covers Swagger generation' run_tests.sh"
 
 check "documentation consistency gate is in static workflow" "grep -q 'docs_consistency_check.sh' .github/workflows/ci.yml && test -f ci/docs_consistency_check.sh"

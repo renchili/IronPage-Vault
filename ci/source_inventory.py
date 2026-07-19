@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Generate a tracked-source manifest and reject repository contamination."""
+"""Generate a retained tracked-source manifest and reject repository hazards."""
 
 from __future__ import annotations
 
+from collections import defaultdict
 import hashlib
 import json
-import os
 from pathlib import Path
 import stat
 import subprocess
@@ -35,6 +35,9 @@ GENERATED_PREFIXES = (
     "coverage/",
     "reports/",
 )
+ALLOWED_NEAR_DUPLICATE_PAIRS = {
+    frozenset({"AGENT.md", "AGENTS.md"}),
+}
 
 
 def tracked_files() -> list[Path]:
@@ -43,7 +46,10 @@ def tracked_files() -> list[Path]:
         check=True,
         stdout=subprocess.PIPE,
     )
-    return [Path(item.decode("utf-8")) for item in result.stdout.split(b"\0") if item]
+    return sorted(
+        (Path(item.decode("utf-8")) for item in result.stdout.split(b"\0") if item),
+        key=lambda path: path.as_posix(),
+    )
 
 
 def sha256(path: Path) -> str:
@@ -54,16 +60,86 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: source_inventory.py OUTPUT_JSON", file=sys.stderr)
-        return 2
+def differs_by_one_edit(left: str, right: str) -> bool:
+    """Return true only when two names differ by exactly one edit."""
+    if left == right or abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) > len(right):
+        left, right = right, left
+    if len(left) == len(right):
+        differences = sum(a != b for a, b in zip(left, right, strict=True))
+        return differences == 1
 
-    output = Path(sys.argv[1])
-    files = tracked_files()
+    left_index = 0
+    right_index = 0
+    skipped = False
+    while left_index < len(left) and right_index < len(right):
+        if left[left_index] == right[right_index]:
+            left_index += 1
+            right_index += 1
+            continue
+        if skipped:
+            return False
+        skipped = True
+        right_index += 1
+    return True
+
+
+def path_hygiene_findings(files: list[Path]) -> tuple[list[str], list[str]]:
     findings: list[str] = []
-    entries: list[dict[str, object]] = []
+    allowed_exceptions: list[str] = []
+    casefolded: dict[str, list[str]] = defaultdict(list)
+    siblings: dict[tuple[str, str], list[Path]] = defaultdict(list)
 
+    for path in files:
+        relative = path.as_posix()
+        casefolded[relative.casefold()].append(relative)
+
+        if not relative.isascii():
+            findings.append(f"non-ASCII tracked path: {relative}")
+        if any(character.isspace() for character in relative):
+            findings.append(f"whitespace in tracked path: {relative}")
+        if any(ord(character) < 32 or ord(character) == 127 for character in relative):
+            findings.append(f"control character in tracked path: {relative!r}")
+        if any("-" in part and "_" in part for part in path.parts):
+            findings.append(f"mixed hyphen/underscore naming in path segment: {relative}")
+
+        parent = path.parent.as_posix()
+        suffix = path.suffix.casefold()
+        siblings[(parent, suffix)].append(path)
+
+    for values in casefolded.values():
+        if len(values) > 1:
+            findings.append(f"case-only path collision: {', '.join(sorted(values))}")
+
+    for paths in siblings.values():
+        ordered = sorted(paths, key=lambda path: path.name.casefold())
+        for index, left in enumerate(ordered):
+            for right in ordered[index + 1 :]:
+                left_name = left.name.casefold()
+                right_name = right.name.casefold()
+                if min(len(left_name), len(right_name)) < 5:
+                    continue
+                if not differs_by_one_edit(left_name, right_name):
+                    continue
+
+                pair = frozenset({left.as_posix(), right.as_posix()})
+                if pair in ALLOWED_NEAR_DUPLICATE_PAIRS:
+                    allowed_exceptions.append(
+                        "explicit rule-entrypoint exception: "
+                        + ", ".join(sorted(pair))
+                    )
+                else:
+                    findings.append(
+                        "near-duplicate sibling paths: "
+                        + ", ".join(sorted(pair))
+                    )
+
+    return sorted(set(findings)), sorted(set(allowed_exceptions))
+
+
+def contamination_findings(files: list[Path]) -> list[str]:
+    findings: list[str] = []
     for path in files:
         relative = path.as_posix()
         parts = set(path.parts)
@@ -77,8 +153,24 @@ def main() -> int:
             findings.append(f"forbidden tracked generated artifact: {relative}")
         if not path.is_file():
             findings.append(f"tracked path is not a regular file: {relative}")
-            continue
+    return sorted(set(findings))
 
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: source_inventory.py OUTPUT_JSON", file=sys.stderr)
+        return 2
+
+    output = Path(sys.argv[1])
+    files = tracked_files()
+    path_findings, allowed_exceptions = path_hygiene_findings(files)
+    contamination = contamination_findings(files)
+    entries: list[dict[str, object]] = []
+
+    for path in files:
+        if not path.is_file():
+            continue
+        relative = path.as_posix()
         mode = stat.S_IMODE(path.stat().st_mode)
         entries.append(
             {
@@ -90,16 +182,21 @@ def main() -> int:
         )
 
     payload = {
-        "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+        "commit": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True
+        ).strip(),
         "tracked_file_count": len(entries),
         "files": entries,
-        "contamination_findings": findings,
+        "contamination_findings": contamination,
+        "path_hygiene_findings": path_findings,
+        "allowed_path_exceptions": allowed_exceptions,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
-    if findings:
-        for finding in findings:
+    all_findings = contamination + path_findings
+    if all_findings:
+        for finding in all_findings:
             print(f"ERROR: {finding}", file=sys.stderr)
         return 1
     print(f"PASS: source inventory contains {len(entries)} tracked files")

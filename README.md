@@ -33,7 +33,7 @@ migrations/          PostgreSQL schema
 tests/api/           stateful HTTP, Docker, and browser acceptance flows
 tests/contracts/     repository, structure, and generated-contract checks
 testdata/            local PDF and CSV fixtures
-ci/                  serialized verification and full-regression orchestration
+ci/                  static workflow contracts and manual regression helpers
 scripts/deploy.sh    one-command secure local deployment
 docs/                API, design, security, deployment, testing, and operations docs
 public/index.html    canonical acceptance-only browser probe
@@ -46,7 +46,7 @@ Start with `cmd/server/main.go`, `internal/app/server.go`, `internal/app/config.
 The supported deployment path requires:
 
 - Docker with Docker Compose v2;
-- Bash and standard local tools including `od`, `sed`, `tr`, `cut`, `awk`, and `getent`.
+- Bash and standard local tools including `od`, `sed`, `tr`, `cut`, `awk`, `getent`, and `timeout`.
 
 No external database, identity provider, PDF service, object store, notification service, or runtime internet connection is required.
 
@@ -60,12 +60,14 @@ bash scripts/deploy.sh
 
 The first run:
 
-1. creates `.env` with mode `0600`;
-2. generates installation-specific database identity, ports, filesystem targets, JWT material, AES material, and initial Admin credentials;
-3. builds the image with the generated application root and HTTP port;
-4. starts the single Compose service;
-5. waits for health; and
-6. prints the actual API, health, and Swagger URLs plus the initial Admin pair.
+1. resolves `localhost` to an IPv4 loopback address;
+2. selects a currently unused random loopback host port;
+3. creates `.env` with mode `0600`;
+4. generates installation-specific database identity, container ports, filesystem targets, JWT material, AES material, and initial Admin credentials;
+5. builds the image with the generated application root and HTTP port;
+6. starts the single Compose service;
+7. waits for health; and
+8. prints the actual API, health, and Swagger URLs plus the initial Admin pair.
 
 The generated `.env` is excluded from Git and from the Docker build context. Re-running the command reuses it instead of rotating persistent configuration.
 
@@ -82,6 +84,8 @@ The corresponding endpoints are:
 http://<HOST_BIND_ADDRESS>:<HOST_PORT>/healthz
 http://<HOST_BIND_ADDRESS>:<HOST_PORT>/swagger/index.html
 ```
+
+The availability probe reduces first-start port collisions but cannot remove the operating-system race between probing and Docker binding. Docker Compose remains the final authority and fails rather than silently changing the persisted port.
 
 ## Runtime configuration ownership
 
@@ -137,22 +141,29 @@ bash run_tests.sh
 
 Without `BASE_URL` and all three execution-scoped `SEED_*_PASSWORD` values, stateful rows are recorded as `SKIP`, the report is `INCOMPLETE`, and the command exits with status `2`. A skipped stage is never reported as a local PASS.
 
-Complete serialized regression:
+Complete serialized regression remains a manual or normal-lifecycle command:
 
 ```bash
 bash ci/run_full_regression.sh artifacts/regression
 ```
 
-GitHub verification is defined only in `.github/workflows/ci.yml`. The workflow:
+GitHub verification is defined only in `.github/workflows/ci.yml` and is **static acceptance only**. The workflow:
 
-- uses one repository-and-target concurrency group;
-- waits out any remaining ten-minute target cooldown before validation;
-- latches a failed revision until a new commit or explicit reviewed manual unlock;
-- runs one sequential job;
-- stops after the first failed stage; and
-- uploads evidence only after the complete regression succeeds.
+- resolves one target key across pull requests, merge groups, `main` pushes, and manual dispatches;
+- uses target concurrency with `cancel-in-progress: true` to collapse superseded active events;
+- performs admission before checkout or repository-controlled code;
+- cancels denied admission immediately instead of sleeping inside a runner;
+- paginates the complete workflow history used for cooldown and failure-latch decisions;
+- applies a ten-minute target cooldown;
+- latches a failed target/revision;
+- rejects ordinary rerun attempts;
+- permits one reviewed replay only when `target`, `unlock_failed_run_id`, and `unlock_reason` identify the exact authorization;
+- runs static syntax, formatting, inventory, documentation, and contract gates sequentially; and
+- retains the source-inventory artifact only after all static gates succeed.
 
-`run_tests.sh` reports only stage rows that actually executed. Its lightweight contract probe is not full-regression evidence.
+GitHub creates a workflow-run object before repository YAML can execute admission. The repository workflow therefore guarantees pre-checkout admission and active-run collapse, not literal pre-dispatch prevention. Any requirement for zero run-object or runner creation needs separate platform-level evidence.
+
+`run_tests.sh` reports only stage rows that actually executed. Its lightweight contract probe is not full-regression evidence. Static CI is not Docker, API, browser-interaction, deployment, or full-regression acceptance.
 
 ## Roles
 
