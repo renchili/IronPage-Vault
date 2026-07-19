@@ -8,26 +8,14 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"ironpage-vault/internal/core"
 	"ironpage-vault/internal/service"
 )
 
+// nextWorkflowStatus preserves the default-chain compatibility helper used by
+// package tests. Runtime transitions resolve the persisted Admin-managed chain.
 func nextWorkflowStatus(current string) string {
-	return coreNextWorkflowStatus(current)
-}
-
-func coreNextWorkflowStatus(current string) string {
-	switch current {
-	case StatusDraft:
-		return StatusUnderReview
-	case StatusUnderReview:
-		return StatusRedactionPending
-	case StatusRedactionPending:
-		return StatusApproved
-	case StatusApproved:
-		return StatusFinalized
-	default:
-		return ""
-	}
+	return core.NextWorkflowStatus(current)
 }
 
 func (a *App) transitionDocument(c echo.Context) error {
@@ -39,13 +27,11 @@ func (a *App) transitionDocument(c echo.Context) error {
 		return apiErr(c, http.StatusBadRequest, "STATUS_REQUIRED", "target status is required")
 	}
 	req.Status = strings.TrimSpace(req.Status)
-
 	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
-
 	var d Document
 	if err := tx.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1 FOR UPDATE`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
@@ -72,7 +58,6 @@ func (a *App) transitionDocument(c echo.Context) error {
 	if p.Role != RoleReviewer && p.Role != RoleEditor {
 		return apiErr(c, http.StatusForbidden, "FORBIDDEN", "role cannot transition documents")
 	}
-
 	if _, err := tx.ExecContext(c.Request().Context(), `UPDATE documents SET status=$1, finalized_at=CASE WHEN $1='Finalized' THEN NOW() ELSE finalized_at END, updated_at=NOW() WHERE id=$2`, req.Status, d.ID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_UPDATE_ERROR", "workflow transition failed")
 	}
@@ -98,7 +83,6 @@ func (a *App) finalizeDocument(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
-
 	var d Document
 	if err := tx.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1 FOR UPDATE`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
