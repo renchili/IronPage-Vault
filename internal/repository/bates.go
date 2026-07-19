@@ -1,14 +1,42 @@
 package repository
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
 
-func (r Repository) AllocateBatesStart(ctx context.Context, requested int) (int, error) {
-	if requested > 0 {
-		return requested, nil
+	"github.com/jmoiron/sqlx"
+)
+
+var ErrBatesSequenceOverlap = errors.New("requested Bates start overlaps an allocated sequence")
+
+// AllocateBatesRange locks the global sequence and reserves every page number
+// used by one Bates job. The caller supplies its transaction so the reservation,
+// job, document version, document pointer, and audit record commit together.
+func AllocateBatesRange(ctx context.Context, executor sqlx.ExtContext, requested int, count int) (int, error) {
+	if count < 1 {
+		return 0, fmt.Errorf("Bates allocation count must be positive")
 	}
-	var start int
-	if err := r.DB.GetContext(ctx, &start, `INSERT INTO bates_sequences(scope,next_number,updated_at) VALUES('global',2,NOW()) ON CONFLICT(scope) DO UPDATE SET next_number=bates_sequences.next_number+1, updated_at=NOW() RETURNING next_number-1`); err != nil {
+	if _, err := executor.ExecContext(ctx, `INSERT INTO bates_sequences(scope,next_number,updated_at) VALUES('global',1,NOW()) ON CONFLICT(scope) DO NOTHING`); err != nil {
+		return 0, err
+	}
+	var next int
+	if err := sqlx.GetContext(ctx, executor, &next, `SELECT next_number FROM bates_sequences WHERE scope='global' FOR UPDATE`); err != nil {
+		return 0, err
+	}
+	start := next
+	if requested > 0 {
+		if requested < next {
+			return 0, ErrBatesSequenceOverlap
+		}
+		start = requested
+	}
+	if _, err := executor.ExecContext(ctx, `UPDATE bates_sequences SET next_number=$1,updated_at=NOW() WHERE scope='global'`, start+count); err != nil {
 		return 0, err
 	}
 	return start, nil
+}
+
+func (r Repository) AllocateBatesStart(ctx context.Context, requested int) (int, error) {
+	return AllocateBatesRange(ctx, r.DB, requested, 1)
 }
