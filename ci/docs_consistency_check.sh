@@ -17,6 +17,7 @@ check_absent() {
 
 required_docs=(
   README.md
+  ci/BOUNDARY.md
   docs/questions.md
   docs/requirement-check.md
   docs/security.md
@@ -26,6 +27,8 @@ required_docs=(
   docs/usage.md
   docs/pitr.md
   docs/deployment-offline.md
+  docs/swagger-artifacts.md
+  skills/full-project-acceptance-hard-gates/SKILL.md
 )
 for path in "${required_docs[@]}"; do
   if [ ! -f "$path" ]; then
@@ -47,6 +50,9 @@ check_absent "obsolete security blocker" "unsafe runtime defaults.*(block|fail)|
 check_absent "untracked process narration" "Next action|Future work|Conversation record|agent process|tool failure|branch failure|PR failure|This patch addresses|This patch closes" README.md docs
 check_absent "false current evidence claim" "current HEAD.*(passed|PASS)|full regression.*current.*passed" README.md docs
 check_absent "cloud deployment outside project scope" "AWS|EKS|Lambda|CloudFormation|serverless deployment" README.md docs scripts Dockerfile docker-compose.yml
+check_absent "obsolete post-checkout guard" "ci_execution_guard\\.py" README.md docs .github tests
+check_absent "obsolete runner cooldown sleep claim" "waits out any remaining ten-minute|sleep.*cooldown|cooldown.*sleep" README.md docs .github
+check_absent "static workflow overstated as full regression" "static workflow.*complete regression|sole workflow.*complete regression|workflow.*uploads evidence only after the complete regression" README.md docs
 
 if [ -e deploy/aws ] || [ -e docs/aws-deployment.md ]; then
   echo "ERROR: cloud deployment material conflicts with the air-gapped single-container scope"
@@ -78,7 +84,9 @@ required_topics = {
     'Initial administrator and acceptance fixtures',
     'Authentication state failures must fail closed',
     'Acceptance browser surface',
-    'Regression and current-HEAD evidence',
+    'Static reviewer acceptance',
+    'CI admission and one-time unlock',
+    'Regression and current-revision evidence',
 }
 actual_topics = {match.group(1).strip() for match in section_matches}
 missing = sorted(required_topics - actual_topics)
@@ -101,10 +109,29 @@ for path in (
     Path('migrations/002_login_attempt_window.sql'),
     Path('tests/api/test_auth_lockout_docker.sh'),
     Path('ci/docker_acceptance.sh'),
+    Path('skills/full-project-acceptance-hard-gates/SKILL.md'),
 ):
     if not path.is_file():
         raise SystemExit(f'ERROR: documented evidence path is missing: {path}')
 print('PASS: requirement clarification structure and evidence paths')
+PY
+
+python3 - <<'PY' || fail=1
+from pathlib import Path
+import re
+
+skill = Path('skills/full-project-acceptance-hard-gates/SKILL.md').read_text(encoding='utf-8')
+required_phrases = (
+    'Mandatory acceptance mode: static and read-only',
+    'trigger, retry, rerun, create, approve, or wait for CI execution',
+    'Missing execution evidence must be recorded as `NOT VERIFIED`',
+    'admission occurs before checkout or any repository-controlled code',
+    'unlock identifies the exact target, revision, failed run, reviewer reason, and one-time consumption record',
+)
+for phrase in required_phrases:
+    if phrase not in skill:
+        raise SystemExit(f'ERROR: acceptance Skill is missing required static rule: {phrase}')
+print('PASS: static read-only acceptance Skill contract')
 PY
 
 python3 - <<'PY' || fail=1
