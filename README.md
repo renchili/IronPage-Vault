@@ -1,25 +1,25 @@
 # IronPage Vault
 
-IronPage Vault is an offline legal PDF lifecycle management **backend API** for air-gapped legal, compliance, and regulated document environments. It uses Go, Echo, sqlx, PostgreSQL, and local filesystem storage.
+IronPage Vault is an offline legal PDF lifecycle management **backend API** for air-gapped legal, compliance, and regulated-document environments. It uses Go, Echo, sqlx, PostgreSQL, and local filesystem storage in one standalone container.
 
-This is not a fullstack product. Files under `public/` are acceptance-only backend testing aids and are served only when explicit acceptance mode is enabled.
+This is not a full-stack product. `public/index.html` is the single acceptance-only browser probe and is served only when acceptance mode is explicitly enabled.
 
-## What the backend provides
+## Capabilities
 
-The API covers:
+The backend implements:
 
-- local identity, rolling failed-login lockout, server-side sessions, token revocation, freshness checks, and replay protection.
-- Admin, Editor, and Reviewer authorization boundaries.
-- PDF intake, version records, local binary storage, and revision limits.
-- ordered workflow from Draft through Finalized, with terminal immutability.
-- staged redaction followed by confirmed PDF burn-in.
-- reviewer annotations and dispositions.
-- visible Bates numbering and sequence records.
+- local identity, rolling failed-login lockout, server-side sessions, token revocation, freshness validation, and replay protection;
+- Admin, Editor, and Reviewer authorization boundaries;
+- PDF intake, local binary storage, version history, and revision limits;
+- Draft → Under Review → Redaction Pending → Approved → Finalized workflow with terminal immutability;
+- staged redaction followed by confirmed PDF burn-in;
+- reviewer annotations and dispositions;
+- visible Bates numbering and auditable sequence allocation;
 - document comparison, audit records, notifications, configuration, backup, and restore.
 
-Implementation and acceptance claims must be read together with the exact test revision. Historical successful regression evidence is not the same as a fresh run for the current HEAD.
+Implementation claims and test evidence are revision-specific. A historical successful run is not evidence for another commit.
 
-## Repository map
+## Repository layout
 
 ```text
 cmd/server/          process entrypoint
@@ -30,186 +30,129 @@ internal/repository/ repository interfaces and persistence operations
 internal/store/      SQL-facing storage helpers
 internal/platform/   PDF, crypto, digest, filesystem, backup, restore adapters
 migrations/          PostgreSQL schema
-scripts/deploy.sh    one-command secure local deployment
-API_tests/           stateful API, bootstrap, authentication, and browser acceptance
-unit_tests/          static and repository contract checks
-ci/                  Docker acceptance and full-regression entrypoints
+tests/api/           stateful HTTP, Docker, and browser acceptance flows
+tests/contracts/     repository, structure, and generated-contract checks
 testdata/            local PDF and CSV fixtures
+ci/                  serialized verification and full-regression orchestration
+scripts/deploy.sh    one-command secure local deployment
 docs/                API, design, security, deployment, testing, and operations docs
-public/              acceptance-only browser aid
+public/index.html    canonical acceptance-only browser probe
 ```
 
-Start with `cmd/server/main.go` for process startup, `internal/app/server.go` for routes and runtime assembly, `internal/app/config.go` for application configuration gates, `docker-compose.yml` for the single-container runtime, and `docs/api-spec.md` for endpoint behavior.
+Start with `cmd/server/main.go`, `internal/app/server.go`, `internal/app/config.go`, `docker-compose.yml`, and `docs/api-spec.md`.
 
 ## Prerequisites
 
-The supported local runtime path requires:
+The supported deployment path requires:
 
-- Docker with Docker Compose v2.
-- Bash and standard local tools including `od`, `sed`, `tr`, and `cut`.
+- Docker with Docker Compose v2;
+- Bash and standard local tools including `od`, `sed`, `tr`, `cut`, `awk`, and `getent`.
 
-The application image contains PostgreSQL and the Go API process in one service container. No external database or network service is required.
+No external database, identity provider, PDF service, object store, notification service, or runtime internet connection is required.
 
-For source-level Go checks, use the Go version declared by the repository build configuration.
+## One-command deployment
 
-## First 10 minutes: one-command deployment
-
-From the repository root, run:
+From the repository root:
 
 ```bash
 bash scripts/deploy.sh
 ```
 
-On the first run, the deployer:
+The first run:
 
-1. creates a local `.env` runtime file with mode `0600`;
-2. generates random database, JWT-signing, AES-encryption, and initial Admin credentials;
-3. configures the embedded PostgreSQL instance and API from that file;
-4. builds and starts the single Compose service in the background;
-5. waits for `/healthz` to succeed; and
-6. prints the initial Admin username and password once.
+1. creates `.env` with mode `0600`;
+2. generates installation-specific database identity, ports, filesystem targets, JWT material, AES material, and initial Admin credentials;
+3. builds the image with the generated application root and HTTP port;
+4. starts the single Compose service;
+5. waits for health; and
+6. prints the actual API, health, and Swagger URLs plus the initial Admin pair.
 
-The generated `.env` is excluded from Git and from the Docker build context. Product code, image layers, Compose defaults, documentation, and browser assets do not contain a fixed credential or cryptographic key.
+The generated `.env` is excluded from Git and from the Docker build context. Re-running the command reuses it instead of rotating persistent configuration.
 
-Repeated execution uses the existing `.env` instead of rotating the database password or encryption keys:
-
-```bash
-bash scripts/deploy.sh
-```
-
-## Verify startup
-
-The API listens on port `8080` by default.
-
-```bash
-curl http://localhost:8080/healthz
-```
-
-A successful response confirms that runtime validation passed and PostgreSQL is reachable. Swagger UI is mounted at:
+Do not assume `localhost:8080`. Read the printed URL or inspect these generated values:
 
 ```text
-http://localhost:8080/swagger/index.html
+HOST_BIND_ADDRESS
+HOST_PORT
 ```
 
-## Database and runtime configuration
+The corresponding endpoints are:
 
-The one-command deployer writes the complete local runtime configuration to `.env`. The embedded PostgreSQL process and the Go API use the same database identity.
+```text
+http://<HOST_BIND_ADDRESS>:<HOST_PORT>/healthz
+http://<HOST_BIND_ADDRESS>:<HOST_PORT>/swagger/index.html
+```
 
-| Variable | Generated/default value | Purpose |
-|---|---|---|
-| `DB_HOST` | `127.0.0.1` | Embedded PostgreSQL address inside the container |
-| `DB_PORT` | `5432` | Embedded PostgreSQL port |
-| `DB_USER` | `ironpage` | PostgreSQL role used by both PostgreSQL initialization and the API |
-| `DB_PASSWORD` | Randomly generated | PostgreSQL password used by both PostgreSQL initialization and the API |
-| `DB_NAME` | `ironpage` | PostgreSQL database used by both PostgreSQL initialization and the API |
-| `JWT_SECRET` | Randomly generated | Local JWT signing material |
-| `AES_KEY` | Randomly generated | Sensitive-column encryption material |
-| `BOOTSTRAP_ADMIN_USERNAME` | Randomly generated | Initial empty-database Admin identity |
-| `BOOTSTRAP_ADMIN_PASSWORD` | Randomly generated | Initial empty-database Admin password |
+## Runtime configuration ownership
 
-`docker-compose.yml` derives `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` from `DB_USER`, `DB_PASSWORD`, and `DB_NAME`. This keeps the embedded database initialization and the application connection configuration consistent.
+The deployment layer writes every local runtime value to `.env`; the image, Compose file, and Go application do not provide an alternative fixed local configuration.
 
-The Go application still has no sensitive fallback values. Starting Compose without a complete runtime file or equivalent externally supplied values fails closed. The deployment script is responsible for creating those external values securely on first use.
+| Area | Variables |
+|---|---|
+| Host exposure | `HOST_BIND_ADDRESS`, `HOST_PORT` |
+| API listener | `HTTP_PORT`, `HTTP_ADDR` |
+| PostgreSQL | `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` |
+| Cryptography | `JWT_SECRET`, `AES_KEY` |
+| Initial Admin | `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD` |
+| Application assets | `IRONPAGE_APP_ROOT`, `MIGRATIONS_DIR`, `PUBLIC_DIR` |
+| PostgreSQL storage | `POSTGRES_VOLUME_ROOT`, `PGDATA` |
+| Product storage | `IRONPAGE_VOLUME_ROOT`, `STORAGE_DIR`, `BACKUP_DIR` |
+| Acceptance fixtures | `ACCEPTANCE_MODE`, `SEED_ADMIN_PASSWORD`, `SEED_EDITOR_PASSWORD`, `SEED_REVIEWER_PASSWORD` |
 
-To customize a clean installation, generate the file without starting containers, edit it, and then deploy:
+Compose maps `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `PGPORT` from the same generated `DB_*` values used by the API. Startup fails if required values are missing or inconsistent.
+
+To inspect or customize a clean installation before startup:
 
 ```bash
 IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh
-# Edit .env while preserving strong unique secret values.
+# Edit .env before the first build.
 bash scripts/deploy.sh
 ```
 
-Do not casually change `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`, or `AES_KEY` after persistent data exists. Database credentials must be migrated inside PostgreSQL, and changing `AES_KEY` makes existing encrypted metadata unreadable. For a disposable clean re-test, remove the volumes first.
+Do not change database identity, database password, AES key, image paths, volume targets, or listener ports after data exists without a deliberate migration.
 
-After the initial Admin login is verified, remove `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD` from `.env`. Existing users are preserved and restart does not create or overwrite another Admin.
+After verifying the first Admin login, remove the bootstrap pair from `.env`. Existing users remain unchanged across restart.
 
-## Manual Compose operation
+See `docs/deployment-offline.md` for the complete deployment contract.
 
-The deployment script is the supported first-run path. Once `.env` exists, the equivalent manual start is:
+## Normal and acceptance modes
 
-```bash
-docker compose --env-file .env up --build -d
-```
+Normal mode is generated by default and does not create fixture identities or serve `/ui/`.
 
-Stop while preserving data:
-
-```bash
-docker compose --env-file .env down
-```
-
-Remove local volumes for a clean re-test:
-
-```bash
-docker compose --env-file .env down -v
-```
-
-A clean normal-mode database again needs bootstrap values. Running `bash scripts/deploy.sh` with a missing or empty `.env` generates a new complete configuration.
-
-## Normal mode and acceptance mode
-
-Normal mode is the deployment default:
+Acceptance mode is isolated validation only. It requires execution-scoped values for all three fixture passwords and cannot be combined with bootstrap values. In that mode, the canonical browser probe is available at:
 
 ```text
-ACCEPTANCE_MODE=false
+http://<HOST_BIND_ADDRESS>:<HOST_PORT>/ui/
 ```
 
-Normal mode:
+The browser page contains no fixture credential.
 
-- does not create fixture identities.
-- rejects acceptance seed values.
-- does not serve `/ui/`.
+## Verification entrypoints
 
-Acceptance mode is limited to isolated CI or local acceptance runs. It requires externally supplied values for all three fixture identities:
-
-```text
-ACCEPTANCE_MODE=true
-SEED_ADMIN_PASSWORD
-SEED_EDITOR_PASSWORD
-SEED_REVIEWER_PASSWORD
-```
-
-Bootstrap Admin values and acceptance fixture values are mutually exclusive. The repository and browser pages contain no fixture passwords.
-
-The acceptance UI is then available at:
-
-```text
-http://localhost:8080/ui/
-```
-
-The UI is a backend probe surface only. Screenshot acceptance proves rendering only. `API_tests/test_ui_interaction_acceptance.sh` exercises actual submission, errors, recovery, keyboard focus, and retry behavior and writes evidence without recording the supplied password.
-
-## Run checks
-
-Go and static repository checks:
+Local source and report entrypoint:
 
 ```bash
-go test ./...
-bash unit_tests/test_rules.sh
+bash run_tests.sh
 ```
 
-Docker build, one-command normal-mode bootstrap and restart, rolling lockout, authentication fault injection, browser interaction, and stateful API acceptance:
+Without `BASE_URL` and all three execution-scoped `SEED_*_PASSWORD` values, stateful rows are recorded as `SKIP`, the report is `INCOMPLETE`, and the command exits with status `2`. A skipped stage is never reported as a local PASS.
 
-```bash
-bash ci/docker_acceptance.sh
-```
-
-Full regression and retained artifacts:
+Complete serialized regression:
 
 ```bash
 bash ci/run_full_regression.sh artifacts/regression
 ```
 
-A validation report must identify the exact commit SHA and corresponding run or artifact. Do not report current-HEAD PASS from an older run.
+GitHub verification is defined only in `.github/workflows/ci.yml`. The workflow:
 
-## Generated API documentation
+- uses one repository-and-target concurrency group;
+- waits out any remaining ten-minute target cooldown before validation;
+- latches a failed revision until a new commit or explicit reviewed manual unlock;
+- runs one sequential job;
+- stops after the first failed stage; and
+- uploads evidence only after the complete regression succeeds.
 
-OpenAPI documentation is generated from Swaggo annotations in Go source. Do not edit generated Swagger files as the source of truth.
-
-```bash
-bash scripts/generate_swagger.sh
-```
-
-Generated files are written under `docs/swagger/`.
+`run_tests.sh` reports only stage rows that actually executed. Its lightweight contract probe is not full-regression evidence.
 
 ## Roles
 
@@ -227,52 +170,34 @@ Admin is intentionally not treated as a document editor.
 Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
 ```
 
-Finalized is the terminal state. Upload replacement, rollback, redaction, annotation mutation, Bates numbering, workflow transition, and metadata mutation must be rejected after finalization.
+Finalized is terminal. Replacement upload, rollback, redaction, annotation mutation, Bates numbering, workflow transition, and metadata mutation must be rejected after finalization.
 
-## Storage and backup
+## Storage and recovery
 
-PostgreSQL stores metadata, identity/session state, workflow history, audit records, notifications, configuration, and backup records. The local filesystem stores PDF binaries and transformed versions.
+PostgreSQL stores metadata, identity/session state, workflow history, audit records, notifications, configuration, and backup records. The local filesystem stores PDF binaries and transformed versions. All concrete container paths are generated into `.env` for each installation.
 
-Persistent container paths:
+Strict backup requires both a PostgreSQL custom-format dump and a tar snapshot of PDF storage. Restore requires both artifacts.
 
-```text
-/var/lib/postgresql/data
-/var/lib/ironpage/storage
-/var/lib/ironpage/backups
+See `docs/backup-recovery.md` and `docs/pitr.md`.
+
+## Generated API documentation
+
+Swaggo annotations in Go source are authoritative:
+
+```bash
+bash scripts/generate_swagger.sh
 ```
 
-Strict backup requires both a PostgreSQL custom-format dump and a tar snapshot of local PDF storage. Restore requires both artifacts so database paths and files return to a consistent recovery point.
+Generated files are written under `docs/swagger/`.
 
-See `docs/backup-recovery.md` and `docs/pitr.md` for the supported recovery scope and evidence boundaries.
+## Documentation
 
-## Troubleshooting
-
-**`scripts/deploy.sh` reports that Docker is missing**  
-Install Docker with the Compose v2 plugin, then rerun the same command.
-
-**The generated runtime file already exists**  
-This is expected. The deployer reuses `.env` so persistent database and encryption credentials remain stable.
-
-**Compose reports a missing required variable**  
-The existing `.env` is incomplete or malformed. Restore the required database and cryptographic variables, or remove the empty/disposable file and rerun the deployer to generate a complete one.
-
-**A new normal-mode database exits during startup**  
-The user table is empty but bootstrap variables were removed from `.env`. Restore an explicit bootstrap pair or regenerate the disposable installation after removing its volumes.
-
-**`/ui/` returns 404**  
-This is expected in normal mode. The test UI is acceptance-only.
-
-**Health returns database unavailable**  
-Check the container logs, the database variables in `.env`, and the persistent volume state. Do not change only one side of an initialized database credential.
-
-## Deeper documentation
-
-- `docs/api-spec.md` — API contract and examples.
-- `docs/design.md` — architecture, boundaries, data flow, and validation strategy.
-- `docs/security.md` — security model.
-- `docs/rbac.md` — role and object-access rules.
-- `docs/usage.md` — operational API examples.
-- `docs/testing.md` — local and Docker test coverage.
-- `docs/deployment-offline.md` — offline deployment configuration.
-- `docs/backup-recovery.md` — strict backup and restore.
-- `docs/pitr.md` — documented recovery strategy and current limitations.
+- `docs/api-spec.md` — API contract and examples
+- `docs/design.md` — architecture and boundaries
+- `docs/security.md` — security model
+- `docs/rbac.md` — role and object-access rules
+- `docs/usage.md` — operational API examples
+- `docs/testing.md` — test and evidence boundaries
+- `docs/deployment-offline.md` — generated offline deployment
+- `docs/backup-recovery.md` — strict backup and restore
+- `docs/pitr.md` — recovery strategy and limitations

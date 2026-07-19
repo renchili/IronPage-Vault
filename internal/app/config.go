@@ -2,7 +2,9 @@ package app
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -11,7 +13,6 @@ import (
 // Config contains runtime settings for the local IronPage Vault service.
 type Config struct {
 	HTTPAddr               string
-	DBHost                 string
 	DBPort                 string
 	DBUser                 string
 	DBPassword             string
@@ -38,22 +39,22 @@ type Config struct {
 	SeedReviewerPassword   string
 }
 
-// LoadConfig reads runtime configuration without providing fallback values for
-// passwords, signing material, encryption material, or local identities.
+// LoadConfig reads deployment-owned runtime configuration. Product limits are
+// fixed by the project specification; local identity, ports, paths, secrets,
+// and credentials have no application fallback.
 func LoadConfig() Config {
 	return Config{
-		HTTPAddr:               env("HTTP_ADDR", ":8080"),
-		DBHost:                 env("DB_HOST", "127.0.0.1"),
-		DBPort:                 env("DB_PORT", "5432"),
-		DBUser:                 env("DB_USER", "ironpage"),
+		HTTPAddr:               env("HTTP_ADDR", ""),
+		DBPort:                 env("DB_PORT", ""),
+		DBUser:                 env("DB_USER", ""),
 		DBPassword:             env("DB_PASSWORD", ""),
-		DBName:                 env("DB_NAME", "ironpage"),
+		DBName:                 env("DB_NAME", ""),
 		JWTSecret:              env("JWT_SECRET", ""),
 		AESKey:                 env("AES_KEY", ""),
-		StorageDir:             env("STORAGE_DIR", "/var/lib/ironpage/storage"),
-		BackupDir:              env("BACKUP_DIR", "/var/lib/ironpage/backups"),
-		MigrationsDir:          env("MIGRATIONS_DIR", "migrations"),
-		PublicDir:              env("PUBLIC_DIR", "public"),
+		StorageDir:             env("STORAGE_DIR", ""),
+		BackupDir:              env("BACKUP_DIR", ""),
+		MigrationsDir:          env("MIGRATIONS_DIR", ""),
+		PublicDir:              env("PUBLIC_DIR", ""),
 		SessionTTL:             8 * time.Hour,
 		RequestMaxAge:          60 * time.Second,
 		MaxUploadBytes:         int64(envInt("MAX_UPLOAD_BYTES", 200*1024*1024)),
@@ -74,6 +75,49 @@ func LoadConfig() Config {
 // Validate rejects insecure or incomplete runtime configuration before the
 // service creates directories, connects to PostgreSQL, or serves HTTP routes.
 func (c Config) Validate() error {
+	for _, item := range []struct {
+		name  string
+		value string
+	}{
+		{"HTTP_ADDR", c.HTTPAddr},
+		{"DB_PORT", c.DBPort},
+		{"DB_USER", c.DBUser},
+		{"DB_NAME", c.DBName},
+		{"STORAGE_DIR", c.StorageDir},
+		{"BACKUP_DIR", c.BackupDir},
+		{"MIGRATIONS_DIR", c.MigrationsDir},
+		{"PUBLIC_DIR", c.PublicDir},
+	} {
+		if err := requireValue(item.name, item.value); err != nil {
+			return err
+		}
+	}
+
+	_, httpPort, err := net.SplitHostPort(c.HTTPAddr)
+	if err != nil {
+		return fmt.Errorf("HTTP_ADDR must include a valid host and port: %w", err)
+	}
+	if err := validatePort("HTTP_ADDR", httpPort); err != nil {
+		return err
+	}
+	if err := validatePort("DB_PORT", c.DBPort); err != nil {
+		return err
+	}
+
+	for _, item := range []struct {
+		name string
+		path string
+	}{
+		{"STORAGE_DIR", c.StorageDir},
+		{"BACKUP_DIR", c.BackupDir},
+		{"MIGRATIONS_DIR", c.MigrationsDir},
+		{"PUBLIC_DIR", c.PublicDir},
+	} {
+		if !filepath.IsAbs(item.path) {
+			return fmt.Errorf("%s must be an absolute path", item.name)
+		}
+	}
+
 	if err := requireSecret("DB_PASSWORD", c.DBPassword, 16); err != nil {
 		return err
 	}
@@ -100,7 +144,7 @@ func (c Config) Validate() error {
 			return fmt.Errorf("bootstrap admin values are not allowed in acceptance mode")
 		}
 		for _, seed := range seedValues {
-			if err := requireSecret(seed.name, seed.value, 12); err != nil {
+			if err := requireBcryptSecret(seed.name, seed.value, 12); err != nil {
 				return fmt.Errorf("acceptance mode: %w", err)
 			}
 		}
@@ -116,7 +160,7 @@ func (c Config) Validate() error {
 		return fmt.Errorf("BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD must be supplied together")
 	}
 	if bootstrapPassword != "" {
-		if err := requireSecret("BOOTSTRAP_ADMIN_PASSWORD", bootstrapPassword, 16); err != nil {
+		if err := requireBcryptSecret("BOOTSTRAP_ADMIN_PASSWORD", bootstrapPassword, 16); err != nil {
 			return err
 		}
 	}
@@ -124,7 +168,31 @@ func (c Config) Validate() error {
 }
 
 func (c Config) DSN() string {
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName)
+	return strings.Join([]string{
+		"port=" + c.DBPort,
+		"user=" + c.DBUser,
+		"password=" + c.DBPassword,
+		"dbname=" + c.DBName,
+		"sslmode=disable",
+	}, " ")
+}
+
+func validatePort(name, value string) error {
+	port, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("%s port must be numeric", name)
+	}
+	if port < 1024 || port > 65535 {
+		return fmt.Errorf("%s port must be between 1024 and 65535", name)
+	}
+	return nil
+}
+
+func requireValue(name, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s is required", name)
+	}
+	return nil
 }
 
 func requireSecret(name, value string, minimumLength int) error {
@@ -134,6 +202,16 @@ func requireSecret(name, value string, minimumLength int) error {
 	}
 	if len(trimmed) < minimumLength {
 		return fmt.Errorf("%s must be at least %d characters", name, minimumLength)
+	}
+	return nil
+}
+
+func requireBcryptSecret(name, value string, minimumLength int) error {
+	if err := requireSecret(name, value, minimumLength); err != nil {
+		return err
+	}
+	if len([]byte(strings.TrimSpace(value))) > 72 {
+		return fmt.Errorf("%s must not exceed bcrypt's 72-byte limit", name)
 	}
 	return nil
 }

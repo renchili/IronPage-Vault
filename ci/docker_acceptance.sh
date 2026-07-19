@@ -3,84 +3,118 @@ set -euo pipefail
 
 APP_SERVICE=${APP_SERVICE:-ironpage}
 ACCEPTANCE_IMAGE=${ACCEPTANCE_IMAGE:-ironpage-vault-ci-acceptance}
-HOST_HEALTH_URL=${HOST_HEALTH_URL:-http://localhost:8080/healthz}
-CONTAINER_BASE_URL=${CONTAINER_BASE_URL:-http://ironpage:8080}
+env_dir=$(mktemp -d)
+env_file="$env_dir/runtime.env"
 
 random_hex() {
   od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
 }
 
-# Acceptance identities and runtime secrets are generated for this execution.
-# They are not application defaults and are not persisted in the repository.
-export DB_PASSWORD=${DB_PASSWORD:-$(random_hex)}
-export JWT_SECRET=${JWT_SECRET:-$(random_hex)}
-export AES_KEY=${AES_KEY:-$(random_hex)}
-export ACCEPTANCE_MODE=true
-export SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-$(random_hex)}
-export SEED_EDITOR_PASSWORD=${SEED_EDITOR_PASSWORD:-$(random_hex)}
-export SEED_REVIEWER_PASSWORD=${SEED_REVIEWER_PASSWORD:-$(random_hex)}
+read_env_value() {
+  local key="$1"
+  sed -n "s/^${key}=//p" "$env_file" | tail -n 1
+}
 
-docker compose build "$APP_SERVICE"
-
-# Prove the one-command normal-mode deployment, generated runtime configuration,
-# initial Admin login, idempotent rerun, and restart contract against clean data
-# before starting the isolated acceptance fixture environment.
-bash API_tests/test_bootstrap_restart_docker.sh
-
-docker compose up -d "$APP_SERVICE"
+compose() {
+  env \
+    -u HOST_BIND_ADDRESS -u HOST_PORT -u HTTP_PORT -u HTTP_ADDR \
+    -u POSTGRES_USER -u POSTGRES_PASSWORD -u POSTGRES_DB \
+    -u DB_HOST -u DB_PORT -u DB_USER -u DB_PASSWORD -u DB_NAME \
+    -u JWT_SECRET -u AES_KEY -u ACCEPTANCE_MODE \
+    -u BOOTSTRAP_ADMIN_USERNAME -u BOOTSTRAP_ADMIN_PASSWORD \
+    -u SEED_ADMIN_PASSWORD -u SEED_EDITOR_PASSWORD -u SEED_REVIEWER_PASSWORD \
+    -u IRONPAGE_APP_ROOT -u MIGRATIONS_DIR -u PUBLIC_DIR \
+    -u POSTGRES_VOLUME_ROOT -u PGDATA -u IRONPAGE_VOLUME_ROOT \
+    -u STORAGE_DIR -u BACKUP_DIR \
+    docker compose --env-file "$env_file" "$@"
+}
 
 cleanup() {
-  docker compose down -v
+  if [ -s "$env_file" ]; then
+    compose down -v --remove-orphans >/dev/null 2>&1 || true
+  fi
+  rm -rf "$env_dir"
 }
 trap cleanup EXIT
 
+# Prove normal-mode one-command deployment against an independently generated
+# installation. That flow builds an installation-specific image.
+bash tests/api/test_bootstrap_restart_docker.sh
+
+# Generate a separate installation-specific acceptance environment and rebuild
+# the image from exactly that configuration before starting its containers.
+IRONPAGE_ENV_FILE="$env_file" IRONPAGE_DEPLOY_DRY_RUN=true bash scripts/deploy.sh
+seed_admin_password=$(random_hex)
+seed_editor_password=$(random_hex)
+seed_reviewer_password=$(random_hex)
+sed -i \
+  -e '/^BOOTSTRAP_ADMIN_USERNAME=/d' \
+  -e '/^BOOTSTRAP_ADMIN_PASSWORD=/d' \
+  -e 's/^ACCEPTANCE_MODE=.*/ACCEPTANCE_MODE=true/' \
+  -e "s/^SEED_ADMIN_PASSWORD=.*/SEED_ADMIN_PASSWORD=$seed_admin_password/" \
+  -e "s/^SEED_EDITOR_PASSWORD=.*/SEED_EDITOR_PASSWORD=$seed_editor_password/" \
+  -e "s/^SEED_REVIEWER_PASSWORD=.*/SEED_REVIEWER_PASSWORD=$seed_reviewer_password/" \
+  "$env_file"
+chmod 600 "$env_file"
+
+compose down -v --remove-orphans >/dev/null 2>&1 || true
+compose build "$APP_SERVICE"
+compose up -d "$APP_SERVICE"
+
+host_address=$(read_env_value HOST_BIND_ADDRESS)
+host_port=$(read_env_value HOST_PORT)
+http_port=$(read_env_value HTTP_PORT)
+host_base_url="http://${host_address}:${host_port}"
+host_health_url="$host_base_url/healthz"
+container_base_url="http://${APP_SERVICE}:${http_port}"
+
 for i in $(seq 1 60); do
-  if curl -s "$HOST_HEALTH_URL" >/tmp/ironpage_health.out 2>&1; then
+  if curl -fsS "$host_health_url" >/tmp/ironpage_health.out 2>&1; then
     break
   fi
-  sleep 1
   if [ "$i" = "60" ]; then
     echo "service did not become healthy"
     cat /tmp/ironpage_health.out || true
-    docker compose logs --no-color || true
+    compose logs --no-color || true
     exit 1
   fi
+  sleep 1
 done
 
-# Exercise the rolling failed-login window and fail-closed authentication state
-# against the real PostgreSQL service.
-bash API_tests/test_auth_lockout_docker.sh
+BASE_URL="$host_base_url" \
+IRONPAGE_ENV_FILE="$env_file" \
+SEED_ADMIN_PASSWORD="$seed_admin_password" \
+SEED_EDITOR_PASSWORD="$seed_editor_password" \
+  bash tests/api/test_auth_lockout_docker.sh
 
-# Exercise the actual acceptance UI with mouse, keyboard, network failure, and
-# retry interactions. Evidence is retained inside the full-regression artifact.
-BASE_URL="${HOST_HEALTH_URL%/healthz}" \
+BASE_URL="$host_base_url" \
 IRONPAGE_UI_EVIDENCE_DIR="${IRONPAGE_UI_EVIDENCE_DIR:-artifacts/regression/ui-interaction}" \
-SEED_EDITOR_PASSWORD="$SEED_EDITOR_PASSWORD" \
-  bash API_tests/test_ui_interaction_acceptance.sh
+SEED_EDITOR_PASSWORD="$seed_editor_password" \
+  bash tests/api/test_ui_interaction_acceptance.sh
 
-container_id="$(docker compose ps -q "$APP_SERVICE")"
+container_id=$(compose ps -q "$APP_SERVICE")
 if [ -z "$container_id" ]; then
   echo "compose service $APP_SERVICE is not running"
-  docker compose logs --no-color || true
+  compose logs --no-color || true
   exit 1
 fi
 
-network="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$container_id" | head -n1)"
+network=$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$container_id" | head -n1)
 if [ -z "$network" ]; then
   echo "could not resolve compose network for $APP_SERVICE"
-  docker compose logs --no-color || true
+  compose logs --no-color || true
   exit 1
 fi
 
 docker build -f ci/Dockerfile.acceptance -t "$ACCEPTANCE_IMAGE" .
 
 if ! docker run --rm --network "$network" \
-  -e BASE_URL="$CONTAINER_BASE_URL" \
-  -e SEED_ADMIN_PASSWORD="$SEED_ADMIN_PASSWORD" \
-  -e SEED_EDITOR_PASSWORD="$SEED_EDITOR_PASSWORD" \
-  -e SEED_REVIEWER_PASSWORD="$SEED_REVIEWER_PASSWORD" \
+  -e BASE_URL="$container_base_url" \
+  -e SEED_ADMIN_PASSWORD="$seed_admin_password" \
+  -e SEED_EDITOR_PASSWORD="$seed_editor_password" \
+  -e SEED_REVIEWER_PASSWORD="$seed_reviewer_password" \
   "$ACCEPTANCE_IMAGE"; then
   echo "Docker acceptance failed; dumping compose logs"
-  docker compose logs --no-color || true
+  compose logs --no-color || true
   exit 1
 fi

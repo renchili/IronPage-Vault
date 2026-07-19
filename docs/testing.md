@@ -1,119 +1,120 @@
 # Testing Guide
 
-IronPage Vault separates source-level checks, real Docker/API acceptance, browser interaction evidence, and full-regression artifacts. A test claim is valid only for the exact revision named by the generated evidence.
+IronPage Vault separates Go unit tests, repository contracts, stateful API/browser acceptance, local report generation, and complete retained regression evidence. Every result applies only to the exact revision that produced it.
 
 ## Test locations
 
 ```text
-unit_tests/    repository and static contracts
-API_tests/     real HTTP, PostgreSQL, filesystem, PDF, bootstrap, auth, and browser flows
-ci/            Docker acceptance and full-regression orchestration
+internal/**/*_test.go  colocated Go unit and package tests
+tests/contracts/       repository, structure, and generated-contract checks
+tests/api/             real HTTP, PostgreSQL, filesystem, PDF, bootstrap, auth, and browser flows
+ci/                    serialized verification and full-regression orchestration
 ```
 
-`run_tests.sh` is the local report entrypoint. `ci/run_full_regression.sh` is the complete regression entrypoint used by reusable CI workflows.
+`run_tests.sh` is the local report entrypoint. `ci/run_full_regression.sh` is the complete regression entrypoint.
 
-## Unit and static checks
+## Local report entrypoint
 
-Source-level checks include:
+Source-only local checks can be started with:
 
-- Go package tests and race tests;
-- role, workflow, access, PDF, backup, and protected-metadata contracts;
-- migration and repository structure checks;
-- generated Swagger contract and route coverage;
-- shell syntax;
-- documentation consistency and sensitive-value exposure checks.
+```bash
+bash run_tests.sh
+```
 
-These checks do not replace running the service against PostgreSQL.
+Stateful API and browser stages additionally require an already running isolated acceptance service and explicit execution-scoped values:
+
+```text
+BASE_URL
+SEED_ADMIN_PASSWORD
+SEED_EDITOR_PASSWORD
+SEED_REVIEWER_PASSWORD
+```
+
+When those values are absent, `run_tests.sh` records the affected stages as `SKIP`, marks the report `INCOMPLETE`, and exits with status `2`. A skipped stage can never contribute to a local PASS.
+
+The generated report records only the stages actually present in `results.tsv`. A lightweight entrypoint probe may therefore list only Swagger preparation and the probe stage. It must not claim RBAC, PDF, backup, browser, Docker, or full-regression coverage unless those rows were executed.
+
+Generated local files are written under:
+
+```text
+artifacts/local-acceptance/
+```
+
+## Source and repository contracts
+
+The full regression includes:
+
+- Go package tests with race detection;
+- `go vet` and formatting checks;
+- repository and structure contracts under `tests/contracts/`;
+- generated Swagger and route coverage;
+- migration, protected-metadata, PDF, and backup contracts;
+- shell syntax parsing;
+- documentation consistency and fixed-sensitive-value scanning.
+
+Static checks establish source properties but do not replace real PostgreSQL/API interaction.
 
 ## Docker and API acceptance
-
-Run:
 
 ```bash
 bash ci/docker_acceptance.sh
 ```
 
-The Docker acceptance flow builds the single-container image and exercises real HTTP, PostgreSQL, filesystem, PDF, backup, and restore behavior.
+The acceptance orchestrator creates independent generated runtime files. It does not depend on a fixed host port, database identity, path, credential, or image-local runtime fallback.
 
-Before the broader acceptance fixture flow, `API_tests/test_bootstrap_restart_docker.sh` must verify normal mode on a clean volume:
+`tests/api/test_bootstrap_restart_docker.sh` covers normal mode on clean generated storage:
 
-1. externally supplied bootstrap values create the first Admin;
-2. the Admin can log in;
-3. `/ui/` is not served;
-4. the container is removed without deleting the volumes;
-5. bootstrap values are removed;
-6. restart succeeds against the same database;
-7. the original Admin still logs in and is not duplicated.
+1. generate the complete installation configuration;
+2. build and start through `scripts/deploy.sh`;
+3. log in with the generated initial Admin;
+4. verify `/ui/` is absent;
+5. rerun without rotating `.env`;
+6. restart after removing bootstrap values; and
+7. verify the original Admin remains unique and usable.
 
-`API_tests/test_auth_lockout_docker.sh` must then verify:
+`tests/api/test_auth_lockout_docker.sh` covers the rolling login window and fail-closed authentication persistence paths. The broader API suite covers RBAC, object access, workflow, finalization, redaction, Bates numbering, comparison, audit, notifications, pagination, error envelopes, backup, restore, and strict dependency failures.
 
-- attempts older than 15 minutes do not count in the current rolling window;
-- the fifth fresh failure returns `423 ACCOUNT_LOCKED`;
-- a correct password remains blocked during the active lock;
-- login succeeds after lock expiry;
-- successful login clears event rows and compatibility fields;
-- failed-attempt, login-state, blacklist, replay, session, and logout database faults fail closed;
-- a forced logout write failure rolls back both revocation changes;
-- successful logout rejects later token reuse.
+## Browser acceptance
 
-The broader API regression continues to cover RBAC, object access, workflow, finalization, redaction, Bates numbering, comparison, audit, notifications, pagination, errors, backup, restore, and strict dependency failure behavior.
+The only browser asset is `public/index.html`, served at `/ui/` only in acceptance mode.
 
-## Acceptance browser interaction
+- `tests/api/test_ui_screenshot_acceptance.sh` proves rendering and writes a screenshot manifest.
+- `tests/api/test_ui_interaction_acceptance.sh` drives the actual page through Chrome DevTools Protocol and verifies validation, keyboard focus, incorrect credentials, successful login, network failure guidance, recovery, retry, and evidence capture.
 
-The acceptance-only backend probe is served at:
+A static screenshot is not interaction evidence.
 
-```text
-/ui/
-```
-
-It is not a product frontend. Normal mode must return 404 for this path.
-
-`API_tests/test_ui_screenshot_acceptance.sh` proves rendering only. It captures a page screenshot and manifest but does not prove user interaction.
-
-`API_tests/test_ui_interaction_acceptance.sh` uses Chrome/Chromium DevTools Protocol through the Python standard library to exercise the actual page. It must verify:
-
-- missing-input validation and focus placement;
-- visible invalid state;
-- incorrect-credential API error output;
-- successful mouse-click login;
-- Tab order through username, password, and submit button;
-- Enter-key form submission;
-- network failure guidance;
-- retry after network recovery;
-- live status semantics;
-- screenshot sequence and `interaction.json` evidence without recording the password.
-
-The full-regression runner passes `IRONPAGE_UI_EVIDENCE_DIR` so these files are retained inside the regression artifact.
-
-## Full regression
-
-Run:
+## Complete regression
 
 ```bash
 bash ci/run_full_regression.sh artifacts/regression
 ```
 
-The generated evidence includes:
+The runner is sequential and fail-fast. On the first failed stage it records that stage, writes a failed summary, and exits before later validation starts. A successful run writes:
 
 ```text
 artifacts/regression/results.tsv
 artifacts/regression/summary.json
 artifacts/regression/summary.md
+artifacts/regression/source-inventory.json
 artifacts/regression/logs/
 artifacts/regression/ui-interaction/
 ```
 
-`summary.json` must report `overall_status=passed`, and every defined stage must have status zero. The CI workflow publishes `summary.md` in the Actions job summary and retains the complete artifact; it does not push generated reports directly to protected `main`.
+A complete PASS requires `summary.json` to report `overall_status=passed`, every recorded stage to have status zero, and the source inventory to contain no contamination finding.
+
+## GitHub verification safety
+
+`.github/workflows/ci.yml` is the sole workflow. It uses one repository-and-target concurrency group, waits out any remaining ten-minute target cooldown before validation, enforces an auditable failed-revision latch, runs one sequential job, and has no `if: always()` post-failure steps. Successful evidence is uploaded only after the complete regression returns success.
+
+A failed SHA is not automatically replayed. Verification proceeds after a new reviewed commit or an explicit reviewed manual unlock.
 
 ## Evidence boundary
 
-A historical run proves only its tested SHA. A targeted PR job, screenshot, static guard, or reviewer report cannot be presented as a fresh current-HEAD full regression.
-
-Before declaring the project accepted, record:
+A reviewer-written report is a static summary, not test evidence. A historical run proves only its tested SHA. Before declaring runtime acceptance, record:
 
 - tested commit SHA;
 - workflow run and job IDs;
-- generated summary result;
+- generated summary status;
 - artifact name, size, and digest;
-- any difference between the tested revision and the current `main`;
-- checks not executed and the reason.
+- any difference between the evidence revision and the inspected revision; and
+- checks that were not executed and why.

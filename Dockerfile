@@ -9,7 +9,11 @@ COPY . .
 RUN sh scripts/build_server_in_container.sh
 
 FROM postgres:16-bookworm
-RUN apt-get update \
+ARG IRONPAGE_APP_ROOT
+ARG IRONPAGE_HTTP_PORT
+RUN test -n "$IRONPAGE_APP_ROOT" \
+    && test -n "$IRONPAGE_HTTP_PORT" \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         poppler-utils \
         python3 \
@@ -17,20 +21,17 @@ RUN apt-get update \
         tar \
     && python3 -m pip install --break-system-packages --no-cache-dir pypdf reportlab pillow \
     && rm -rf /var/lib/apt/lists/*
+ENV IRONPAGE_APP_ROOT=${IRONPAGE_APP_ROOT}
+ENV IRONPAGE_HTTP_PORT=${IRONPAGE_HTTP_PORT}
 COPY --from=builder /out/ironpage /usr/local/bin/ironpage
-COPY migrations /opt/ironpage/migrations
-COPY public /opt/ironpage/public
+COPY migrations ${IRONPAGE_APP_ROOT}/migrations
+COPY public ${IRONPAGE_APP_ROOT}/public
 COPY scripts/entrypoint.sh /usr/local/bin/ironpage-entrypoint.sh
-RUN chmod +x /usr/local/bin/ironpage-entrypoint.sh \
-    && mkdir -p /var/lib/ironpage/storage /var/lib/ironpage/backups
+RUN chmod +x /usr/local/bin/ironpage-entrypoint.sh
 
-# Runtime database identity, credentials, signing material, encryption material,
-# and acceptance identities must be supplied by the deployment environment.
-ENV STORAGE_DIR=/var/lib/ironpage/storage
-ENV BACKUP_DIR=/var/lib/ironpage/backups
-ENV MIGRATIONS_DIR=/opt/ironpage/migrations
-ENV PUBLIC_DIR=/opt/ironpage/public
-ENV HTTP_ADDR=:8080
-
-EXPOSE 8080
+# Runtime database identity, credentials, ports, filesystem locations, signing
+# material, encryption material, and acceptance identities are supplied by the
+# generated deployment environment. The image contains no fixed local runtime
+# configuration.
+EXPOSE ${IRONPAGE_HTTP_PORT}
 ENTRYPOINT ["/usr/local/bin/ironpage-entrypoint.sh"]

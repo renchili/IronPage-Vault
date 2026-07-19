@@ -1,88 +1,40 @@
 # CI Boundary
 
-This repository separates the CI control plane from product code and project-owned tests.
+IronPage Vault uses one GitHub Actions workflow: `.github/workflows/ci.yml`.
 
-## Pre-merge pull request checks
+## Execution model
 
-`pull_request` workflows are change-driven gates. They analyze the changed surface and execute the checks for that surface.
+The same workflow handles pull requests, merge groups, pushes to `main`, and reviewed manual replays. One repository-and-target concurrency group serializes these events. `ci/ci_execution_guard.py` enforces a ten-minute same-revision cooldown and uses GitHub Actions history as an auditable failed-revision latch.
 
-Allowed pre-merge checks include:
+A failed revision may proceed only after either:
 
-- changed-file impact analysis
-- gofmt
-- go vet
-- targeted `go test` for affected packages
-- generated Swagger/static contract checks
-- shell syntax checks with `bash -n`
-- workflow lint
-- Docker image build
-- CI-flow contract probes when CI workflow or CI runner logic changes
+- a new reviewed commit changes the SHA; or
+- a deliberate `workflow_dispatch` replay sets the explicit unlock input.
 
-Pre-merge pull request checks must not use `run_tests.sh` as the pass/fail source.
+## Fail-fast rule
 
-## Flow-specific rule
+The workflow has one job and runs validation in a fixed sequence. `ci/run_full_regression.sh` records the first failed stage, writes its local failure summary, and exits immediately. GitHub therefore starts no later build, test, artifact upload, or summary-publication step after a failure.
 
-Changing CI flow code must execute a CI-owned contract for that flow.
+Artifacts are retained only after a complete successful regression.
 
-Examples:
+## CI-owned control plane
 
-- Changes to `ci/run_full_regression.sh` or full-regression workflows run `ci/regression_contract_check.sh`.
-- Changes to product runtime code run targeted package tests and Docker build.
-- Changes to API surface run Swagger/static contract checks.
-- Changes to project-owned shell tests run syntax checks and impact analysis, but not `run_tests.sh` as the PR conclusion.
+CI orchestration and contracts live under `ci/`:
 
-## Merge candidate regression
-
-Full runtime/API regression belongs on a real merge candidate, not on an arbitrary feature branch checkout. Use the `merge_group` workflow for merge-queue regression so the tested tree is the temporary merge result produced from current `main` plus queued changes.
-
-## Post-merge evidence
-
-`push` to `main` may replay full regression and retain logs, JSON summaries, Markdown summaries, and artifacts under `reports/regression/**` when product/runtime/regression-impacting paths changed.
-
-## CI control plane
-
-CI-owned control scripts live under `ci/`.
-
-Examples:
-
-- `ci/change_impact_check.sh`
+- `ci/ci_execution_guard.py`
 - `ci/regression_contract_check.sh`
 - `ci/run_full_regression.sh`
 - `ci/docker_acceptance.sh`
 - `ci/run_project_api_regression.sh`
+- `ci/run_tests_contract_check.sh`
+- `ci/docs_consistency_check.sh`
 - `ci/shell_syntax_check.sh`
 - `ci/Dockerfile.acceptance`
 
-## Product code
+## Product and test boundaries
 
-Product code is the object being tested.
+Product code and runtime assets are under `cmd/`, `internal/`, `migrations/`, `public/`, `scripts/`, `Dockerfile`, and `docker-compose.yml`.
 
-Examples:
+Stateful HTTP and browser acceptance flows are under `tests/api/`. Repository and generated-contract checks are under `tests/contracts/`. Go unit tests remain colocated with their packages, following Go conventions. Fixtures remain under `testdata/`.
 
-- `cmd/`
-- `internal/`
-- `migrations/`
-- `public/`
-- `Dockerfile`
-- `docker-compose.yml`
-- product build/runtime helpers under `scripts/`
-
-## Project-owned tests and local tools
-
-These are useful for local development, manual replay, merge-candidate regression, and post-merge evidence. They are not the neutral pull-request static gate.
-
-Examples:
-
-- `run_tests.sh`
-- `API_tests/`
-- `unit_tests/`
-- `testdata/`
-
-## Hard rules
-
-1. Pull-request workflows call CI-owned checks under `ci/**` and standard tools.
-2. Pull-request workflows do not use `run_tests.sh` as a pass/fail source.
-3. Pull-request workflows must analyze changed files and require tests/contracts for new capability.
-4. If CI flow code changes, pull-request workflows must execute a CI-owned contract probe for that flow.
-5. Runtime/API regression runs on `merge_group` merge candidates or post-merge `main`.
-6. `ci/docker_acceptance.sh` owns Docker runtime regression orchestration and does not delegate to `run_tests.sh`.
+`run_tests.sh` is a local/manual entrypoint. Its report describes only stage rows actually executed. Complete retained evidence comes from the serialized full-regression workflow, not from the lightweight entrypoint contract probe.

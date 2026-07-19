@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# CI may parse project-owned shell scripts to catch syntax errors, but this
-# checker deliberately does not execute run_tests.sh, API_tests, or unit_tests.
-
+# This checker parses shell scripts only; it does not execute project test or
+# deployment entrypoints.
 paths=()
-for root in ci scripts API_tests unit_tests; do
+for root in ci scripts tests; do
   if [ -d "$root" ]; then
     while IFS= read -r -d '' file; do
       paths+=("$file")
