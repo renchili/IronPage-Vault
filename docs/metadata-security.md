@@ -1,30 +1,32 @@
 # Metadata Security Matrix
 
-This matrix records which stored metadata is protected by encrypted storage and which fields remain plain operational metadata. Protected values use AES-256-GCM envelope strings with the `enc:v1:` prefix. Compatibility/plain columns may remain for lookup keys, routing, or legacy migration fallback, but protected plaintext must be written to ciphertext columns as the source of truth.
+Protected values use AES-256-GCM envelope strings with the `enc:v1:` prefix. Deterministic `lookup:v1:` values are equality indexes only and are never returned as plaintext data. Compatibility columns may remain for migration but are not the source of truth for new writes.
 
-## Encrypted storage
+## Protected storage
 
 | Area | Field | Storage behavior | API behavior |
 |---|---|---|---|
-| Password hash verifier | `users.password_hash` | bcrypt verifier is AES-256-GCM sealed before insert using `enc:v1:` storage | login opens the sealed verifier before bcrypt comparison; legacy unsealed bcrypt rows remain readable for migration compatibility |
-| User identity | `users.username_ciphertext` | username plaintext is AES-256-GCM sealed; `users.username` stores only a deterministic `lookup:v1:` key for login lookup and uniqueness | authorized user/admin responses open the sealed username before JSON serialization |
-| User display name | `users.display_name_ciphertext` | display name plaintext is AES-256-GCM sealed; `users.display_name` remains a blank compatibility placeholder for new writes | authorized user/admin responses open the sealed display name before JSON serialization |
-| Document title | `documents.title_ciphertext` | title plaintext is AES-256-GCM sealed; `documents.title` remains a blank compatibility placeholder for new writes | authorized document responses open the sealed title before JSON serialization |
-| Redaction geometry | `x_ciphertext`, `y_ciphertext`, `width_ciphertext`, `height_ciphertext` | numeric columns are compatibility placeholders; ciphertext columns hold the source-of-truth values | list responses omit geometry |
-| Redaction reason | `reason` | encrypted before insert | list responses omit reason |
-| Annotation comment | `comment` | encrypted before insert | stored value is never request plaintext; mention extraction uses a local request copy only |
-| Notification message | `notifications.message_ciphertext` | notification message plaintext is AES-256-GCM sealed; `notifications.message` remains a blank compatibility placeholder for new writes | authorized recipient responses open the sealed message before JSON serialization |
-| Audit source IP | `audit_logs.source_ip_ciphertext` | request source IP is AES-256-GCM sealed; `audit_logs.source_ip` remains a blank compatibility placeholder for new writes | admin audit responses open the sealed IP before JSON serialization |
-| Audit metadata | `audit_logs.metadata_ciphertext` | structured metadata JSON is AES-256-GCM sealed; `audit_logs.metadata` remains `{}` as a compatibility placeholder for new writes | admin audit responses open the sealed metadata before JSON serialization |
+| Password verifier | `users.password_hash` | bcrypt verifier is sealed before insert | login opens it before bcrypt comparison |
+| User identity | `users.username_ciphertext` | ciphertext is source of truth; `users.username` is deterministic lookup | authorized responses open ciphertext |
+| User display name | `users.display_name_ciphertext` | ciphertext source; blank compatibility field | authorized responses open ciphertext |
+| Document title | `documents.title_ciphertext` | ciphertext source; blank compatibility field | readable document responses open ciphertext |
+| Redaction geometry | coordinate ciphertext columns | numeric compatibility fields are zeroed | list responses omit protected geometry |
+| Redaction reason | `redaction_proposals.reason` | encrypted before insert | list responses omit reason |
+| Annotation comment | `annotations.comment` | encrypted before insert; plaintext exists only in request memory for mention parsing | readable annotation responses decrypt the comment |
+| Notification message | `notifications.message_ciphertext` | ciphertext source; blank compatibility field | recipient response opens ciphertext |
+| Audit source IP | `audit_logs.source_ip_ciphertext`, `source_ip_lookup` | source IP is encrypted and a deterministic equality key is stored separately; migration/startup backfills lookup for existing rows | Admin filter hashes input; response opens ciphertext or legacy plaintext |
+| Audit metadata | `audit_logs.metadata_ciphertext` | structured JSON is encrypted; compatibility JSON remains `{}` for new writes | Admin response decrypts and validates JSON before serialization |
 
 ## Plain operational metadata
 
-The following remain plain because they are identifiers, routing fields, workflow state, or audit control data rather than user/content PII: object IDs, document IDs, page number, workflow status, annotation type, annotation disposition, timestamps, actor IDs, backup job status, audit action type, request ID, notification template key, version numbers, file hashes, file sizes, and local file paths.
+Object/document IDs, page number, workflow status, annotation type/disposition, timestamps, actor IDs, backup/restore job status, audit action type/request ID, notification template key, version numbers, hashes, sizes and local file paths remain plain operational metadata.
+
+## Transaction rule
+
+Protected metadata insertion and its parent material mutation share the caller transaction where the database can provide one boundary. Annotation comment/audit/mention notifications, workflow history/audit/notification, audit source/metadata, and notification acknowledgement do not commit independently.
 
 ## Runtime rule
 
-Plain request text may exist only in local request memory for validation, lookup-key derivation, mention extraction, PDF processing, or encryption. It must not be inserted as the source-of-truth value for protected metadata.
+Plain request text may exist only in local request memory for validation, deterministic lookup derivation, mention extraction, PDF processing, or encryption. It must not be inserted as protected source-of-truth data.
 
-## Contract
-
-`ci/metadata_storage_check.sh` validates the storage and API exposure rules above.
+`ci/metadata_storage_check.sh` defines static storage and API exposure contracts for these rules.
