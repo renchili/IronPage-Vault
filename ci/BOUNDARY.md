@@ -1,40 +1,72 @@
 # CI Boundary
 
-IronPage Vault uses one GitHub Actions workflow: `.github/workflows/ci.yml`.
+IronPage Vault has one GitHub Actions workflow: `.github/workflows/ci.yml`.
 
-## Execution model
+## Static workflow scope
 
-The same workflow handles pull requests, merge groups, pushes to `main`, and reviewed manual replays. One repository-and-target concurrency group serializes these events. `ci/ci_execution_guard.py` enforces a ten-minute same-revision cooldown and uses GitHub Actions history as an auditable failed-revision latch.
+The workflow performs repository static acceptance only. It does not run project tests, full regression, Docker, databases, API interactions, browser interactions, or deployment.
 
-A failed revision may proceed only after either:
+Runtime and interaction evidence remain separate manual or lifecycle artifacts. A static workflow conclusion must never be presented as runtime acceptance.
 
-- a new reviewed commit changes the SHA; or
-- a deliberate `workflow_dispatch` replay sets the explicit unlock input.
+## Target admission
 
-## Fail-fast rule
+All pull request, merge-group, `main` push, and manual events resolve to one explicit target key. The same target key is used by the workflow concurrency group and by admission history matching.
 
-The workflow has one job and runs validation in a fixed sequence. `ci/run_full_regression.sh` records the first failed stage, writes its local failure summary, and exits immediately. GitHub therefore starts no later build, test, artifact upload, or summary-publication step after a failure.
+The workflow uses:
 
-Artifacts are retained only after a complete successful regression.
+- `cancel-in-progress: true` to collapse superseded running or queued events for the same target;
+- an admission job before checkout or repository-controlled code;
+- complete Actions-history pagination rather than a first-page scan;
+- immediate cancellation when admission is denied, never a sleep inside the runner;
+- a ten-minute target cooldown based on the latest completed non-cancelled run;
+- a failed target/revision latch;
+- rejection of ordinary GitHub rerun attempts;
+- a one-time manual unlock bound to the exact target, current revision, failed run ID, and reviewed reason;
+- the run-name marker `unlock-<failed-run-id>` as the auditable consumption record.
 
-## CI-owned control plane
+A second manual dispatch using the same failed-run authorization is rejected.
 
-CI orchestration and contracts live under `ci/`:
+## Platform limitation
 
-- `ci/ci_execution_guard.py`
-- `ci/regression_contract_check.sh`
+Repository workflow YAML is evaluated only after GitHub creates a workflow-run object. The repository can prevent checkout and repository-controlled validation before admission succeeds, collapse active duplicates through concurrency, and cancel denied work. It cannot by itself prove that GitHub never creates a run object or allocates an admission runner.
+
+A requirement for true pre-dispatch prevention needs separate repository ruleset, GitHub App, or external admission evidence. Static reports must state that limitation instead of claiming repository YAML provides pre-dispatch blocking.
+
+## Static gates
+
+After admission, one sequential job checks:
+
+- workflow syntax;
+- shell syntax;
+- Python syntax;
+- Go formatting;
+- tracked source inventory and path hygiene;
+- documentation consistency;
+- repository and structure contracts;
+- scheduled-backup contracts;
+- metadata-storage contracts;
+- Swagger route coverage.
+
+Normal step failure prevents later steps from starting. There is no `if: always()` post-failure path.
+
+## Retained evidence
+
+`ci/source_inventory.py` writes:
+
+```text
+artifacts/static-acceptance/source-inventory.json
+```
+
+The manifest records the checked commit, every tracked path, mode, size, SHA-256, contamination findings, path-hygiene findings, and explicit naming exceptions. It is uploaded only after every static gate succeeds and is retained for 90 days.
+
+## Runtime verification boundary
+
+The following remain manual or normal-lifecycle entrypoints and are not called by the static workflow:
+
+- `run_tests.sh`
 - `ci/run_full_regression.sh`
 - `ci/docker_acceptance.sh`
 - `ci/run_project_api_regression.sh`
-- `ci/run_tests_contract_check.sh`
-- `ci/docs_consistency_check.sh`
-- `ci/shell_syntax_check.sh`
-- `ci/Dockerfile.acceptance`
+- stateful scripts under `tests/api/`
 
-## Product and test boundaries
-
-Product code and runtime assets are under `cmd/`, `internal/`, `migrations/`, `public/`, `scripts/`, `Dockerfile`, and `docker-compose.yml`.
-
-Stateful HTTP and browser acceptance flows are under `tests/api/`. Repository and generated-contract checks are under `tests/contracts/`. Go unit tests remain colocated with their packages, following Go conventions. Fixtures remain under `testdata/`.
-
-`run_tests.sh` is a local/manual entrypoint. Its report describes only stage rows actually executed. Complete retained evidence comes from the serialized full-regression workflow, not from the lightweight entrypoint contract probe.
+Their existence is static evidence only. A runtime claim requires a pre-existing completed artifact tied to the exact inspected revision.
