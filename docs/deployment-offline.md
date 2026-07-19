@@ -2,6 +2,10 @@
 
 IronPage Vault runs as one local Compose service for an air-gapped environment. The service image contains PostgreSQL, the Go API, migrations, PDF processing dependencies, local storage support, and the acceptance-only browser asset.
 
+## Host prerequisites
+
+The supported deployer requires Docker with Docker Compose v2, Bash, and the local tools listed in `README.md`, including `getent` and `timeout`.
+
 ## First deployment
 
 From the repository root:
@@ -10,9 +14,18 @@ From the repository root:
 bash scripts/deploy.sh
 ```
 
-The first run creates `.env` with mode `0600`, generates an installation identifier, writes every local runtime setting, builds the image, starts the service, waits for health, and prints the actual API URL plus the initial Admin credentials.
+Before writing `.env`, the first run:
+
+1. resolves `localhost` and accepts only an IPv4 address in `127.0.0.0/8`;
+2. selects a random host port in the configured range;
+3. rejects ports that are already accepting loopback TCP connections;
+4. retries up to 128 candidates and fails before state creation if none is available.
+
+It then creates `.env` with mode `0600`, generates an installation identifier, writes every local runtime setting, builds the image, starts the service, waits for health, and prints the actual API URL plus the initial Admin credentials.
 
 No database identity, port, filesystem path, credential, signing key, encryption key, container name, or host port must be exported before this command. `.env` is excluded from Git and from the Docker build context.
+
+The availability probe reduces first-start collisions. It does not remove the operating-system race between probing and Docker binding; Compose remains the final authority and fails rather than silently changing persisted configuration.
 
 Running the same command again reuses the existing `.env`:
 
@@ -20,7 +33,7 @@ Running the same command again reuses the existing `.env`:
 bash scripts/deploy.sh
 ```
 
-This preserves the PostgreSQL identity and password, JWT signing material, AES encryption material, generated ports, paths, and persistent-volume targets for the installation.
+This preserves the PostgreSQL identity and password, JWT signing material, AES encryption material, generated ports, paths, and persistent-volume targets for the installation. Existing installation ports are not regenerated during restart.
 
 ## Find the service URL
 
@@ -46,7 +59,7 @@ The generated file contains:
 
 | Area | Variables | Behavior |
 |---|---|---|
-| Host exposure | `HOST_BIND_ADDRESS`, `HOST_PORT` | Local address and host port used by Compose |
+| Host exposure | `HOST_BIND_ADDRESS`, `HOST_PORT` | IPv4 loopback address and initially unoccupied host port used by Compose |
 | API listener | `HTTP_PORT`, `HTTP_ADDR` | Container listener port and Go bind address |
 | PostgreSQL | `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Installation-specific embedded database identity |
 | Cryptography | `JWT_SECRET`, `AES_KEY` | Random signing and encrypted-column material |
@@ -62,6 +75,7 @@ The generated file contains:
 POSTGRES_USER     <- DB_USER
 POSTGRES_PASSWORD <- DB_PASSWORD
 POSTGRES_DB       <- DB_NAME
+PGPORT            <- DB_PORT
 ```
 
 The image, Compose file, and Go application do not supply alternative local defaults. An incomplete runtime file fails validation.
@@ -133,8 +147,12 @@ The sole deployed acceptance HTML file is `public/index.html`. It contains no cr
 
 ## Evidence boundary
 
-Static source inspection can establish configuration ownership and path consistency. Runtime startup, login, restart, PDF, RBAC, backup/restore, browser interaction, and complete-regression claims require an executed artifact tied to the exact revision. The supported complete command is:
+Static source inspection can establish configuration ownership, loopback selection logic, port-probe logic, and path consistency. It cannot prove that a particular host port remained free until Docker bound it, or that startup, login, restart, PDF, RBAC, backup/restore, browser interaction, or complete regression succeeded.
+
+Runtime claims require a pre-existing artifact tied to the exact revision. The supported complete command is:
 
 ```bash
 bash ci/run_full_regression.sh artifacts/regression
 ```
+
+A static reviewer must not run that command to fill an evidence gap.
