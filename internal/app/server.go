@@ -44,6 +44,9 @@ func Run(cfg Config) error {
 	if err := RunMigrations(db, cfg.MigrationsDir); err != nil {
 		return err
 	}
+	if err := EnsureRuntimeConfiguration(context.Background(), db, cfg); err != nil {
+		return err
+	}
 	if err := EnsureInitialUsers(context.Background(), db, cfg); err != nil {
 		return err
 	}
@@ -71,6 +74,7 @@ func Run(cfg Config) error {
 	admin.GET("/config", a.listConfig)
 	admin.PATCH("/config/:key", a.patchConfig)
 	admin.GET("/workflow-statuses", a.workflowStatuses)
+	admin.PUT("/workflow-statuses", a.replaceWorkflowStatuses)
 	admin.GET("/notification-templates", a.notificationTemplates)
 	admin.PATCH("/notification-templates/:key", a.patchNotificationTemplate)
 	admin.POST("/backup/run", a.runBackupMetadataSnapshot)
