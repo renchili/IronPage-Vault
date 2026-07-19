@@ -44,7 +44,8 @@ jobs:
       - name: Install workflow linter
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
       - name: Validate the single workflow definition
-        run: "$(go env GOPATH)/bin/actionlint -color=false"
+        run: |
+          "$(go env GOPATH)/bin/actionlint" -color=false
       - name: Run complete regression in fail-fast order
         run: bash ci/run_full_regression.sh artifacts/regression
       - name: Retain successful regression evidence
