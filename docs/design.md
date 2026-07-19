@@ -10,29 +10,29 @@ IronPage Vault is an air-gapped legal PDF lifecycle backend. The product boundar
 
 The standalone deployment packages PostgreSQL and the Go API in one container for an offline machine with no required external service. `scripts/deploy.sh` creates a protected installation file containing the complete local runtime configuration before the image is built.
 
-Database identity, ports, host exposure, API binding, application asset roots, PostgreSQL data roots, product storage roots, credentials, signing material, encryption material, bootstrap identity, and acceptance fixtures are deployment-owned values. The image, Compose file, and Go application do not provide an alternative fixed local configuration.
+Database identity, ports, host exposure, API binding, application asset roots, PostgreSQL data roots, product storage roots, credentials, signing material, encryption material, bootstrap identity, and acceptance fixtures are deployment-owned values. The schema does not seed a machine-specific backup path; startup persists the generated `BACKUP_DIR` into `config_entries`.
 
 Fresh configuration accepts only an IPv4 loopback host binding and selects a host port that is not currently accepting loopback TCP connections. Compose remains the final bind authority because port availability can change after the probe.
 
-Compose uses the same generated database identity for PostgreSQL initialization and application access. The entrypoint checks that identity before startup.
+## Data ownership and mutation boundaries
 
-## Data ownership
+PostgreSQL is the source of truth for users, login attempts, sessions, replay state, documents, versions, workflow definitions/history, audit records, protected review metadata, Bates allocation, notifications, configuration, and backup jobs. PDF binaries and transformed versions are stored on the generated local filesystem target.
 
-PostgreSQL is the source of truth for users, login attempts, sessions, replay state, documents, versions, workflow history, audit records, protected review metadata, Bates allocation, notifications, configuration, and backup jobs.
+A successful database mutation must include its required audit record in the same transaction. Workflow transitions additionally include status history and owner notification in that transaction. Annotation creation includes mention notifications. Authentication lockout/login/logout state includes its security audit. Notification acknowledgement, Admin configuration, user creation, template changes, workflow-definition replacement, rollback, redaction metadata, and Bates metadata use the same rule.
 
-PDF binaries and transformed versions are stored on the generated local filesystem target. PostgreSQL records paths, hashes, sizes, page counts, versions, and related audit state.
+File-producing mutations use a compensating filesystem boundary: the file is generated first while the database transaction remains uncommitted, and the generated file is removed if version, document, sequence, audit, notification, or commit work fails.
 
 ## Package boundaries
 
-`internal/core` owns deterministic domain policy such as roles, workflow transitions, object access, validation, mention parsing, and notification-cap calculations.
+`internal/core` owns deterministic domain policy such as roles, default workflow compatibility, object access, validation, mention parsing, and notification-cap calculations.
 
 `internal/service` coordinates use cases that combine policy, persistence, and platform operations.
 
 `internal/repository` and `internal/store` own persistence contracts and SQL-facing behavior. SQL fragments and schema knowledge do not belong in core policy.
 
-`internal/platform` owns infrastructure adapters such as encryption, digesting, filesystem operations, strict PDF transforms, backup, and restore.
+`internal/platform` owns encryption, digesting, filesystem operations, strict PDF transforms, backup, staged restore, and safe archive extraction.
 
-`internal/app` owns Echo routing, middleware, request/response mapping, runtime assembly, and narrow HTTP adapters.
+`internal/app` owns Echo routing, middleware, request/response mapping, transaction assembly, runtime assembly, and narrow HTTP adapters.
 
 ## Roles and object access
 
@@ -42,52 +42,44 @@ Role permission and object access are separate decisions. Object access depends 
 
 ## Document workflow
 
+The initial chain is:
+
 ```text
 Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
 ```
 
-Workflow policy is defined in core rules and enforced by mutation paths. Finalized is terminal; every document mutation must reject a Finalized record.
+Admin reads and replaces the ordered persisted chain through `/api/admin/workflow-statuses`. `Draft` remains the first mutable state and `Finalized` remains the last immutable state. A replacement must retain every status currently used by a document. Runtime transition and finalization resolve the next state from `workflow_status_definitions`; they do not use a hard-coded chain for request validation.
+
+A transition locks the document and commits the document state, status history, audit record, and owner notification together. Finalized is terminal; every document mutation rejects a Finalized record.
 
 ## Redaction, Bates, and comparison
 
-Redaction is a two-phase operation. A proposal stores protected coordinate-bound metadata. Confirmation produces a new PDF version through strict raster burn-in so target content is not merely hidden by an overlay.
+Redaction is a two-phase operation. A proposal stores protected coordinate-bound metadata with its audit in one transaction. Confirmation locks the staged proposal and document, produces a strict redacted PDF, verifies it, then commits the new version, document pointer/status, proposal state, history/notification when applicable, and audit together. Failed persistence removes the generated PDF.
 
-Bates numbering creates a page-visible version and allocates auditable sequence state across document sets.
+Bates numbering locks the document and global sequence, reserves the complete page-number range, produces and verifies the visible-numbered PDF, then commits the range, Bates job, version, document pointer, and audit together. Failed work rolls back the sequence and removes the generated PDF.
 
 Version comparison extracts structured text and location data to report added, removed, and modified blocks with page and bounding-box information.
 
-## Authentication and lockout
+## Authentication, sessions, freshness, and replay
 
-Passwords are compared through bcrypt verifiers stored in protected form. Password inputs are validated against bcrypt's 72-byte limit before hashing. Failed logins are persisted as timestamped `login_attempts` events.
+Passwords are compared through bcrypt verifiers stored in protected form. Password inputs are validated against bcrypt's 72-byte limit. Failed attempts in the preceding 15 minutes are counted under a user row lock; the fifth attempt applies a 15-minute lock. Failed-attempt state and audit, successful reset/session creation and audit, and logout blacklist/session revocation and audit each commit atomically.
 
-For one user, failed-attempt processing uses a transaction and row lock. Events older than the 15-minute rolling cutoff are removed, the new event is inserted, the current window is counted, and compatibility fields are updated atomically. The fifth in-window failure sets a 15-minute lock. Successful login clears attempt events and lock fields while creating the server-side session in one transaction.
+JWTs are locally signed. PostgreSQL session state remains required for inactivity expiration and immediate logout. Authenticated requests require a fresh `X-Request-Timestamp` and unique `X-Request-ID`; blacklist reads, replay writes, and session updates fail closed.
 
-## JWT, session, freshness, and replay
+## Protected metadata and audit reads
 
-JWTs are locally signed and contain `sub`, role, username, `jti`, issued-at time, and expiration. PostgreSQL session state remains required for inactivity expiration and immediate logout.
-
-Authenticated requests require a fresh `X-Request-Timestamp` and unique `X-Request-ID`. Replay records are bound to the JWT `jti`. Blacklist reads, replay writes, session updates, login-state changes, and logout writes fail closed on database errors. Logout inserts the blacklist record and revokes the session in one transaction.
-
-## Protected metadata
-
-AES-256-GCM columns hold sensitive source values. Deterministic lookup keys, blank compatibility values, or documented legacy migration values may remain in compatibility columns, but protected plaintext is not the source of truth and is not returned through ordinary API responses.
-
-## Audit and notifications
-
-Material mutations create audit records with actor, target, action, request ID, timestamp, and structured metadata. Notifications are local PostgreSQL records. Workflow transitions and annotation mentions create in-app notifications; read acknowledgement and the unread cap require no external service.
+AES-256-GCM columns hold sensitive source values. Deterministic lookup keys are used only for equality lookup. Audit writes store source IP and structured metadata in ciphertext columns plus a deterministic source-IP lookup. Startup backfills that lookup for existing rows. The Admin audit route queries typed protected rows, decrypts source IP and JSON metadata before response, and never treats blank compatibility columns as the source of truth.
 
 ## Backup and recovery
 
-Backup success requires both a PostgreSQL custom dump and a local filesystem archive. Restore validates and applies both supplied local artifacts before reporting success. Automated physical WAL-based PITR orchestration is not claimed; the supported boundary is documented in `docs/pitr.md`.
+Backup success requires a PostgreSQL custom dump, filesystem archive, metadata snapshot, job record, and audit record. Database metadata and audit commit together; failed database persistence removes all generated backup files.
+
+Restore validates both artifacts, safely extracts regular files and directories to staging, rejects path traversal and link/special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. Database failure restores the previous filesystem directory. The API records Requested followed by Completed or Failed state; a success response is returned only after completion state and audit are persisted. Automated WAL-based PITR orchestration is not claimed.
 
 ## Verification architecture
 
 Go tests remain colocated with their packages. Stateful acceptance is under `tests/api/`; repository and generated-contract checks are under `tests/contracts/`.
 
-`.github/workflows/ci.yml` is the sole GitHub workflow and performs static acceptance only. A checkout-free admission job collapses active duplicates, applies cooldown and failure latching to an exact target/revision pair, immediately admits a different corrective revision, paginates complete workflow history, and consumes exact one-time unlocks. A later sequential job runs only static syntax, formatting, inventory, documentation, and contract gates. The successful source inventory is retained after all static gates pass.
+`.github/workflows/ci.yml` is the sole GitHub workflow and performs static acceptance only. Admission precedes checkout, validates a manual target against the selected branch or the exact same-repository open PR head revision, collapses active duplicates, applies cooldown/failure latching to the canonical target/revision pair, paginates scoped history, and consumes exact one-time unlocks. The later job runs static gates only.
 
-`ci/run_full_regression.sh`, Docker acceptance, API flows, browser interaction, databases, and deployments remain separate manual or normal-lifecycle execution paths. The static workflow does not call or claim them.
-
-A static reviewer reads source and pre-existing evidence only and must not run project code or CI to fill gaps. Missing external execution does not alter the static verdict, and a route, screenshot, static contract, reviewer report, or historical artifact is not itself proof that runtime behavior was executed for the current revision.
-
-GitHub creates a workflow-run object before repository YAML runs. The repository design provides pre-checkout admission and active-run collapse, not platform-level pre-dispatch prevention.
+`ci/run_full_regression.sh`, Docker acceptance, API flows, browser interaction, databases, and deployments are separate manual or normal-lifecycle execution paths. A static reviewer must not run or wait for them. GitHub creates a run object before repository YAML executes, so repository admission is pre-checkout rather than platform-level pre-dispatch prevention.
