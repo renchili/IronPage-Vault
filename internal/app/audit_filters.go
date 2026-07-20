@@ -41,7 +41,7 @@ func (a *App) auditLogsFiltered(c echo.Context) error {
 	if sourceIP != "" {
 		filters.SourceIPLookup = piiLookupKey(a.cfg.AESKey, sourceIP)
 	}
-	rows, err := repository.New(a.db).ListAuditLogs(c.Request().Context(), filters, size, (page-1)*size)
+	rows, err := repository.New(a.db).ListAuditLogs(c.Request().Context(), filters, size, (page - 1) * size)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "AUDIT_QUERY_ERROR", "could not list audit logs")
 	}
