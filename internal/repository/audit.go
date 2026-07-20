@@ -9,13 +9,13 @@ import (
 )
 
 type AuditLogFilters struct {
-	ActorUserID   string
-	DocumentID    string
-	ActionType    string
-	RequestID     string
+	ActorUserID    string
+	DocumentID     string
+	ActionType     string
+	RequestID      string
 	SourceIPLookup string
-	CreatedFrom   string
-	CreatedTo     string
+	CreatedFrom    string
+	CreatedTo      string
 }
 
 type AuditLogRow struct {
