@@ -54,6 +54,9 @@ func Run(cfg Config) error {
 		return err
 	}
 	a := &App{cfg: cfg, db: db}
+	if err := a.reconcileRestoreLifecycle(context.Background()); err != nil {
+		return fmt.Errorf("restore lifecycle reconciliation failed: %w", err)
+	}
 	a.startBackupScheduler()
 	e := echo.New()
 	e.HideBanner = true
