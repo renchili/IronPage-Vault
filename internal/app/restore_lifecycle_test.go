@@ -55,6 +55,24 @@ func TestRestoreLifecycleJournalIsEncryptedAndReadable(t *testing.T) {
 	}
 }
 
+func TestRestoreLifecycleJournalRejectsPlaintextEnvelope(t *testing.T) {
+	a := &App{cfg: Config{BackupDir: t.TempDir(), AESKey: "restore-lifecycle-test-key"}}
+	path, err := a.restoreLifecyclePath("rst_plaintext")
+	if err != nil {
+		t.Fatalf("resolve lifecycle path: %v", err)
+	}
+	if err := os.MkdirAll(a.restoreLifecycleDirectory(), 0700); err != nil {
+		t.Fatalf("create lifecycle directory: %v", err)
+	}
+	plaintextEnvelope := `{"algorithm":"AES-256-GCM","ciphertext":"{\"id\":\"rst_plaintext\",\"actor_user_id\":\"usr_admin\",\"request_id\":\"req_plaintext\"}"}`
+	if err := os.WriteFile(path, []byte(plaintextEnvelope), 0600); err != nil {
+		t.Fatalf("write plaintext lifecycle envelope: %v", err)
+	}
+	if _, err := a.readRestoreLifecycleRecord(path); err == nil {
+		t.Fatal("expected plaintext lifecycle envelope to be rejected")
+	}
+}
+
 func TestRestoreLifecycleJournalRequiresActingUser(t *testing.T) {
 	a := &App{cfg: Config{BackupDir: t.TempDir(), AESKey: "restore-lifecycle-test-key"}}
 	err := a.writeRestoreLifecycleRecord(restoreLifecycleRecord{ID: "rst_test", RequestID: "req_restore_test"})
