@@ -32,9 +32,9 @@ Before delivery:
 
 1. reconstruct the request into atomic requirements;
 2. inspect every repository area materially affected by those requirements;
-3. locate all implementations, tests, schemas, migrations, configuration, deployment, API, documentation, and comments that express the same behavior;
+3. locate all implementations, tests, schemas, migrations, configuration, deployment, API, documentation, UI assets, and comments that express the same behavior;
 4. fix every statically identifiable contradiction, omission, unsafe fallback, stale path, incomplete negative path, and documentation mismatch within scope;
-5. update production code, test definitions, static guards, schemas, configuration, and documentation together where the requirement crosses those boundaries;
+5. update production code, test definitions, static guards, schemas, configuration, UI implementation, and documentation together where the requirement crosses those boundaries;
 6. rescan the complete affected surface after changes;
 7. continue after finding a blocker so the final result contains all independently identifiable issues rather than only the first one.
 
@@ -47,8 +47,97 @@ A narrow change is correct only when the requirement itself is narrow. “Minima
 - `{{TARGET_REPO}}`: optional repository to create, modify, validate, or review.
 - `{{REPO_ROOT}}`: repository root when working in a repository.
 - `{{USER_GOAL}}`: generate, repair, validate, package, or review.
-- `{{CONSTRAINTS}}`: technical, product, repository, and non-goal constraints.
+- `{{CONSTRAINTS}}`: technical, product, repository, UI platform, and non-goal constraints.
 - `{{USER_FEEDBACK}}`: latest correction or requested change.
+
+## Frontend design and implementation contract
+
+Apply this section only when the requested project or changed scope includes a production frontend, application UI, embedded UI, mobile UI, desktop UI, extension UI, plugin UI, or an implementation-guiding prototype. A backend-only project or explicitly acceptance-only browser probe does not acquire a production frontend requirement merely because this Skill contains UI rules.
+
+### Determine the actual application surface
+
+Before proposing or generating UI, identify from the prompt and repository:
+
+- target platform and form factor;
+- host application or shell, when embedded;
+- framework and pinned version;
+- existing design system and component library;
+- existing icon library;
+- theme support;
+- navigation and routing ownership;
+- target viewport, window, device, or host-panel constraints;
+- platform review, marketplace, plugin, accessibility, or submission rules that apply;
+- existing screenshots, Figma files, Storybook stories, components, tokens, and interaction conventions.
+
+Use current authoritative project or platform material when it is accessible. Do not guess a host application's review rules or silently substitute generic web conventions. When required platform material is inaccessible, identify the exact evidence gap rather than inventing a rule.
+
+### Buildable frontend requirement
+
+A UI result is complete only when a frontend engineer can implement it without independently deciding the product's visual or interaction design. The generated result must resolve every material decision that affects implementation, including:
+
+- screen purpose, route, entry points, exit paths, navigation placement, deep-link behavior, and permission visibility;
+- concrete component choice from the repository's actual component system;
+- component hierarchy, ownership, reusable boundaries, inputs, outputs, and state ownership;
+- exact icon library and icon name for every icon-bearing control;
+- icon visual size, stroke or fill treatment, alignment, container size, hit target, label or tooltip, and disabled/selected treatment;
+- page, panel, control, table, toolbar, dialog, drawer, and content-region dimensions or constraints;
+- spacing, typography, color, border, radius, elevation, density, and theme values using real repository or host tokens;
+- responsive breakpoints, minimum supported width, overflow, truncation, wrapping, scrolling, sticky regions, zoom, and long-content behavior;
+- default, hover, focus, pressed, selected, disabled, loading, empty, success, validation-error, request-error, permission-denied, conflict, stale-data, destructive, and terminal/read-only states where applicable;
+- user-visible copy, field labels, validation messages, recovery guidance, confirmation wording, and persistence of unsaved input;
+- keyboard order, focus placement and return, accessible names, status announcements, contrast-independent meaning, and non-pointer operation;
+- animation or motion only when required by the platform or interaction, including trigger, duration, easing source, reduced-motion behavior, and completion state.
+
+Do not use vague placeholders such as “appropriate icon,” “standard spacing,” “normal modal,” “reasonable size,” “similar to the app,” or “handle errors.” Name the actual implementation choice or mark a real unresolved requirement.
+
+### Special-interaction contract
+
+For drag-and-drop, canvas, document viewers, redaction regions, cropping, diagramming, timeline editing, reordering, multi-selection, command palettes, gesture input, inline editing, virtualized data, or any other non-trivial interaction, define:
+
+- supported input methods;
+- start condition and activation threshold;
+- behavior while the interaction is active;
+- coordinate system, snapping, bounds, scrolling, zoom, and selection behavior;
+- commit condition and persisted result;
+- cancel, Escape, pointer-cancel, route-change, and lost-focus behavior;
+- undo, redo, delete, and recovery behavior where applicable;
+- duplicate-submit and re-entrancy prevention;
+- optimistic or pessimistic update choice;
+- loading, partial failure, network failure, stale version, conflict, permission loss, and retry behavior;
+- keyboard-only and assistive-technology path;
+- the source state and API or domain mutation affected by completion.
+
+A picture of the final state is not a sufficient specification for a special interaction.
+
+### Platform and app-review compliance
+
+When the UI belongs to a host application, operating system, marketplace, plugin ecosystem, or device platform, the generated design and code must follow that target's actual review format and interaction conventions. Inspect and map the applicable requirements for navigation, icons, sizing, theme, dialogs, destructive actions, permissions, accessibility, branding, privacy, restricted APIs, screenshots, metadata, and submission artifacts.
+
+Do not claim platform compliance from visual resemblance. Each applicable review rule must map to a screen, component, configuration path, implementation path, or explicit `N/A` reason.
+
+### Artifact-format boundary
+
+Use the UI artifact format requested by the user or already established by the repository, such as application source, Figma, Storybook, HTML/CSS/JS, native layout files, design-system components, screenshots with measurements, or an existing design document.
+
+Do not invent YAML, JSON, schema, manifest, token-registry, or “review pack” deliverables merely to make the result look structured. Create such files only when the user requests them, the target platform requires them, a loaded Skill requires them, or the repository already uses that exact convention.
+
+Do not replace an interactive prototype with a prose specification when the user asked for a prototype. Do not replace implementation with mockups when the user asked to build the frontend. When the request is design-only, the prototype and annotations must still resolve the implementation-critical decisions above.
+
+### UI traceability and implementation readiness
+
+For every material screen and interaction, trace:
+
+```text
+Requirement | Screen/route | Component | Visual specification | Interaction/state path | Data/API dependency | Permission | Test/static evidence
+```
+
+Before delivery, answer from the generated artifacts and source:
+
+1. Can an engineer identify the exact component, icon, dimensions, spacing, state ownership, and platform pattern without redesigning the feature?
+2. Can an engineer determine what happens after every supported action, cancellation, failure, denial, conflict, and retry?
+3. Can a reviewer or tester derive concrete visual, interaction, accessibility, and platform-review assertions?
+
+If any answer is no for a required flow, the frontend portion is incomplete. If frontend code is in scope, implement the resolved design in production source and tests; do not stop at the handoff document.
 
 ## Repository hygiene rules
 
@@ -89,7 +178,7 @@ Documentation is project source and must be checked statically against the imple
 When the repository has no stricter convention:
 
 - `docs/api-spec.md`: API contract, auth, methods, request/response fields, errors, examples, pagination, and static acceptance mappings.
-- `docs/design.md`: architecture, requirement implementation, module boundaries, data flow, security, workflow, storage, constraints, and static validation strategy.
+- `docs/design.md`: architecture, requirement implementation, module boundaries, data flow, security, workflow, storage, constraints, UI decisions when applicable, and static validation strategy.
 - `docs/questions.md`: durable clarification of requirements that were easy to misinterpret or previously implemented inconsistently.
 
 Do not merge these purposes unless explicitly requested.
@@ -114,33 +203,7 @@ Each topic must contain exactly these semantic parts:
 4. `Required implementation`
 5. `Acceptance evidence`
 
-`Acceptance evidence` under this Skill means static proof paths and acceptance conditions: production implementation, negative-path logic, test definitions, schemas, configuration, documentation, and expected state or error semantics. It must not require the agent to execute tests, CI, a build, a container, a database, a browser, or deployment.
-
-Example:
-
-```markdown
-## Administrator initialization credentials
-
-### Easy-to-make interpretation
-
-A default administrator can be implemented with one fixed username and password in product code or normal deployment configuration.
-
-### Why it fails
-
-That embeds installation-specific identity and credentials in the product and makes separate installations share a long-lived secret.
-
-### Correct requirement interpretation
-
-A clean installation must initialize an administrator without embedding a fixed deployment credential and must preserve existing identities on restart.
-
-### Required implementation
-
-Detect an empty installation, use deployment-supplied or installation-generated bootstrap values, and never overwrite an existing administrator.
-
-### Acceptance evidence
-
-The initialization path is empty-installation-only; restart paths preserve existing users; normal source contains no fixed deployment credential; tests define first-install, separate-installation, and restart cases.
-```
+`Acceptance evidence` under this Skill means static proof paths and acceptance conditions: production implementation, negative-path logic, test definitions, schemas, configuration, documentation, UI implementation when applicable, and expected state or error semantics. It must not require the agent to execute tests, CI, a build, a container, a database, a browser, or deployment.
 
 Before delivery, reject a questions document containing:
 
@@ -178,7 +241,7 @@ Before changing repository content, read:
 - README and relevant docs;
 - source layout, tests, scripts, migrations, workflows, deployment files, configuration, and artifact conventions.
 
-Do not replace the repository language, framework, database, architecture, build path, security model, or deployment model unless explicitly requested.
+Do not replace the repository language, framework, database, architecture, build path, security model, deployment model, design system, or host application conventions unless explicitly requested.
 
 ## Static development workflow
 
@@ -186,7 +249,7 @@ For repository changes:
 
 1. resolve the base revision and current branch state;
 2. build an atomic requirement ledger;
-3. map every requirement to all affected source, tests, schema, config, deployment, API, docs, and comments;
+3. map every requirement to all affected source, tests, schema, config, deployment, API, UI, docs, and comments;
 4. edit the complete mapped surface, not only the first convenient file;
 5. inspect syntax and consistency from source text without executing repository code or scripts;
 6. review the complete diff for unrelated files and unresolved requirement rows;
@@ -219,15 +282,15 @@ PR text must distinguish static implementation from external runtime evidence an
 - Keep branches and commits purpose-specific, but completeness outranks minimizing file count.
 - Ask only before risky publishing or destructive repository actions.
 
-## Code, schema, and annotation contract
+## Code, schema, UI, and annotation contract
 
 - Preserve package boundaries and dependency direction.
-- Follow existing error, response, logging, configuration, migration, and test conventions.
-- Add or update tests in the existing layout for every changed behavior, including negative paths.
+- Follow existing error, response, logging, configuration, migration, design-system, component, icon, and test conventions.
+- Add or update tests in the existing layout for every changed behavior, including negative paths and required UI states.
 - Do not hard-code production secrets, deployment-specific values, local absolute paths, ports, hostnames, identities, or machine assumptions.
-- Comments must explain intent, invariants, security boundaries, state transitions, storage contracts, and non-obvious failure handling.
+- Comments must explain intent, invariants, security boundaries, state transitions, storage contracts, special-interaction behavior, and non-obvious failure handling.
 - Exported APIs and public handlers must use language/framework documentation conventions.
-- API schemas, request/response models, error models, route definitions, and generated-contract source must agree statically.
+- API schemas, request/response models, error models, route definitions, UI data dependencies, and generated-contract source must agree statically.
 
 ## Logging contract
 
@@ -244,7 +307,7 @@ Use this evidence order for generation decisions:
 
 1. original requirement and explicit user corrections;
 2. repository rule files;
-3. current production source, schema, migrations, configuration, manifests, and deployment files;
+3. current production source, schema, migrations, configuration, manifests, deployment files, UI assets, and API contracts;
 4. current test definitions and static guards;
 5. current documentation and comments;
 6. pre-existing external logs or artifacts, read-only and optional.
@@ -257,12 +320,12 @@ A missing external artifact does not demote a complete static implementation. Co
 2. Resolve repository root, base revision, branch, and complete affected surface.
 3. Build an atomic requirement ledger.
 4. Inspect every mapped implementation and documentation path.
-5. Generate or repair all statically identifiable requirements.
-6. Add or update complete positive, negative, boundary, and failure-path test definitions.
-7. Update schemas, configuration, deployment, comments, and docs consistently.
+5. Generate or repair all statically identifiable requirements, including implementation-ready UI decisions when UI is in scope.
+6. Add or update complete positive, negative, boundary, failure-path, interaction-state, and accessibility test definitions.
+7. Update schemas, configuration, deployment, comments, UI assets, and docs consistently.
 8. Perform a complete static rescan and diff review.
 9. Continue until no known in-scope static defect is deferred.
-10. Report the static conclusion without waiting for CI, tests, builds, containers, or deployment.
+10. Report the static conclusion without waiting for CI, tests, builds, containers, browsers, or deployment.
 
 ## Final response contract
 
