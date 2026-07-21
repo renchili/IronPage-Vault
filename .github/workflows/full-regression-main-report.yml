@@ -1,0 +1,81 @@
+name: Full Regression Main Report
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  full-regression:
+    name: Full regression for main 9282c90a
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TESTED_MAIN_SHA: 9282c90afe90e95074e99acfecf881c1718f7148
+    steps:
+      - name: Check out exact main revision
+        uses: actions/checkout@v4
+        with:
+          ref: 9282c90afe90e95074e99acfecf881c1718f7148
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Confirm tested revision
+        run: |
+          set -euo pipefail
+          actual=$(git rev-parse HEAD)
+          test "$actual" = "$TESTED_MAIN_SHA"
+          echo "Testing main revision $actual"
+
+      - name: Execute complete regression
+        id: regression
+        run: |
+          set +e
+          bash ci/run_full_regression.sh artifacts/regression
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Show generated summary
+        if: ${{ always() }}
+        run: |
+          if [ -f artifacts/regression/summary.md ]; then
+            cat artifacts/regression/summary.md
+          else
+            echo 'Regression summary was not generated.'
+          fi
+
+      - name: Upload complete regression artifact
+        id: upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-regression-main-${{ env.TESTED_MAIN_SHA }}-${{ github.run_id }}
+          path: artifacts/regression
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Set final result
+        if: ${{ always() }}
+        env:
+          REGRESSION_STATUS: ${{ steps.regression.outputs.status }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "${REGRESSION_STATUS:-1}" -ne 0 ]; then
+            echo "Complete regression failed with status ${REGRESSION_STATUS:-missing}."
+            exit "${REGRESSION_STATUS:-1}"
+          fi
+          if [ "$UPLOAD_OUTCOME" != success ]; then
+            echo "Report upload outcome was $UPLOAD_OUTCOME."
+            exit 1
+          fi
+          echo 'Complete regression passed and artifact was uploaded.'
