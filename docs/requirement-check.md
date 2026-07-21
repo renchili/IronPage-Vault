@@ -12,7 +12,7 @@ This document maps required behavior to implementation and static proof paths. E
 | Docker/API/browser acceptance | Exercise generated deployment and critical stateful flows | Optional runtime evidence for the exact execution |
 | Complete regression | Run every defined stage sequentially and retain its artifact | Optional execution evidence for its tested revision |
 
-The sole GitHub workflow uses one target namespace, target concurrency with active-run collapse, checkout-free admission, full history pagination, immediate denial rather than runner sleep, an exact-revision cooldown, a failed target/revision latch, immediate admission of a different corrective revision, and one-time reviewed unlocks tied to the exact failed run.
+The sole GitHub workflow derives automatic targets from the event. A manual target must equal the selected branch or identify the exact same-repository open PR whose branch and head SHA equal the selected workflow ref. Admission happens before checkout, collapses superseded active runs, paginates the workflow history, scopes cooldown and failure latching to the canonical target/revision, and permits one exact reviewed unlock.
 
 Repository YAML cannot prevent GitHub from first creating a workflow-run object. Claims of true pre-dispatch blocking require separate platform-level evidence.
 
@@ -20,47 +20,39 @@ Repository YAML cannot prevent GitHub from first creating a workflow-run object.
 
 | Area | Implementation path | Static acceptance proof |
 |---|---|---|
-| Complete local configuration | `scripts/deploy.sh`, `docker-compose.yml`, `Dockerfile`, `internal/app/config.go`, `scripts/entrypoint.sh` | installation-specific ports, identity, paths, credentials, image args, validation, and no product fallback |
+| Complete local configuration | `scripts/deploy.sh`, Compose, Dockerfile, `internal/app/config.go`, `internal/app/database.go` | installation-specific identity, paths, ports and credentials; generated `BACKUP_DIR` is persisted after migration; schema contains no fixed machine backup path |
 | Initial administrator | `internal/app/database.go` | empty-installation-only creation path and restart-preservation definitions |
 | Host exposure | `scripts/deploy.sh` | IPv4 loopback validation, available-port selection logic, and explicit bind-race handling |
-| Acceptance fixtures and UI | `internal/app/config.go`, `internal/app/server.go`, `public/index.html` | acceptance-mode fixture requirements, normal-mode UI exclusion, and one canonical surface |
-| Rolling login lockout | `internal/app/auth.go`, `migrations/002_login_attempt_window.sql` | rolling-window transaction logic plus positive, negative, expiry, and clearing test definitions |
-| Authentication persistence | `internal/app/auth.go` | fail-closed paths for lockout, login reset, blacklist, replay, session, and logout errors |
-| Sessions and replay | authentication middleware and persistence tables | timestamp, duplicate request ID, inactivity, logout, and revoked-token negative paths |
-| Strict redaction | `internal/service/`, `internal/platform/` | transform implementation and test definitions requiring removed content |
-| Bates numbering | service/platform logic and Bates tables | visible-label and sequence-progression implementation/tests |
-| Version comparison | comparison service and platform extraction | structured text, page, and bounding-box implementation/tests |
+| Acceptance fixtures and UI | config/server, `public/index.html` | acceptance-mode fixture requirements, normal-mode UI exclusion, and one canonical surface |
+| Rolling login lockout | `internal/app/auth.go`, migration 002 | rolling-window user lock plus failed-login audit in one transaction |
+| Authentication persistence | `internal/app/auth.go` | successful reset/session/audit and logout blacklist/session/audit commit atomically; blacklist, replay and session errors fail closed |
+| Persisted workflow management | `workflow_definitions.go`, `workflows.go`, `server.go` | Admin GET/PUT route, ordered validation, in-use-state protection, database-resolved successor, and transactional history/audit/notification |
 | Finalized immutability | workflow and mutator guards | every material mutation path rejects a Finalized document |
-| Protected metadata | crypto helpers, ciphertext columns, masking paths | end-to-end protected storage and API exposure boundaries |
-| Audit and notifications | audit and notification handlers/storage | mutating-flow, filtered-read, and notification-state definitions |
-| Backup and restore | backup/restore service and platform adapters | dump, filesystem archive, restore mapping, failure handling, and state-verification definitions |
-| Canonical repository layout | `tests/api/`, `tests/contracts/`, `public/index.html` | no legacy test directories or duplicate served HTML |
-| Path and contamination audit | `ci/source_inventory.py` | all tracked files, case collisions, near duplicates, non-ASCII, whitespace, controls, mixed conventions, and explicit exceptions |
-| Truthful local report | `run_tests.sh`, `ci/run_tests_contract_check.sh` | report coverage equals generated stage rows and skipped stages cannot pass |
-| CI admission safety | `.github/workflows/ci.yml` | shared target key, active-run collapse, pre-checkout admission, no runner sleep, complete pagination, same-revision cooldown, failed-revision latch, new-revision admission, exact one-time unlock, and no post-failure artifact step |
-| Documentation truth | `README.md`, `docs/`, `ci/docs_consistency_check.sh` | paths, configuration, commands, and static claims match current source |
-| Static inventory retention | `.github/workflows/ci.yml`, `ci/source_inventory.py` | successful static artifact tied to the exact revision |
-| Full-regression definition | `ci/run_full_regression.sh` | complete stage list, fail-fast propagation, truthful summary, revision fields, and artifact structure |
+| Strict redaction | `redactions.go`, service/platform adapters | proposal/audit transaction; strict file generation; checked version/document/proposal writes; failure cleanup; transactional history/notification/audit |
+| Bates numbering | `bates_version.go`, `repository/bates.go` | page-range reservation, PDF generation, job/version/document/audit in one transaction, rollback and file cleanup |
+| Version comparison | comparison service/platform extraction | structured text, page, bounding-box and modified-block implementation |
+| Annotation side effects | `annotations.go`, `mentions.go`, `notifications.go` | annotation, audit, encrypted-username mention lookup, unread-cap handling and notifications share one transaction |
+| Protected audit API | `domain_events.go`, `repository/audit.go`, `audit_filters.go`, migration 003 | ciphertext storage, deterministic source-IP lookup/backfill, typed protected query and response decryption |
+| Admin configuration | `admin.go`, `template_update.go`, `workflow_definitions.go` | user/config/template/workflow updates include audit in the same transaction |
+| Backup | `backup_file.go`, `backup_scheduler.go`, `backup_cleanup.go` | dump/tar/metadata creation plus job/audit transaction; all generated paths removed on persistence failure |
+| Restore | `platform/backup_exec.go`, `restore.go` | safe staged extraction, path/link rejection, reversible storage swap, single-transaction PostgreSQL restore and explicit Requested/Completed/Failed audit lifecycle |
+| Runtime limits and uniform errors | config/core/API handlers | 200 MB, 500 pages, 250 files, 50 versions, pagination 25/100 and uniform envelope definitions |
+| Canonical repository layout | `tests/api/`, `tests/contracts/`, `public/index.html` | no legacy test directories, duplicate UI or process-status documents |
+| Path and contamination audit | `ci/source_inventory.py` | all tracked files, collisions, near duplicates, unsafe characters, mixed conventions and explicit exceptions |
+| Truthful local report | `run_tests.sh`, `ci/run_tests_contract_check.sh` | report coverage equals stage rows and skipped stages cannot pass |
+| CI admission safety | `.github/workflows/ci.yml` | canonical manual target validation, active-run collapse, pre-checkout admission, scoped history/cooldown/latch, exact unlock and static-only later job |
+| Documentation truth | README/docs/contracts | current paths, transaction boundaries, API routes, evidence rules and limitations agree with source |
 
-## Acceptance conditions
+## Static acceptance conditions
 
-Static acceptance completes from current source, test definitions, schemas, migrations, configuration, workflows, deployment definitions, documentation, comments, and repository structure. It does not wait for or require:
+Static acceptance completes from current source, test definitions, schemas, migrations, configuration, workflows, deployment definitions, documentation, comments, and repository structure. It does not wait for or require deployment, database, browser, CI, or regression execution. A reviewer must not run those systems to fill evidence gaps.
 
-- deployment or restart execution;
-- authentication fault injection;
-- stateful RBAC, workflow, PDF, audit, notification, backup, or restore execution;
-- browser interaction execution;
-- CI completion; or
-- a complete-regression artifact.
-
-Existing external artifacts may be described as optional read-only context for the exact revision and scope they executed. Their absence does not change the static verdict, and a reviewer must not run project code, scripts, tests, builds, containers, databases, browsers, deployments, or CI to create them.
-
-A reviewer report is a static review summary, never a runtime artifact.
+Existing external artifacts may be described only as optional read-only context for their exact revision and scope. A reviewer report is a static review summary, never a runtime artifact.
 
 ## Generated API documentation
 
-Route-level Swaggo annotations under `internal/app/swagger_*.go` are authoritative. Generated files under `docs/swagger/` are created by supported execution entrypoints before compilation or generated-contract checking. Their presence or absence during static review does not authorize reviewer generation.
+Route-level Swaggo annotations under `internal/app/swagger_*.go` are authoritative. They include both GET and PUT workflow-definition routes. Generated files under `docs/swagger/` are produced only by supported execution entrypoints; static review does not authorize generation.
 
 ## Compatibility notes
 
-Compatibility columns may remain where migration safety requires them, but protected plaintext must not be the source of truth. Sensitive source values belong in ciphertext columns; deterministic lookup values must be explicitly limited to lookup use.
+Compatibility columns may remain for migration safety, but protected plaintext is not the source of truth. Audit source-IP lookup backfill is performed from ciphertext or legacy plaintext after migration. Deterministic values are lookup-only and are not returned as user data.

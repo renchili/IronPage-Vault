@@ -33,16 +33,33 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 	}
 	artifacts, err := platform.RunBackupArtifactsStrict(id, a.cfg.DSN(), a.cfg.StorageDir, a.cfg.BackupDir)
 	if err != nil {
+		cleanupBackupArtifacts(a.cfg.BackupDir, id, target, artifacts)
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_ARTIFACT_ERROR", "strict backup artifacts were not completed")
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			cleanupBackupArtifacts(a.cfg.BackupDir, id, target, artifacts)
+		}
+	}()
 	if err := platform.WriteBackupMetadataSnapshot(target, snapshot); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_WRITE_ERROR", "could not write backup metadata snapshot file")
 	}
-	err = repository.New(a.db).InsertBackupJob(c.Request().Context(), id, target, p.UserID)
+	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start backup transaction")
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'full_backup','Completed',$2,$3,NOW())`, id, target, p.UserID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_CREATE_ERROR", "could not record backup job")
 	}
-	a.audit(c, p.UserID, "BACKUP_CREATE", "", map[string]interface{}{"database_dump_mode": artifacts.DatabaseDumpMode, "file_snapshot_mode": artifacts.FileSnapshotMode})
+	if err := a.auditWithExecutor(c, tx, p.UserID, "BACKUP_CREATE", "", map[string]interface{}{"backup_id": id, "database_dump_path": artifacts.DatabaseDumpPath, "file_snapshot_path": artifacts.FileSnapshotPath, "database_dump_mode": artifacts.DatabaseDumpMode, "file_snapshot_mode": artifacts.FileSnapshotMode}); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record backup audit")
+	}
+	if err := tx.Commit(); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit backup metadata")
+	}
+	committed = true
 	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "status": "Completed", "target_path": target, "kind": "full_backup", "created_at": snapshot.CreatedAt, "restore_supported": artifacts.RestoreSupported, "artifacts": artifacts})
 }
 

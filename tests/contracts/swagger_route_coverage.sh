@@ -21,6 +21,7 @@ require_route get /api/admin/users
 require_route get /api/admin/config
 require_route patch /api/admin/config/{key}
 require_route get /api/admin/workflow-statuses
+require_route put /api/admin/workflow-statuses
 require_route get /api/admin/notification-templates
 require_route patch /api/admin/notification-templates/{key}
 require_route post /api/admin/backup/run

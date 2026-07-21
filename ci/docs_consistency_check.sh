@@ -5,21 +5,26 @@ python3 - <<'PY'
 from pathlib import Path
 import re
 
+
 def stop(message):
     raise SystemExit("ERROR: " + message)
+
 
 required = [
     "README.md", "ci/BOUNDARY.md", "docs/questions.md",
     "docs/requirement-check.md", "docs/security.md", "docs/design.md",
     "docs/backup-recovery.md", "docs/testing.md", "docs/usage.md",
-    "docs/pitr.md", "docs/deployment-offline.md",
-    "docs/swagger-artifacts.md",
+    "docs/pitr.md", "docs/deployment-offline.md", "docs/api-spec.md",
+    "docs/metadata-security.md", "docs/swagger-artifacts.md",
     "skills/full-project-acceptance-hard-gates/SKILL.md",
     "skills/project-generation-workflow/SKILL.md",
 ]
 for name in required:
     if not Path(name).is_file():
         stop(f"missing required file: {name}")
+for obsolete in ["docs/implementation-status.md", "docs/test-effectiveness-followup.md"]:
+    if Path(obsolete).exists():
+        stop(f"obsolete process/status document remains: {obsolete}")
 if Path("deploy/aws").exists() or Path("docs/aws-deployment.md").exists():
     stop("cloud deployment material conflicts with the air-gapped scope")
 if not Path("public/index.html").is_file() or Path("public/manual-test.html").exists():
@@ -37,8 +42,13 @@ stale = {
     "cloud deployment": r"AWS|EKS|Lambda|CloudFormation|serverless deployment",
     "obsolete guard documentation": r"ci_execution_guard\.py",
     "target-wide cooldown": r"ten-minute target cooldown|completed non-cancelled runs enforce a ten-minute target cooldown",
-    "execution-gated verdict": r"Missing runtime or interaction evidence is `NOT VERIFIED`|Missing runtime, deployment, interaction, or full-regression evidence is recorded as `NOT VERIFIED`|Full acceptance requires a pre-existing generated",
+    "execution-gated static verdict": r"complete acceptance result requires executed evidence|Missing runtime or interaction evidence is `NOT VERIFIED`|Full acceptance requires a pre-existing generated",
     "workflow overstatement": r"static workflow.*complete regression|sole workflow.*complete regression|workflow.*uploads evidence only after the complete regression",
+    "best-effort backup": r"best-effort.*(?:pg_dump|backup)|metadata-only backup",
+    "overlay redaction": r"draw filled black rectangles|overlay-style redaction|marker-only redaction",
+    "obsolete compare limitation": r"not true bbox-level|no bounding-box reporting|binary-only compare",
+    "old local runner claim": r"run_tests\.sh directly runs go test",
+    "acceptance process residue": r"acceptance fix bundle|implementation followup|test-effectiveness followup",
 }
 for label, pattern in stale.items():
     if re.search(pattern, docs, re.IGNORECASE):
@@ -97,7 +107,8 @@ for phrase in [
     "cancel-in-progress: true", "github.paginate", "failedSameRevision",
     "latestCompletedSameRevision", "run.head_sha === currentSha",
     "same-revision admission cooldown", "alreadyConsumed",
-    "push a new revision or authorize that exact run once",
+    "sameRevision", "sameBranch", "sameRepository",
+    "exact open PR revision", "must equal the selected branch",
 ]:
     if phrase not in workflow:
         stop(f"workflow missing admission rule: {phrase}")
@@ -105,6 +116,35 @@ if workflow.index("actions/github-script@v7") >= workflow.index("actions/checkou
     stop("admission must precede checkout")
 if re.search(r"time\.sleep|\bsleep\s+\d+", workflow):
     stop("admission must reject rather than sleep")
+
+for path, phrases in {
+    "README.md": [
+        "PUT /api/admin/workflow-statuses", "same-repository open PR",
+        "audit source IP and structured metadata", "pg_restore --single-transaction",
+        "under review", "redaction pending", "approved",
+    ],
+    "docs/design.md": [
+        "same transaction", "page-number range", "safe archive extraction",
+        "same-repository open PR", "Draft -> Under Review -> Redaction Pending -> Approved -> Finalized",
+    ],
+    "docs/requirement-check.md": [
+        "admin get/put route", "deterministic source-ip lookup/backfill",
+        "canonical manual target validation", "ordered validation",
+    ],
+    "docs/testing.md": [
+        "exact same-repository open PR", "audit source ip/metadata",
+        "staged restore", "ordered definitions",
+    ],
+    "docs/api-spec.md": [
+        "put | `/api/admin/workflow-statuses`", "source_ip",
+        "start_number", "end_number", "complete ordered chain",
+    ],
+    "docs/backup-recovery.md": ["safe", "--single-transaction", "requested", "completed", "failed"],
+}.items():
+    text = Path(path).read_text(encoding="utf-8").lower()
+    for phrase in phrases:
+        if phrase.lower() not in text:
+            stop(f"{path} missing current implementation claim: {phrase}")
 
 credential = re.compile(r'''(?i)\b[A-Za-z0-9_]*(?:password|passphrase|secret|token|api_key|signing_key|encryption_key)[A-Za-z0-9_]*\b\s*[:=]\s*["']([^"']+)["']''')
 allowed = ("${", "$", "<", "placeholder", "example", "sample", "required", "generated", "random", "redacted", "***")

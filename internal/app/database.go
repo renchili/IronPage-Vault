@@ -43,6 +43,18 @@ func RunMigrations(db *sqlx.DB, dir string) error {
 	return nil
 }
 
+// EnsureRuntimeConfiguration records the deployment-owned backup path after
+// migrations. Admin-managed configuration entries are not overwritten here.
+func EnsureRuntimeConfiguration(ctx context.Context, db *sqlx.DB, cfg Config) error {
+	if strings.TrimSpace(cfg.BackupDir) == "" {
+		return fmt.Errorf("runtime configuration backup.local_volume is empty")
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO config_entries(key,value,updated_by,updated_at) VALUES('backup.local_volume',$1,NULL,NOW()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=NULL,updated_at=NOW()`, cfg.BackupDir); err != nil {
+		return fmt.Errorf("persist runtime configuration backup.local_volume: %w", err)
+	}
+	return nil
+}
+
 // EnsureInitialUsers creates acceptance fixtures only in acceptance mode. In
 // normal mode it creates a single externally configured Admin only when the
 // user table is empty.

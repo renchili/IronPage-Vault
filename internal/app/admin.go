@@ -91,7 +91,7 @@ func (a *App) createUser(c echo.Context) error {
 	}
 	storedHash, err := sealPasswordHash(a.cfg.AESKey, hash)
 	if err != nil {
-		return apiErr(c, http.StatusInternalServerError, "PASSWORD_HASH_ERROR", "could not hash password")
+		return apiErr(c, http.StatusInternalServerError, "PASSWORD_HASH_ERROR", "could not protect password hash")
 	}
 	usernameCipher, err := sealPII(a.cfg.AESKey, req.Username)
 	if err != nil {
@@ -102,11 +102,20 @@ func (a *App) createUser(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "could not encrypt display name")
 	}
 	id := makeIdentifier("usr")
-	_, err = a.db.ExecContext(c.Request().Context(), `INSERT INTO users(id,username,username_ciphertext,display_name,display_name_ciphertext,role,password_hash,created_at) VALUES($1,$2,$3,'',$4,$5,$6,NOW())`, id, usernameKey, usernameCipher, displayCipher, req.Role, storedHash)
+	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO users(id,username,username_ciphertext,display_name,display_name_ciphertext,role,password_hash,created_at) VALUES($1,$2,$3,'',$4,$5,$6,NOW())`, id, usernameKey, usernameCipher, displayCipher, req.Role, storedHash); err != nil {
 		return apiErr(c, http.StatusConflict, "USER_CREATE_ERROR", "could not create user")
 	}
-	a.audit(c, p.UserID, "USER_CREATE", "", nil)
+	if err := a.auditWithExecutor(c, tx, p.UserID, "USER_CREATE", "", map[string]interface{}{"created_user_id": id, "role": req.Role}); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record user creation audit")
+	}
+	if err := tx.Commit(); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit user creation")
+	}
 	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "username": req.Username, "display_name": req.DisplayName, "role": req.Role})
 }
 
@@ -139,11 +148,20 @@ func (a *App) patchConfig(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return apiErr(c, http.StatusBadRequest, "INVALID_CONFIG_REQUEST", "value is required")
 	}
-	_, err := a.db.ExecContext(c.Request().Context(), `INSERT INTO config_entries(key,value,updated_by,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=NOW()`, c.Param("key"), req.Value, p.UserID)
+	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO config_entries(key,value,updated_by,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=NOW()`, c.Param("key"), req.Value, p.UserID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "CONFIG_UPDATE_ERROR", "could not update config")
 	}
-	a.audit(c, p.UserID, "CONFIG_UPDATE", "", nil)
+	if err := a.auditWithExecutor(c, tx, p.UserID, "CONFIG_UPDATE", "", map[string]interface{}{"key": c.Param("key")}); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record configuration audit")
+	}
+	if err := tx.Commit(); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit configuration update")
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"key": c.Param("key"), "value": req.Value})
 }
 
@@ -163,27 +181,6 @@ func (a *App) notificationTemplates(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
 }
 
-func (a *App) auditLogs(c echo.Context) error {
-	page, size := parsePage(c, a.cfg)
-	rows := []auditLogResponse{}
-	actionType := c.QueryParam("action_type")
-	if actionType != "" {
-		if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,actor_user_id,document_id,action_type,request_id,source_ip,source_ip_ciphertext,metadata,metadata_ciphertext,created_at FROM audit_logs WHERE action_type=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, actionType, size, (page-1)*size); err != nil {
-			return apiErr(c, http.StatusInternalServerError, "AUDIT_QUERY_ERROR", "could not list audit logs")
-		}
-	} else {
-		if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,actor_user_id,document_id,action_type,request_id,source_ip,source_ip_ciphertext,metadata,metadata_ciphertext,created_at FROM audit_logs ORDER BY created_at DESC LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
-			return apiErr(c, http.StatusInternalServerError, "AUDIT_QUERY_ERROR", "could not list audit logs")
-		}
-	}
-	for i := range rows {
-		if err := openAuditPII(a.cfg.AESKey, &rows[i]); err != nil {
-			return apiErr(c, http.StatusInternalServerError, "AUDIT_QUERY_ERROR", "could not read audit log")
-		}
-	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
-}
-
 func (a *App) notifications(c echo.Context) error {
 	p := principal(c)
 	rows := []notificationResponse{}
@@ -196,26 +193,6 @@ func (a *App) notifications(c echo.Context) error {
 		}
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
-}
-
-func (a *App) readNotification(c echo.Context) error {
-	p := principal(c)
-	_, err := a.db.ExecContext(c.Request().Context(), `UPDATE notifications SET read_at=NOW() WHERE id=$1 AND user_id=$2`, c.Param("id"), p.UserID)
-	if err != nil {
-		return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_UPDATE_ERROR", "could not mark read")
-	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"status": "read"})
-}
-
-func (a *App) runBackup(c echo.Context) error {
-	p := principal(c)
-	id := makeIdentifier("bak")
-	_, err := a.db.ExecContext(c.Request().Context(), `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'logical_dump','Queued',$2,$3,NOW())`, id, a.cfg.BackupDir+"/"+id+".sql", p.UserID)
-	if err != nil {
-		return apiErr(c, http.StatusInternalServerError, "BACKUP_CREATE_ERROR", "could not create backup job")
-	}
-	a.audit(c, p.UserID, "BACKUP_CREATE", "", nil)
-	return c.JSON(http.StatusCreated, map[string]interface{}{"id": id, "status": "Queued", "created_at": time.Now().UTC()})
 }
 
 func (a *App) backupJobs(c echo.Context) error {

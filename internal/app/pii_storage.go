@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -74,16 +75,27 @@ func sealAuditMetadata(secret string, metadata map[string]interface{}) (string, 
 }
 
 func openAuditPII(secret string, row *auditLogResponse) error {
-	sourceIP, err := openPII(secret, row.SourceIPCiphertext, row.SourceIP)
-	if err != nil {
-		return err
+	sourceIP := row.SourceIP
+	if strings.TrimSpace(row.SourceIPCiphertext) != "" {
+		plain, err := decryptString(secret, row.SourceIPCiphertext)
+		if err != nil {
+			return err
+		}
+		sourceIP = plain
 	}
-	metadata, err := openPII(secret, row.MetadataCiphertext, string(row.Metadata))
-	if err != nil {
-		return err
+	metadata := string(row.Metadata)
+	if strings.TrimSpace(row.MetadataCiphertext) != "" {
+		plain, err := decryptString(secret, row.MetadataCiphertext)
+		if err != nil {
+			return err
+		}
+		metadata = plain
 	}
 	if strings.TrimSpace(metadata) == "" {
 		metadata = `{}`
+	}
+	if !json.Valid([]byte(metadata)) {
+		return fmt.Errorf("audit metadata is not valid JSON")
 	}
 	row.SourceIP = sourceIP
 	row.Metadata = json.RawMessage(metadata)

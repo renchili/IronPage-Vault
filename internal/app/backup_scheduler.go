@@ -28,7 +28,6 @@ func (a *App) startBackupScheduler() {
 	if interval == 0 {
 		return
 	}
-
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -45,27 +44,40 @@ func (a *App) runScheduledBackup(ctx context.Context) error {
 	if err := os.MkdirAll(a.cfg.BackupDir, 0750); err != nil {
 		return err
 	}
-
 	counts, err := repository.New(a.db).CountBackupTables(ctx)
 	if err != nil {
 		return err
 	}
 	snapshot := service.NewBackupSnapshot(id, a.cfg.DBName, counts)
 	artifacts, err := platform.RunBackupArtifactsStrict(id, a.cfg.DSN(), a.cfg.StorageDir, a.cfg.BackupDir)
+	target := filepath.Join(a.cfg.BackupDir, id+".json")
 	if err != nil {
+		cleanupBackupArtifacts(a.cfg.BackupDir, id, target, artifacts)
 		return err
 	}
-
-	target := filepath.Join(a.cfg.BackupDir, id+".json")
+	committed := false
+	defer func() {
+		if !committed {
+			cleanupBackupArtifacts(a.cfg.BackupDir, id, target, artifacts)
+		}
+	}()
 	if err := platform.WriteBackupMetadataSnapshot(target, snapshot); err != nil {
 		return err
 	}
-	if _, err := a.db.ExecContext(ctx, `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'scheduled_full_backup','Completed',$2,NULL,NOW())`, id, target); err != nil {
+	tx, err := a.db.BeginTxx(ctx, nil)
+	if err != nil {
 		return err
 	}
-	if err := a.insertAuditRecord(ctx, "", "SCHEDULED_BACKUP_CREATE", "", "scheduler", "scheduler", nil); err != nil {
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'scheduled_full_backup','Completed',$2,NULL,NOW())`, id, target); err != nil {
 		return err
 	}
-	_ = artifacts
+	if err := a.insertAuditRecordWithExecutor(ctx, tx, "", "SCHEDULED_BACKUP_CREATE", "", "scheduler", "scheduler", map[string]interface{}{"backup_id": id, "database_dump_path": artifacts.DatabaseDumpPath, "file_snapshot_path": artifacts.FileSnapshotPath}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }

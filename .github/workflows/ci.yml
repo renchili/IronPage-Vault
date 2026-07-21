@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Exact target key, such as pr-112 or main
+        description: Canonical target for the selected ref, such as pr-112 or main
         required: true
         type: string
       unlock_failed_run_id:
@@ -77,7 +77,7 @@ jobs:
             }
 
             if (!target || /\s/.test(target)) {
-              await cancelCurrent('CI target must be a non-empty key without whitespace.');
+              await cancelCurrent('CI target must be a non-empty canonical key without whitespace.');
               return;
             }
             if (currentAttempt > 1) {
@@ -88,9 +88,29 @@ jobs:
             const current = await github.rest.actions.getWorkflowRun({owner, repo, run_id: currentRunId});
             const workflowId = current.data.workflow_id;
             const currentSha = String(current.data.head_sha || '').trim();
-            if (!currentSha) {
-              await cancelCurrent('Current workflow head revision could not be resolved.');
+            const currentBranch = String(current.data.head_branch || '').trim();
+            if (!currentSha || !currentBranch) {
+              await cancelCurrent('Current workflow head revision and branch could not be resolved.');
               return;
+            }
+
+            if (context.eventName === 'workflow_dispatch') {
+              const prMatch = /^pr-(\d+)$/.exec(target);
+              if (prMatch) {
+                const pullNumber = Number(prMatch[1]);
+                const pull = await github.rest.pulls.get({owner, repo, pull_number: pullNumber});
+                const canonicalTarget = `pr-${pull.data.number}`;
+                const sameRevision = String(pull.data.head.sha || '') === currentSha;
+                const sameBranch = String(pull.data.head.ref || '') === currentBranch;
+                const sameRepository = String(pull.data.head.repo?.full_name || '') === `${owner}/${repo}`;
+                if (pull.data.state !== 'open' || canonicalTarget !== target || !sameRevision || !sameBranch || !sameRepository) {
+                  await cancelCurrent(`Manual target ${target} does not identify the selected repository ref and exact open PR revision.`);
+                  return;
+                }
+              } else if (target !== currentBranch) {
+                await cancelCurrent(`Manual target ${target} must equal the selected branch ${currentBranch}.`);
+                return;
+              }
             }
 
             const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {

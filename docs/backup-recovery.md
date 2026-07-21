@@ -1,16 +1,10 @@
 # Backup and Recovery
 
-IronPage Vault uses local air-gapped storage only. Backup and recovery must preserve PostgreSQL state and local PDF files at the same recovery boundary.
-
-## Data categories
-
-PostgreSQL contains users, sessions, document metadata, version metadata, workflow history, annotations, protected redaction metadata, Bates allocation, audit logs, notifications, configuration, and backup-job metadata.
-
-The local filesystem contains PDF binaries, transformed versions, and backup artifacts.
+IronPage Vault uses local air-gapped storage only. Backup and recovery preserve PostgreSQL state and local PDF files at one recovery boundary.
 
 ## Installation storage layout
 
-`scripts/deploy.sh` generates storage targets into `.env`:
+`scripts/deploy.sh` generates and retains:
 
 ```text
 POSTGRES_VOLUME_ROOT
@@ -20,79 +14,76 @@ STORAGE_DIR
 BACKUP_DIR
 ```
 
-`docker-compose.yml` mounts one PostgreSQL volume at `POSTGRES_VOLUME_ROOT` and one product-data volume at `IRONPAGE_VOLUME_ROOT`. PDF storage and backup outputs are subdirectories of the generated product-data root.
+The schema does not seed a fixed machine path. After migration, startup writes the installation's actual `BACKUP_DIR` to `config_entries`. Operators must use the retained `.env`, not an assumed container path.
 
-Do not use assumed fixed container paths when operating an installation. Read its retained `.env`.
+## Strict backup
 
-## Strict backup behavior
+The Admin backup API succeeds only when all of these exist:
 
-The Admin backup API creates a local full-backup job only when both strict artifacts succeed.
+| Item | Required result |
+|---|---|
+| PostgreSQL custom dump | `pg_dump_custom` |
+| Filesystem snapshot | `tar` |
+| Manifest | paths/modes and `restore_supported=true` |
+| Metadata snapshot | table counts and creation metadata |
+| PostgreSQL job | `Completed` full-backup row |
+| Audit | encrypted artifact metadata |
 
-Implementation path:
+Dump, tar, manifest and metadata are generated before the database job. The job and audit commit together. If metadata write, job insertion, audit insertion, or commit fails, `backup_cleanup.go` removes the dump, tar, manifest, metadata and error/missing markers. A database record cannot report a completed backup whose files were removed, and generated files cannot remain after failed persistence.
 
-```text
-internal/app/backup_file.go -> internal/platform/backup_strict.go -> internal/platform/backup_exec.go
+Scheduled backup uses the same strict artifacts, cleanup rule, job/audit transaction, and no external network.
+
+## Strict restore request
+
+The request requires:
+
+```json
+{
+  "database_dump_path": "<returned dump path>",
+  "file_snapshot_path": "<returned snapshot path>"
+}
 ```
 
-| Artifact | Required mode | Purpose |
-|---|---|---|
-| PostgreSQL custom dump | `pg_dump_custom` | Database restore input |
-| Filesystem tar snapshot | `tar` | PDF storage restore input |
+The API creates a restore ID and transactionally records `Requested` plus `BACKUP_RESTORE_REQUESTED` before external restore work. It later records exactly one `Completed` or `Failed` state with the corresponding encrypted audit metadata. A `200` response is returned only after `Completed` and `BACKUP_RESTORE_COMPLETED` are stored.
 
-If either artifact is missing or produced through a fallback mode, the API must not report a restore-supported backup.
+## Staged filesystem recovery
 
-A successful manifest records:
+The tar archive is opened by the Go platform adapter rather than extracted directly into live storage. Restore:
 
-```text
-backup_id
-created_at
-database_dump_path
-file_snapshot_path
-database_dump_mode
-file_snapshot_mode
-restore_supported
-```
+1. creates a sibling staging directory;
+2. accepts regular files and directories only;
+3. rejects absolute paths, `..` traversal, symlinks, hard links, devices and other special entries;
+4. moves the existing storage directory to a rollback path;
+5. atomically renames the staged directory into the configured storage path;
+6. restores the previous directory if PostgreSQL restore fails; and
+7. removes the rollback directory only after PostgreSQL succeeds.
 
-## Operational prerequisites
+A cleanup failure is returned as restore failure and recorded in the Failed lifecycle metadata rather than silently ignored.
 
-The single service image includes PostgreSQL dump/restore tools and `tar`. The generated backup and storage directories must remain writable and readable by the service. No backup or restore step requires cloud storage, a remote service, or internet access.
+## PostgreSQL recovery
 
-## Strict restore behavior
-
-Restore requires both:
+`pg_restore` is required and is invoked with:
 
 ```text
-database_dump_path
-file_snapshot_path
+--clean --if-exists --single-transaction
 ```
 
-Empty, missing, or unreadable artifact paths are rejected. A successful strict restore reports the PostgreSQL and filesystem restore modes only after both operations complete.
+The database either commits the restored archive or rolls back that database restore. If it fails, the staged filesystem installation is rolled back to the previous directory.
 
-## Recovery order
+The PostgreSQL command and filesystem rename cannot be one cross-system ACID transaction. The implementation therefore uses database single-transaction restore, reversible filesystem installation, explicit restore states and fail-closed success reporting.
+
+## Operational recovery order
 
 1. Stop application writes.
-2. Retain the installation `.env` and identify its generated database and storage targets.
-3. Identify the backup manifest and both artifact paths.
-4. Restore PostgreSQL from the custom-format dump.
-5. Restore PDF storage from the tar snapshot.
-6. Start the application with the same installation configuration.
-7. Verify the generated health URL.
-8. Verify representative document metadata, version records, file downloads, audit records, and notifications.
+2. Retain `.env` and the generated database/storage identity.
+3. Select a completed backup and both paths returned by its manifest/API response.
+4. Submit both paths to the Admin restore route.
+5. Verify the returned restore ID is `Restored` and the jobs list contains its Completed restore row.
+6. Restart with the same installation configuration when required.
+7. Verify representative documents, versions, files, audit records and notifications.
 
-## Consistency requirement
+Restoring only the dump or only the filesystem archive is unsupported.
 
-Database metadata and PDF files must represent the same recovery point. Restoring only one side is not a supported recovery.
+## Static and execution evidence
 
-## Acceptance evidence
-
-Runtime acceptance must prove:
-
-- Admin creates a strict full backup;
-- the backup job and manifest are queryable;
-- both artifacts are present and restore-supported;
-- restore rejects an incomplete request;
-- restore consumes the returned artifact paths;
-- representative state remains readable after restore; and
-- no external network or cloud dependency is used.
-
-Static source inspection can verify the strict code path and configuration ownership but cannot prove that a backup or restore executed successfully for the current revision.
+Static inspection can verify strict mode checks, cleanup paths, safe extraction, rollback functions, PostgreSQL single-transaction flags, restore lifecycle state and audit requirements. It does not claim that an execution occurred. Existing runtime evidence, when available, applies only to its exact revision and inputs; static review neither requires nor creates it.
