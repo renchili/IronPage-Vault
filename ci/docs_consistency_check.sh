@@ -62,6 +62,7 @@ expected_topics = {
     "Initial administrator and acceptance fixtures",
     "Authentication state failures must fail closed",
     "Acceptance browser surface",
+    "Buildable frontend design and interaction handoff",
     "Static reviewer acceptance",
     "CI admission and one-time unlock",
     "Regression and current-revision evidence",
@@ -91,6 +92,10 @@ for phrase in [
     "Inspect workflows only; never trigger or wait for CI",
     "a new revision must be admissible immediately",
     "Missing test execution, CI, build, deployment, runtime logs, screenshots, or external artifacts does not alter the verdict",
+    "exact icon library and icon name",
+    "developers must still choose material icons",
+    "visual-only definitions of special interactions",
+    "UI implementation readiness and platform review",
 ]:
     if phrase not in acceptance:
         stop(f"acceptance Skill missing rule: {phrase}")
@@ -100,6 +105,11 @@ for phrase in [
     "Do not stop scanning after the first P0",
     "Continue until no known in-scope static defect is deferred",
     "CI triggered or awaited: `none`",
+    "Frontend design and implementation contract",
+    "exact icon library and icon name",
+    "Special-interaction contract",
+    "Platform and app-review compliance",
+    "Do not invent YAML, JSON, schema, manifest, token-registry, or “review pack” deliverables",
 ]:
     if phrase not in generation:
         stop(f"generation Skill missing rule: {phrase}")
@@ -130,6 +140,8 @@ for path, phrases in {
     "docs/requirement-check.md": [
         "admin get/put route", "deterministic source-ip lookup/backfill",
         "canonical manual target validation", "ordered validation",
+        "buildable frontend generation rules", "exact component, icon, size",
+        "arbitrary yaml/json packages cannot substitute",
     ],
     "docs/testing.md": [
         "exact same-repository open PR", "audit source ip/metadata",
