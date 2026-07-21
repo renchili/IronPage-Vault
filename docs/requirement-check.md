@@ -7,7 +7,7 @@ This document maps required behavior to implementation and static proof paths. E
 | Layer | Purpose | Evidence boundary |
 |---|---|---|
 | Static reviewer acceptance | Inspect complete current source without executing project or CI work | Missing external execution does not alter the static verdict |
-| GitHub static workflow | Detect source, layout, configuration, documentation, workflow, and naming contradictions | Static evidence only |
+| GitHub static workflow | Detect source, layout, configuration, documentation, workflow, UI-rule, and naming contradictions | Static evidence only |
 | Local report | Record stages actually run by `run_tests.sh` | Claims only rows in its generated `results.tsv` |
 | Docker/API/browser acceptance | Exercise generated deployment and critical stateful flows | Optional runtime evidence for the exact execution |
 | Complete regression | Run every defined stage sequentially and retain its artifact | Optional execution evidence for its tested revision |
@@ -24,6 +24,7 @@ Repository YAML cannot prevent GitHub from first creating a workflow-run object.
 | Initial administrator | `internal/app/database.go` | empty-installation-only creation path and restart-preservation definitions |
 | Host exposure | `scripts/deploy.sh` | IPv4 loopback validation, available-port selection logic, and explicit bind-race handling |
 | Acceptance fixtures and UI | config/server, `public/index.html` | acceptance-mode fixture requirements, normal-mode UI exclusion, and one canonical surface |
+| Buildable frontend generation rules | `skills/project-generation-workflow/SKILL.md`, `skills/full-project-acceptance-hard-gates/SKILL.md`, `docs/questions.md` | UI scope is conditional; production UI and implementation-guiding prototypes require exact component, icon, size, state, special-interaction, accessibility, platform-review, and traceability decisions; arbitrary YAML/JSON packages cannot substitute for the requested artifact or implementation |
 | Rolling login lockout | `internal/app/auth.go`, migration 002 | rolling-window user lock plus failed-login audit in one transaction |
 | Authentication persistence | `internal/app/auth.go` | successful reset/session/audit and logout blacklist/session/audit commit atomically; blacklist, replay and session errors fail closed |
 | Persisted workflow management | `workflow_definitions.go`, `workflows.go`, `server.go` | Admin GET/PUT route, ordered validation, in-use-state protection, database-resolved successor, and transactional history/audit/notification |
@@ -41,11 +42,11 @@ Repository YAML cannot prevent GitHub from first creating a workflow-run object.
 | Path and contamination audit | `ci/source_inventory.py` | all tracked files, collisions, near duplicates, unsafe characters, mixed conventions and explicit exceptions |
 | Truthful local report | `run_tests.sh`, `ci/run_tests_contract_check.sh` | report coverage equals stage rows and skipped stages cannot pass |
 | CI admission safety | `.github/workflows/ci.yml` | canonical manual target validation, active-run collapse, pre-checkout admission, scoped history/cooldown/latch, exact unlock and static-only later job |
-| Documentation truth | README/docs/contracts | current paths, transaction boundaries, API routes, evidence rules and limitations agree with source |
+| Documentation truth | README/docs/contracts | current paths, transaction boundaries, API routes, evidence rules, UI-generation boundaries, and limitations agree with source |
 
 ## Static acceptance conditions
 
-Static acceptance completes from current source, test definitions, schemas, migrations, configuration, workflows, deployment definitions, documentation, comments, and repository structure. It does not wait for or require deployment, database, browser, CI, or regression execution. A reviewer must not run those systems to fill evidence gaps.
+Static acceptance completes from current source, test definitions, schemas, migrations, configuration, workflows, deployment definitions, UI assets when applicable, documentation, comments, and repository structure. It does not wait for or require deployment, database, browser, CI, or regression execution. A reviewer must not run those systems to fill evidence gaps.
 
 Existing external artifacts may be described only as optional read-only context for their exact revision and scope. A reviewer report is a static review summary, never a runtime artifact.
 

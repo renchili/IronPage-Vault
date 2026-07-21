@@ -90,6 +90,28 @@ Keep the canonical UI behind `ACCEPTANCE_MODE`, do not embed fixture values, rem
 
 Static inspection traces missing input, incorrect credentials, successful login, network failure and retry, keyboard navigation, visible focus, and understandable result status through the canonical page and its test definitions. The reviewer does not execute that flow.
 
+## Buildable frontend design and interaction handoff
+
+### Easy-to-make interpretation
+
+A list of screens, a polished screenshot, generic component names, or prose such as “use an appropriate icon” can be treated as enough design output for later frontend development. Adding several YAML or JSON files can also appear to make an underspecified design implementation-ready.
+
+### Why it fails
+
+The frontend engineer still has to choose the component library, icon, dimensions, spacing, state behavior, special-interaction rules, accessibility behavior, and host-application conventions. Those decisions change the product and cannot be reconstructed reliably from a static image or generic prose. Arbitrary structured files add format without resolving the missing design decisions.
+
+### Correct requirement interpretation
+
+When a requested project includes a production UI or implementation-guiding prototype, the result must resolve the visual, component, interaction, responsive, accessibility, and target-platform decisions needed to build it. Exact icon choice and visual size, control and layout dimensions, full state behavior, special interaction lifecycle, and applicable app-review format are part of the requirement. Backend-only projects and explicitly acceptance-only probes remain outside that production-frontend obligation.
+
+### Required implementation
+
+`skills/project-generation-workflow/SKILL.md` must require the agent to inspect the target framework, host application, design system, component library, icon library, viewport constraints, and platform review rules before generating UI. It must require exact components, icons, dimensions, state variants, special-interaction commit/cancel/failure behavior, API and permission mapping, and implementation-ready output. It must forbid vague design placeholders and must not invent YAML, JSON, manifests, registries, or review packs unless the request, platform, loaded rules, or repository convention requires them. `skills/full-project-acceptance-hard-gates/SKILL.md` must reject UI output that still requires material redesign before coding.
+
+### Acceptance evidence
+
+Static contracts confirm both Skills contain the implementation-readiness, exact icon and sizing, special-interaction, platform-review, accessibility, traceability, and artifact-format boundaries. A UI acceptance report must either map those items to current source and design evidence or give a justified `N/A`; a screenshot, prose-only mock, or arbitrary structured package cannot establish readiness by itself.
+
 ## Static reviewer acceptance
 
 ### Easy-to-make interpretation

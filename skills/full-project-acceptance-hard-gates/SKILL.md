@@ -1,6 +1,6 @@
 ---
 name: full-project-acceptance-hard-gates
-description: Static hard-gated acceptance of complete software projects through source, test-definition, schema, configuration, documentation, workflow, deployment, and repository inspection without project execution or CI dependency.
+description: Static hard-gated acceptance of complete software projects through source, test-definition, schema, configuration, documentation, workflow, deployment, UI implementation, and repository inspection without project execution or CI dependency.
 ---
 
 # Full Project Static Acceptance Hard Gates
@@ -33,10 +33,10 @@ A project passes only when static inspection establishes that:
 
 1. original requirements and user corrections form an atomic matrix;
 2. every material requirement maps to current implementation and static evidence paths;
-3. source, tests, schemas, migrations, configuration, manifests, workflows, deployment, docs, and comments agree;
-4. positive, negative, boundary, failure, authorization, security, workflow, and recovery behavior exists in implementation and test definitions;
+3. source, tests, schemas, migrations, configuration, manifests, workflows, deployment, UI assets, docs, and comments agree;
+4. positive, negative, boundary, failure, authorization, security, workflow, interaction, accessibility, and recovery behavior exists in implementation and test definitions;
 5. repository layout, naming, formats, packaging, and contamination are acceptable;
-6. no required behavior is a stub, route-only shell, documentation-only promise, unsafe fallback, or undeclared external dependency;
+6. no required behavior is a stub, route-only shell, disconnected mock, documentation-only promise, unsafe fallback, or undeclared external dependency;
 7. all report tables are complete and consistent;
 8. no blocking static Gate fails.
 
@@ -44,8 +44,8 @@ A project passes only when static inspection establishes that:
 
 1. Original requirements and explicit user corrections.
 2. `AGENTS.md`, `AGENT.md`, and relevant Skills.
-3. Current production source, schemas, migrations, configuration, manifests, deployment, and API contracts.
-4. Current positive, negative, boundary, and failure-path test definitions.
+3. Current production source, schemas, migrations, configuration, manifests, deployment, UI assets, design-system source, and API contracts.
+4. Current positive, negative, boundary, failure-path, interaction, and accessibility test definitions.
 5. Current static guards and workflow definitions.
 6. Current documentation and comments.
 7. Pre-existing external artifacts, optional and read-only.
@@ -77,12 +77,13 @@ Spec gap         Requirement remains ambiguous after source reconciliation.
 Packaging gap    Path, mode, format, or archive defect.
 Doc-code gap     Documentation/comments contradict implementation.
 Interaction gap  Static interaction, error, recovery, or state design is incomplete.
+UI handoff gap   Visual, component, icon, sizing, platform, or implementation decisions remain unresolved.
 Code-quality gap Naming, structure, coupling, or complexity harms verification.
 ```
 
 ## Mandatory inventory
 
-Record repository/package path, exact revision/hash, file count and root layout, source, tests, docs, scripts and modes, workflows, deployment, migrations/configuration, artifacts, generated/cache/secret/runtime files, and path-name hazards. For ZIPs compare archive entries and mode metadata without executing content. No inventory means no `PASS`.
+Record repository/package path, exact revision/hash, file count and root layout, source, tests, docs, scripts and modes, workflows, deployment, migrations/configuration, UI assets and design-system sources, artifacts, generated/cache/secret/runtime files, and path-name hazards. For ZIPs compare archive entries and mode metadata without executing content. No inventory means no `PASS`.
 
 # Hard Gates
 
@@ -92,7 +93,7 @@ Confirm exact target revision/package, latest relevant changes, loaded rules wit
 
 ## Gate 1: Atomic requirement coverage
 
-Build requirements for architecture, deployment, persistence, storage, API, workflow, security, auth/session, protected data, domain features, audit, notifications, backup, interaction, docs, tests/static guards, CI definitions, hygiene, and maintainability.
+Build requirements for architecture, deployment, persistence, storage, API, workflow, security, auth/session, protected data, domain features, audit, notifications, backup, interaction, UI implementation readiness, design-system and platform compliance, docs, tests/static guards, CI definitions, hygiene, and maintainability.
 
 Required table:
 
@@ -100,7 +101,7 @@ Required table:
 ID | Requirement | Category | Implementation path | Test/static path | Status | Gap
 ```
 
-FAIL if a major requirement is omitted.
+When UI is in scope, the matrix must include screens/routes, components, exact icon choices, dimensions, visual states, special interactions, accessibility, responsive behavior, host-platform rules, and app-review obligations. FAIL if a major requirement is omitted.
 
 ## Gate 2: Architecture and deployment
 
@@ -120,7 +121,7 @@ For each sensitive field map schema, encryption/write path, decryption/read path
 
 ## Gate 6: RBAC and object access
 
-Trace every role through middleware, service/domain rules, object checks, repository queries, serialization, and tests.
+Trace every role through middleware, service/domain rules, object checks, repository queries, serialization, UI visibility when present, and tests.
 
 ```text
 Role | Allowed | Forbidden | Object scope | Visible fields | Hidden fields | Positive test | Negative test
@@ -130,11 +131,11 @@ FAIL when forbidden, object-level, state-dependent, or field-visibility paths ar
 
 ## Gate 7: Workflow and terminal immutability
 
-Inspect states, valid/invalid transitions, permissions, terminal immutability across every mutation, history, audit, notifications, and tests. FAIL if any mutation bypasses terminal rules or invalid transitions are accepted.
+Inspect states, valid/invalid transitions, permissions, terminal immutability across every mutation, history, audit, notifications, UI action availability when present, and tests. FAIL if any mutation bypasses terminal rules or invalid transitions are accepted.
 
 ## Gate 8: Domain features
 
-For every feature trace endpoint/command, validation, domain/service logic, storage mutation, side effects, errors, positive/negative tests, and output contract. FAIL for documentation-only, route-only, type-only, or stub implementations.
+For every feature trace endpoint/command, validation, domain/service logic, storage mutation, side effects, errors, positive/negative tests, UI integration when required, and output contract. FAIL for documentation-only, route-only, type-only, mock-only, or stub implementations.
 
 ## Gate 9: Audit, notifications, configuration side effects
 
@@ -142,7 +143,7 @@ Inspect every mutation for audit metadata, notifications, acknowledgement, limit
 
 ## Gate 10: API contract, errors, pagination
 
-Compare routes, handlers, request/response types, auth annotations, OpenAPI source, statuses, uniform errors, pagination, upload limits, and tests. Do not regenerate schemas. FAIL for disagreement or missing contracts.
+Compare routes, handlers, request/response types, auth annotations, OpenAPI source, statuses, uniform errors, pagination, upload limits, UI data consumers when present, and tests. Do not regenerate schemas. FAIL for disagreement or missing contracts.
 
 ## Gate 11: Backup, restore, operations
 
@@ -172,11 +173,40 @@ FAIL for target-wide blocking of new revisions, parallel/conflicting work, dupli
 
 ## Gate 15: UI, CLI, manual surfaces
 
-Inspect inclusion, mode gating, real route/command connection, scope description, primary action, loading, success, recovery, empty states, validation, destructive confirmation, terminology, focus/keyboard behavior, and specific errors. No screenshot or execution required. FAIL for disconnected mocks, fixture credential exposure, false production claims, or missing recovery.
+First classify each surface as production UI, implementation-guiding prototype, host-embedded UI, CLI, administrative/manual surface, acceptance-only probe, demo, fixture, or generated artifact. A backend-only project or acceptance probe must not be failed for lacking a production frontend that the specification does not require. A required production UI must not be accepted as an acceptance probe or static mock.
+
+For every required UI or implementation-guiding prototype, inspect:
+
+- route, navigation, entry/exit, deep-link, refresh, and permission visibility;
+- target platform, host application, framework/version, design system, component library, icon library, theme, and applicable app-review rules;
+- component hierarchy, reuse boundaries, state ownership, events, API/data dependencies, and implementation connection;
+- exact component choice rather than generic control descriptions;
+- exact icon library and icon name, visual size, stroke/fill, alignment, container size, hit target, tooltip or label, and state treatment;
+- page and component dimensions, constraints, spacing, typography, colors, borders, radius, elevation, density, and actual design tokens;
+- responsive breakpoints, minimum width, overflow, wrapping, truncation, scrolling, sticky regions, zoom, and long-content behavior;
+- default, hover, focus, pressed, selected, disabled, loading, empty, success, validation-error, request-error, permission-denied, conflict, stale-data, destructive, terminal/read-only, and theme states where applicable;
+- destructive confirmation, duplicate-submit prevention, persistence of unsaved input, error placement, retry, and recovery;
+- keyboard order, focus placement/return, accessible names, announcements, non-pointer operation, and contrast-independent meaning;
+- platform-specific navigation, iconography, sizing, dialog, permission, branding, privacy, accessibility, metadata, screenshot, and submission-review requirements;
+- traceability from requirement to screen, component, visual rule, interaction, API/data source, permission, and test definition.
+
+A screenshot alone is not sufficient evidence for behavior. Prose alone is not sufficient evidence for a requested interactive prototype. Do not require YAML, JSON, manifests, token registries, or review packs unless the user, loaded rules, repository convention, or target platform actually requires that format.
+
+FAIL when:
+
+- developers must still choose material icons, dimensions, spacing, components, visual hierarchy, state behavior, or host-platform patterns;
+- the output uses phrases such as “appropriate icon,” “standard spacing,” “normal modal,” “reasonable size,” “similar,” or “handle errors” instead of concrete decisions;
+- icon names do not exist in the declared library or icon size and hit target are conflated;
+- dimensions can only be guessed from an image;
+- a generic web pattern replaces the specified host application's conventions;
+- required app-review rules are absent, invented, stale, or not mapped to implementation;
+- disconnected mocks, fixture credential exposure, false production claims, missing recovery, or missing accessibility paths remain;
+- arbitrary structured files are substituted for the actual requested prototype or frontend implementation;
+- a required frontend is documented but not implemented when code delivery is in scope.
 
 ## Gate 16: Documentation consistency
 
-Compare setup, commands, paths, variables, dependencies, routes, DTOs, statuses, security, storage, workflow, backup, deployment, tests, evidence claims, and limitations with current source.
+Compare setup, commands, paths, variables, dependencies, routes, DTOs, statuses, security, storage, workflow, UI scope, platform/design-system claims, backup, deployment, tests, evidence claims, and limitations with current source.
 
 ```text
 Doc claim | Document path | Implementation path | Test/static path | Match? | Severity | Correction
@@ -186,11 +216,11 @@ FAIL for overstatement, nonexistent paths, stale process history, contradictions
 
 ## Gate 17: Repository/package layout
 
-Inspect root files, source/test/docs/scripts/migrations/deployment paths, package root, duplicates, generated output, and ownership. FAIL for missing required files, duplicate roots, implementation hidden in artifacts, or ambiguous near-duplicates.
+Inspect root files, source/test/docs/scripts/migrations/deployment/UI asset paths, package root, duplicates, generated output, and ownership. FAIL for missing required files, duplicate roots, implementation hidden in artifacts, or ambiguous near-duplicates.
 
 ## Gate 18: File formats and hygiene
 
-Inspect encoding, JSON/YAML/TOML/SQL/Markdown structure, shell/Python/Go syntax by reading, shebangs, line endings, extension/content agreement, placeholders, merge markers, binaries, and malformed generated source. Do not run parsers or compilers. FAIL for malformed or misleading files.
+Inspect encoding, JSON/YAML/TOML/SQL/Markdown structure, shell/Python/Go syntax by reading, UI source and asset references, shebangs, line endings, extension/content agreement, placeholders, merge markers, binaries, and malformed generated source. Do not run parsers or compilers. FAIL for malformed or misleading files.
 
 ## Gate 19: Source/evidence paths
 
@@ -202,7 +232,7 @@ FAIL for stale, missing, unresolved, or invented paths.
 
 ## Gate 20: Naming and readability
 
-Inspect conventions for files, packages, types, functions, variables, configuration, environment variables, routes, DTOs, tests, and scripts. Scan non-ASCII/locale-dependent paths, spaces/control characters, case-only collisions, singular/plural near-duplicates, mixed conventions, vague critical names, and oversized functions.
+Inspect conventions for files, packages, types, functions, variables, components, icons, design tokens, configuration, environment variables, routes, DTOs, tests, and scripts. Scan non-ASCII/locale-dependent paths, spaces/control characters, case-only collisions, singular/plural near-duplicates, mixed conventions, vague critical names, and oversized functions.
 
 ```text
 Area | Source path | Finding | Convention | Status | Correction
@@ -210,7 +240,7 @@ Area | Source path | Finding | Convention | Status | Correction
 
 ## Gate 21: Comments and consistency
 
-Inspect comments for intent, invariants, security, data contracts, state transitions, generated markers, and errors. Enumerate TODO/FIXME/HACK/XXX.
+Inspect comments for intent, invariants, security, data contracts, state transitions, special interactions, generated markers, and errors. Enumerate TODO/FIXME/HACK/XXX.
 
 ```text
 Comment/topic | Source path | Related doc | Related implementation | Consistent? | Severity | Correction
@@ -247,17 +277,22 @@ Roadmap item | Requested/tracked? | Implemented? | Acceptance relevance | Status
 
 For each critical role/flow inspect input, validation, permission, success, state mutation, subsequent visibility, audit/notification effects, invalid input, denial, expired/revoked session, replay, large/unsupported input, dependency failure, cancellation, terminal state, empty results, and retry/recovery.
 
+For every non-trivial UI interaction, additionally inspect supported input methods, activation threshold, active-state behavior, coordinate/snap/bounds/scroll/zoom rules, commit condition, persisted result, cancellation, Escape, pointer cancel, focus loss, route change, undo/redo/delete, duplicate-submit prevention, optimistic/pessimistic update choice, stale-version conflict, permission loss, partial failure, keyboard-only path, assistive-technology path, and API/domain mutation.
+
+Required tables:
+
 ```text
 Flow | Role | Input contract | Expected interaction | State path | Test definition | Status | Gap
+UI flow | Screen/component | Trigger | Active behavior | Commit/cancel | Failure/recovery | Accessibility | Status | Gap
 Prompt/copy path | Intended user | Required input | Expected output | Recovery guidance | Source | Status
 Negative flow | Trigger | Expected recovery | Implementation path | Test path | Status
 ```
 
-Do not execute interactions. FAIL for vague errors, missing recovery, incomplete state paths, or mocks presented as production behavior.
+Do not execute interactions. FAIL for vague errors, missing recovery, incomplete state paths, visual-only definitions of special interactions, or mocks presented as production behavior.
 
 ## Gate 27: Final verdict
 
-Before the verdict produce scope/revision, loaded rules, inventory, requirement matrix, Gate table, source-path table, doc consistency, naming, comments, pollution, static interactions, test/workflow provenance, hygiene, gaps, and final decision.
+Before the verdict produce scope/revision, loaded rules, inventory, requirement matrix, Gate table, source-path table, doc consistency, naming, comments, pollution, static interactions, UI implementation readiness when applicable, test/workflow provenance, hygiene, gaps, and final decision.
 
 ```text
 PASS          Every applicable static Gate is PASS or justified N/A.
@@ -285,6 +320,7 @@ Missing test execution, CI, build, deployment, runtime logs, screenshots, or ext
 ## README/design/questions consistency
 ## Invented obligations and roadmap validation
 ## Static interaction flows
+## UI implementation readiness and platform review
 ## Prompt/copy reliability
 ## Error and recovery paths
 ## State-path and mock-vs-production classification
@@ -306,6 +342,10 @@ Missing test execution, CI, build, deployment, runtime logs, screenshots, or ext
 [ ] Security/RBAC positive and negative paths traced
 [ ] Workflow and terminal paths traced
 [ ] Protected fields mapped end to end
+[ ] Required UI screens/components/icons/dimensions/states traced or justified N/A
+[ ] Required host-platform and app-review rules traced or justified N/A
+[ ] Special interactions have commit/cancel/failure/recovery/accessibility paths
+[ ] UI artifact formats come from the request, platform, loaded rules, or repository convention
 [ ] Docs checked against source
 [ ] Naming and path hazards checked
 [ ] Comments and TODO/FIXME/HACK/XXX checked
