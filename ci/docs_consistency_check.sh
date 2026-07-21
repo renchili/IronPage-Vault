@@ -125,19 +125,19 @@ for path, phrases in {
     ],
     "docs/design.md": [
         "same transaction", "page-number range", "safe archive extraction",
-        "same-repository open PR", "required domain order",
+        "same-repository open PR", "Draft -> Under Review -> Redaction Pending -> Approved -> Finalized",
     ],
     "docs/requirement-check.md": [
         "admin get/put route", "deterministic source-ip lookup/backfill",
-        "canonical manual target validation", "required legal workflow states",
+        "canonical manual target validation", "ordered validation",
     ],
     "docs/testing.md": [
         "exact same-repository open PR", "audit source ip/metadata",
-        "staged restore", "required domain states",
+        "staged restore", "ordered definitions",
     ],
     "docs/api-spec.md": [
         "put | `/api/admin/workflow-statuses`", "source_ip",
-        "start_number", "end_number", "required legal states",
+        "start_number", "end_number", "complete ordered chain",
     ],
     "docs/backup-recovery.md": ["safe", "--single-transaction", "requested", "completed", "failed"],
 }.items():
