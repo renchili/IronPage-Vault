@@ -65,6 +65,9 @@ func TestRestoreLifecycleJournalRejectsPlaintextEnvelope(t *testing.T) {
 		t.Fatalf("create lifecycle directory: %v", err)
 	}
 	plaintextEnvelope := `{"algorithm":"AES-256-GCM","ciphertext":"{\"id\":\"rst_plaintext\",\"actor_user_id\":\"usr_admin\",\"request_id\":\"req_plaintext\"}"}`
+	plaintextEnvelope = strings.ReplaceAll(plaintextEnvelope, `\"algorithm\"`, `"algorithm"`)
+	plaintextEnvelope = strings.ReplaceAll(plaintextEnvelope, `\"AES-256-GCM\"`, `"AES-256-GCM"`)
+	plaintextEnvelope = strings.ReplaceAll(plaintextEnvelope, `\"ciphertext\"`, `"ciphertext"`)
 	if err := os.WriteFile(path, []byte(plaintextEnvelope), 0600); err != nil {
 		t.Fatalf("write plaintext lifecycle envelope: %v", err)
 	}
