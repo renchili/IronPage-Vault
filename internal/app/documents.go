@@ -139,7 +139,7 @@ func (a *App) listDocuments(c echo.Context) error {
 	rows := []Document{}
 	where, args := documentListWhereClause(p)
 	args = append(args, size, (page - 1) * size)
-	query := fmt.Sprintf(`SELECT * FROM documents WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args))
+	query := fmt.Sprintf(`SELECT * FROM documents WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, where, len(args) - 1, len(args))
 	if err := a.db.SelectContext(c.Request().Context(), &rows, query, args...); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_QUERY_ERROR", "could not list documents")
 	}
