@@ -70,7 +70,7 @@ func (a *App) transitionDocument(c echo.Context) error {
 	if err := a.auditWithExecutor(c, tx, p.UserID, "WORKFLOW_TRANSITION", d.ID, map[string]interface{}{"from_status": d.Status, "to_status": req.Status}); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record workflow audit")
 	}
-	if err := a.notifyUserWithExecutor(c, tx, d.OwnerID, "workflow.transition", "Document moved to "+req.Status, d.ID); err != nil {
+	if err := a.notifyUserWithExecutor(c, tx, d.OwnerID, "workflow.transition", "Document moved to " + req.Status, d.ID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_CREATE_ERROR", "could not record workflow notification")
 	}
 	if err := tx.Commit(); err != nil {
@@ -118,7 +118,7 @@ func (a *App) finalizeDocument(c echo.Context) error {
 	if err := a.auditWithExecutor(c, tx, p.UserID, "DOCUMENT_FINALIZE", d.ID, map[string]interface{}{"from_status": d.Status, "to_status": StatusFinalized}); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record finalization audit")
 	}
-	if err := a.notifyUserWithExecutor(c, tx, d.OwnerID, "workflow.transition", "Document moved to "+StatusFinalized, d.ID); err != nil {
+	if err := a.notifyUserWithExecutor(c, tx, d.OwnerID, "workflow.transition", "Document moved to " + StatusFinalized, d.ID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_CREATE_ERROR", "could not record finalization notification")
 	}
 	if err := tx.Commit(); err != nil {
