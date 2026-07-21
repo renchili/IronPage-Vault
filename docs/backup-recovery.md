@@ -44,7 +44,25 @@ The request requires:
 }
 ```
 
-The API creates a restore ID and transactionally records `Requested` plus `BACKUP_RESTORE_REQUESTED` before external restore work. It later records exactly one `Completed` or `Failed` state with the corresponding encrypted audit metadata. A `200` response is returned only after `Completed` and `BACKUP_RESTORE_COMPLETED` are stored.
+Before external restore work begins, the API creates a restore ID and writes an encrypted lifecycle journal under the installation's generated `BACKUP_DIR/.restore-lifecycle`. The journal retains the requesting Admin, request ID, source IP, artifact paths, and lifecycle metadata as AES-256-GCM ciphertext. It is outside `STORAGE_DIR`, so replacing the document filesystem snapshot does not erase the recovery record.
+
+The API then transactionally stores the `Requested` backup-job state and `BACKUP_RESTORE_REQUESTED` audit. The same acting Admin is retained for every later state. After the strict restore returns, the journal is atomically advanced to `Completed` or `Failed` before the terminal database state and audit are attempted.
+
+Because `pg_restore` replaces PostgreSQL state, terminal persistence idempotently restores both the Requested audit and the matching Completed or Failed audit into the restored database. The `backup_jobs.created_by` value is never replaced with `NULL`. A `200` response is returned only after the Completed job state and both acting-user audit records exist in PostgreSQL.
+
+## Restore lifecycle reconciliation
+
+A terminal database or audit failure cannot be rolled back across a PostgreSQL restore and filesystem swap. The encrypted journal is therefore the durable reconciliation source:
+
+1. `Requested` is written before external restore work;
+2. `Completed` or `Failed` is written after the platform result is known;
+3. the terminal job state and audits are committed together;
+4. the journal is removed only after that commit;
+5. startup reconciles every remaining journal before the backup scheduler or HTTP API starts.
+
+A retained Completed or Failed journal is replayed idempotently. A journal still in Requested means the process ended before it could durably record the platform outcome; startup converts it to Failed with explicit metadata requiring operators to verify restored data before retrying. Malformed, undecryptable, or unpersistable journals fail startup rather than silently leaving an ambiguous restore lifecycle.
+
+If the final journal deletion fails after a successful database commit, the API still returns the completed restore together with `lifecycle_reconciliation_pending=true`; the next startup verifies and removes the idempotent journal.
 
 ## Staged filesystem recovery
 
@@ -70,7 +88,7 @@ A cleanup failure is returned as restore failure and recorded in the Failed life
 
 The database either commits the restored archive or rolls back that database restore. If it fails, the staged filesystem installation is rolled back to the previous directory.
 
-The PostgreSQL command and filesystem rename cannot be one cross-system ACID transaction. The implementation therefore uses database single-transaction restore, reversible filesystem installation, explicit restore states and fail-closed success reporting.
+The PostgreSQL command and filesystem rename cannot be one cross-system ACID transaction. The implementation therefore uses database single-transaction restore, reversible filesystem installation, an encrypted lifecycle journal, explicit restore states, startup reconciliation, and fail-closed success reporting.
 
 ## Operational recovery order
 
@@ -78,12 +96,13 @@ The PostgreSQL command and filesystem rename cannot be one cross-system ACID tra
 2. Retain `.env` and the generated database/storage identity.
 3. Select a completed backup and both paths returned by its manifest/API response.
 4. Submit both paths to the Admin restore route.
-5. Verify the returned restore ID is `Restored` and the jobs list contains its Completed restore row.
-6. Restart with the same installation configuration when required.
-7. Verify representative documents, versions, files, audit records and notifications.
+5. Verify the returned restore ID is `Restored` and the jobs list contains its Completed restore row with the requesting Admin in `created_by`.
+6. Verify Admin audit results contain both `BACKUP_RESTORE_REQUESTED` and `BACKUP_RESTORE_COMPLETED` for that acting user and request ID.
+7. If `lifecycle_reconciliation_pending` is returned or the process exits during restore, restart with the same installation configuration; startup must reconcile the journal before serving requests.
+8. Verify representative documents, versions, files, audit records and notifications.
 
-Restoring only the dump or only the filesystem archive is unsupported.
+Restoring only the dump or only the filesystem archive is unsupported. Reconciliation also requires the requesting Admin identity to exist in the restored same-installation snapshot so the audit foreign-key contract can be preserved.
 
 ## Static and execution evidence
 
-Static inspection can verify strict mode checks, cleanup paths, safe extraction, rollback functions, PostgreSQL single-transaction flags, restore lifecycle state and audit requirements. It does not claim that an execution occurred. Existing runtime evidence, when available, applies only to its exact revision and inputs; static review neither requires nor creates it.
+Static inspection can verify strict mode checks, cleanup paths, safe extraction, rollback functions, PostgreSQL single-transaction flags, encrypted lifecycle persistence, acting-user preservation, idempotent audit reconciliation, startup ordering, collection visibility, and failure handling. It does not claim that an execution occurred. Existing runtime evidence, when available, applies only to its exact revision and inputs; static review neither requires nor creates it.
