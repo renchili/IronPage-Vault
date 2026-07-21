@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -64,11 +65,14 @@ func TestRestoreLifecycleJournalRejectsPlaintextEnvelope(t *testing.T) {
 	if err := os.MkdirAll(a.restoreLifecycleDirectory(), 0700); err != nil {
 		t.Fatalf("create lifecycle directory: %v", err)
 	}
-	plaintextEnvelope := `{"algorithm":"AES-256-GCM","ciphertext":"{\"id\":\"rst_plaintext\",\"actor_user_id\":\"usr_admin\",\"request_id\":\"req_plaintext\"}"}`
-	plaintextEnvelope = strings.ReplaceAll(plaintextEnvelope, `\"algorithm\"`, `"algorithm"`)
-	plaintextEnvelope = strings.ReplaceAll(plaintextEnvelope, `\"AES-256-GCM\"`, `"AES-256-GCM"`)
-	plaintextEnvelope = strings.ReplaceAll(plaintextEnvelope, `\"ciphertext\"`, `"ciphertext"`)
-	if err := os.WriteFile(path, []byte(plaintextEnvelope), 0600); err != nil {
+	plaintext, err := json.Marshal(protectedMetadata{
+		Algorithm:  "AES-256-GCM",
+		Ciphertext: `{"id":"rst_plaintext","actor_user_id":"usr_admin","request_id":"req_plaintext"}`,
+	})
+	if err != nil {
+		t.Fatalf("marshal plaintext lifecycle envelope: %v", err)
+	}
+	if err := os.WriteFile(path, plaintext, 0600); err != nil {
 		t.Fatalf("write plaintext lifecycle envelope: %v", err)
 	}
 	if _, err := a.readRestoreLifecycleRecord(path); err == nil {
