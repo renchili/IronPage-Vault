@@ -105,7 +105,7 @@ func (a *App) readRestoreLifecycleRecord(path string) (restoreLifecycleRecord, e
 	if err := json.Unmarshal(encoded, &envelope); err != nil {
 		return restoreLifecycleRecord{}, err
 	}
-	if envelope.Algorithm != "AES-256-GCM" || envelope.Ciphertext == "" {
+	if envelope.Algorithm != "AES-256-GCM" || !strings.HasPrefix(envelope.Ciphertext, encryptedPrefix) {
 		return restoreLifecycleRecord{}, fmt.Errorf("restore lifecycle journal is not protected")
 	}
 	plaintext, err := decryptString(a.cfg.AESKey, envelope.Ciphertext)
@@ -115,6 +115,9 @@ func (a *App) readRestoreLifecycleRecord(path string) (restoreLifecycleRecord, e
 	var record restoreLifecycleRecord
 	if err := json.Unmarshal([]byte(plaintext), &record); err != nil {
 		return restoreLifecycleRecord{}, err
+	}
+	if record.ActorUserID == "" || record.RequestID == "" || filepath.Base(path) != record.ID+".json" {
+		return restoreLifecycleRecord{}, fmt.Errorf("restore lifecycle journal identity is invalid")
 	}
 	return record, nil
 }
