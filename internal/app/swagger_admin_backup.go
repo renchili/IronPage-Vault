@@ -4,6 +4,8 @@ package app
 // @Summary List workflow statuses
 // @Tags admin
 // @Security BearerAuth
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/admin/workflow-statuses [get]
@@ -27,6 +29,8 @@ func replaceWorkflowStatusesSwagger() {}
 // @Summary List notification templates
 // @Tags admin
 // @Security BearerAuth
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/admin/notification-templates [get]
@@ -57,6 +61,8 @@ func runBackupSwagger() {}
 // @Summary List backup jobs
 // @Tags backup
 // @Security BearerAuth
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/admin/backup/jobs [get]
@@ -64,7 +70,7 @@ func backupJobsSwagger() {}
 
 // restoreBackupSwagger documents the explicit restore lifecycle.
 // @Summary Restore backup
-// @Description Records Requested and Completed or Failed restore state. A success response is returned only after completion state and audit are persisted.
+// @Description Uses a durable local lifecycle journal, preserves the requesting Admin as acting user, and reconciles interrupted terminal persistence before startup continues.
 // @Tags backup
 // @Security BearerAuth
 // @Success 200 {object} map[string]interface{}
