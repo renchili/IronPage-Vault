@@ -15,7 +15,7 @@ func TestNormalizeWorkflowDefinitionsAssignsOrderedPositions(t *testing.T) {
 		t.Fatalf("normalize workflow: %v", err)
 	}
 	for index, definition := range definitions {
-		if definition.Position != index+1 {
+		if definition.Position != index + 1 {
 			t.Fatalf("position %d = %d", index, definition.Position)
 		}
 	}
