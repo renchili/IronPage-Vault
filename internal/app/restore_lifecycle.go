@@ -46,22 +46,77 @@ func (a *App) writeRestoreLifecycleRecord(record restoreLifecycleRecord) error {
 	if record.ActorUserID == "" || record.RequestID == "" {
 		return fmt.Errorf("restore lifecycle requires actor and request id")
 	}
-	if err := os.MkdirAll(a.restoreLifecycleDirectory(), 0700); err != nil {
+	directory := a.restoreLifecycleDirectory()
+	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err
 	}
-	encoded, err := json.Marshal(record)
+	if err := os.Chmod(directory, 0700); err != nil {
+		return err
+	}
+	plaintext, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	ciphertext, err := encryptString(a.cfg.AESKey, string(plaintext))
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(protectedMetadata{Algorithm: "AES-256-GCM", Ciphertext: ciphertext})
 	if err != nil {
 		return err
 	}
 	temporaryPath := path + ".tmp"
-	if err := os.WriteFile(temporaryPath, encoded, 0600); err != nil {
+	file, err := os.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(encoded); err != nil {
+		_ = file.Close()
+		_ = os.Remove(temporaryPath)
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		_ = os.Remove(temporaryPath)
+		return err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(temporaryPath)
 		return err
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
 		_ = os.Remove(temporaryPath)
 		return err
 	}
-	return nil
+	directoryHandle, err := os.Open(directory)
+	if err != nil {
+		return err
+	}
+	defer directoryHandle.Close()
+	return directoryHandle.Sync()
+}
+
+func (a *App) readRestoreLifecycleRecord(path string) (restoreLifecycleRecord, error) {
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		return restoreLifecycleRecord{}, err
+	}
+	var envelope protectedMetadata
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		return restoreLifecycleRecord{}, err
+	}
+	if envelope.Algorithm != "AES-256-GCM" || envelope.Ciphertext == "" {
+		return restoreLifecycleRecord{}, fmt.Errorf("restore lifecycle journal is not protected")
+	}
+	plaintext, err := decryptString(a.cfg.AESKey, envelope.Ciphertext)
+	if err != nil {
+		return restoreLifecycleRecord{}, err
+	}
+	var record restoreLifecycleRecord
+	if err := json.Unmarshal([]byte(plaintext), &record); err != nil {
+		return restoreLifecycleRecord{}, err
+	}
+	return record, nil
 }
 
 func (a *App) removeRestoreLifecycleRecord(id string) error {
@@ -138,12 +193,8 @@ func (a *App) reconcileRestoreLifecycle(ctx context.Context) error {
 			continue
 		}
 		path := filepath.Join(a.restoreLifecycleDirectory(), entry.Name())
-		encoded, err := os.ReadFile(path)
+		record, err := a.readRestoreLifecycleRecord(path)
 		if err != nil {
-			return err
-		}
-		var record restoreLifecycleRecord
-		if err := json.Unmarshal(encoded, &record); err != nil {
 			return fmt.Errorf("invalid restore lifecycle journal %s: %w", entry.Name(), err)
 		}
 		if record.Status == "Requested" {
