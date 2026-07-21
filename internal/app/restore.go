@@ -52,6 +52,9 @@ func (a *App) restoreBackup(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "could not create durable restore lifecycle journal")
 	}
 	if err := a.recordRestoreState(c, record); err != nil {
+		if cleanupErr := a.removeRestoreLifecycleRecord(id); cleanupErr != nil {
+			return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "could not record restore request or clean its lifecycle journal")
+		}
 		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "could not record restore request")
 	}
 
