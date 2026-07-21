@@ -158,7 +158,7 @@ func (a *App) confirmRedaction(c echo.Context) error {
 		if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO document_status_history(id,document_id,from_status,to_status,changed_by,created_at) VALUES($1,$2,$3,$4,$5,NOW())`, makeIdentifier("wfh"), docID, d.Status, StatusRedactionPending, p.UserID); err != nil {
 			return apiErr(c, http.StatusInternalServerError, "WORKFLOW_HISTORY_ERROR", "could not record redaction status history")
 		}
-		if err := a.notifyUserWithExecutor(c, tx, d.OwnerID, "workflow.transition", "Document moved to " + StatusRedactionPending, docID); err != nil {
+		if err := a.notifyUserWithExecutor(c, tx, d.OwnerID, "workflow.transition", "Document moved to "+StatusRedactionPending, docID); err != nil {
 			return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_CREATE_ERROR", "could not record redaction status notification")
 		}
 	}

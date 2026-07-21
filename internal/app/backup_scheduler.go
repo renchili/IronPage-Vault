@@ -50,7 +50,7 @@ func (a *App) runScheduledBackup(ctx context.Context) error {
 	}
 	snapshot := service.NewBackupSnapshot(id, a.cfg.DBName, counts)
 	artifacts, err := platform.RunBackupArtifactsStrict(id, a.cfg.DSN(), a.cfg.StorageDir, a.cfg.BackupDir)
-	target := filepath.Join(a.cfg.BackupDir, id + ".json")
+	target := filepath.Join(a.cfg.BackupDir, id+".json")
 	if err != nil {
 		cleanupBackupArtifacts(a.cfg.BackupDir, id, target, artifacts)
 		return err

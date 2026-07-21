@@ -31,7 +31,7 @@ func AllocateBatesRange(ctx context.Context, executor sqlx.ExtContext, requested
 		}
 		start = requested
 	}
-	if _, err := executor.ExecContext(ctx, `UPDATE bates_sequences SET next_number=$1,updated_at=NOW() WHERE scope='global'`, start + count); err != nil {
+	if _, err := executor.ExecContext(ctx, `UPDATE bates_sequences SET next_number=$1,updated_at=NOW() WHERE scope='global'`, start+count); err != nil {
 		return 0, err
 	}
 	return start, nil

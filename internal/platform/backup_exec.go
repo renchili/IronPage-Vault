@@ -29,39 +29,39 @@ func RunBackupArtifacts(id string, dsn string, storageDir string, backupDir stri
 	manifest := BackupArtifactManifest{
 		BackupID:         id,
 		CreatedAt:        time.Now().UTC(),
-		DatabaseDumpPath: filepath.Join(backupDir, id + ".dump"),
-		FileSnapshotPath: filepath.Join(backupDir, id + "_files.tar"),
+		DatabaseDumpPath: filepath.Join(backupDir, id+".dump"),
+		FileSnapshotPath: filepath.Join(backupDir, id+"_files.tar"),
 		RestoreSupported: true,
 	}
 	if _, err := exec.LookPath("pg_dump"); err == nil && dsn != "" {
 		cmd := exec.Command("pg_dump", "--format=custom", "--file", manifest.DatabaseDumpPath, dsn)
 		if err := cmd.Run(); err != nil {
 			manifest.DatabaseDumpMode = "pg_dump_failed_metadata_only"
-			_ = os.WriteFile(manifest.DatabaseDumpPath + ".error", []byte(err.Error()), 0640)
+			_ = os.WriteFile(manifest.DatabaseDumpPath+".error", []byte(err.Error()), 0640)
 		} else {
 			manifest.DatabaseDumpMode = "pg_dump_custom"
 		}
 	} else {
 		manifest.DatabaseDumpMode = "pg_dump_unavailable_metadata_only"
-		_ = os.WriteFile(manifest.DatabaseDumpPath + ".missing", []byte("pg_dump or DSN unavailable"), 0640)
+		_ = os.WriteFile(manifest.DatabaseDumpPath+".missing", []byte("pg_dump or DSN unavailable"), 0640)
 	}
 	if _, err := exec.LookPath("tar"); err == nil {
 		cmd := exec.Command("tar", "-cf", manifest.FileSnapshotPath, "-C", storageDir, ".")
 		if err := cmd.Run(); err != nil {
 			manifest.FileSnapshotMode = "tar_failed"
-			_ = os.WriteFile(manifest.FileSnapshotPath + ".error", []byte(err.Error()), 0640)
+			_ = os.WriteFile(manifest.FileSnapshotPath+".error", []byte(err.Error()), 0640)
 		} else {
 			manifest.FileSnapshotMode = "tar"
 		}
 	} else {
 		manifest.FileSnapshotMode = "tar_unavailable"
-		_ = os.WriteFile(manifest.FileSnapshotPath + ".missing", []byte("tar unavailable"), 0640)
+		_ = os.WriteFile(manifest.FileSnapshotPath+".missing", []byte("tar unavailable"), 0640)
 	}
 	raw, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return manifest, err
 	}
-	if err := os.WriteFile(filepath.Join(backupDir, id + "_manifest.json"), raw, 0640); err != nil {
+	if err := os.WriteFile(filepath.Join(backupDir, id+"_manifest.json"), raw, 0640); err != nil {
 		return manifest, err
 	}
 	return manifest, nil
@@ -87,11 +87,11 @@ func extractTarSnapshot(snapshotPath string, targetDir string) error {
 		if name == "." {
 			continue
 		}
-		if filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".." + string(os.PathSeparator)) {
+		if filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".."+string(os.PathSeparator)) {
 			return fmt.Errorf("unsafe path in filesystem snapshot: %s", header.Name)
 		}
 		destination := filepath.Join(targetDir, name)
-		if !strings.HasPrefix(filepath.Clean(destination) + string(os.PathSeparator), root) {
+		if !strings.HasPrefix(filepath.Clean(destination)+string(os.PathSeparator), root) {
 			return fmt.Errorf("filesystem snapshot escapes restore root: %s", header.Name)
 		}
 		switch header.Typeflag {
@@ -103,7 +103,7 @@ func extractTarSnapshot(snapshotPath string, targetDir string) error {
 			if err := os.MkdirAll(filepath.Dir(destination), 0750); err != nil {
 				return err
 			}
-			output, err := os.OpenFile(destination, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0640)
+			output, err := os.OpenFile(destination, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
 			if err != nil {
 				return err
 			}

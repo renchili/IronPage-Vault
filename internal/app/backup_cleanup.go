@@ -12,7 +12,7 @@ func cleanupBackupArtifacts(backupDir string, id string, metadataPath string, ma
 		metadataPath,
 		manifest.DatabaseDumpPath,
 		manifest.FileSnapshotPath,
-		filepath.Join(backupDir, id + "_manifest.json"),
+		filepath.Join(backupDir, id+"_manifest.json"),
 		manifest.DatabaseDumpPath + ".error",
 		manifest.DatabaseDumpPath + ".missing",
 		manifest.FileSnapshotPath + ".error",

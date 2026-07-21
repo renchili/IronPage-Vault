@@ -57,7 +57,7 @@ type assertionError struct{}
 func (assertionError) Error() string { return "database password must not leak" }
 
 func contains(value, needle string) bool {
-	for i := 0; i + len(needle) <= len(value); i++ {
+	for i := 0; i+len(needle) <= len(value); i++ {
 		if value[i:i+len(needle)] == needle {
 			return true
 		}

@@ -26,7 +26,7 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 	if err := os.MkdirAll(a.cfg.BackupDir, 0750); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_DIR_ERROR", "could not create backup directory")
 	}
-	target := filepath.Join(a.cfg.BackupDir, id + ".json")
+	target := filepath.Join(a.cfg.BackupDir, id+".json")
 	snapshot, err := a.collectBackupSnapshot(c, id)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_SNAPSHOT_ERROR", "could not collect backup metadata snapshot")

@@ -63,7 +63,7 @@ func BuildAuditLogListQuery(filters AuditLogFilters, limit int, offset int) (str
 	query := fmt.Sprintf(
 		`SELECT id,actor_user_id,document_id,action_type,request_id,source_ip,source_ip_lookup,source_ip_ciphertext,metadata,metadata_ciphertext,created_at FROM audit_logs WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`,
 		strings.Join(clauses, " AND "),
-		len(args) - 1,
+		len(args)-1,
 		len(args),
 	)
 	return query, args

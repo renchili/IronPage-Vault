@@ -37,8 +37,8 @@ func (a *App) restoreBackup(c echo.Context) error {
 	baseMetadata := map[string]interface{}{
 		"restore_id":           id,
 		"requested_by_user_id": p.UserID,
-		"database_dump_path":  req.DatabaseDumpPath,
-		"file_snapshot_path":  req.FileSnapshotPath,
+		"database_dump_path":   req.DatabaseDumpPath,
+		"file_snapshot_path":   req.FileSnapshotPath,
 	}
 	if err := a.recordRestoreState(c, id, "Requested", "BACKUP_RESTORE_REQUESTED", p.UserID, baseMetadata); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "could not record restore request")
@@ -48,8 +48,8 @@ func (a *App) restoreBackup(c echo.Context) error {
 		failed := map[string]interface{}{
 			"restore_id":           id,
 			"requested_by_user_id": p.UserID,
-			"database_dump_path":  req.DatabaseDumpPath,
-			"file_snapshot_path":  req.FileSnapshotPath,
+			"database_dump_path":   req.DatabaseDumpPath,
+			"file_snapshot_path":   req.FileSnapshotPath,
 			"result":               result,
 			"error":                err.Error(),
 		}
@@ -61,8 +61,8 @@ func (a *App) restoreBackup(c echo.Context) error {
 	completed := map[string]interface{}{
 		"restore_id":           id,
 		"requested_by_user_id": p.UserID,
-		"database_dump_path":  req.DatabaseDumpPath,
-		"file_snapshot_path":  req.FileSnapshotPath,
+		"database_dump_path":   req.DatabaseDumpPath,
+		"file_snapshot_path":   req.FileSnapshotPath,
 		"result":               result,
 	}
 	if err := a.recordRestoreState(c, id, "Completed", "BACKUP_RESTORE_COMPLETED", "", completed); err != nil {

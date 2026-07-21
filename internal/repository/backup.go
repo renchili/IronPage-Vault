@@ -15,7 +15,7 @@ func (r Repository) CountBackupTables(ctx context.Context) ([]BackupTableCount, 
 	counts := []BackupTableCount{}
 	for _, table := range BackupSnapshotTables() {
 		var n int
-		if err := r.DB.GetContext(ctx, &n, "SELECT COUNT(*) FROM " + table); err != nil {
+		if err := r.DB.GetContext(ctx, &n, "SELECT COUNT(*) FROM "+table); err != nil {
 			return nil, err
 		}
 		counts = append(counts, BackupTableCount{Table: table, Count: n})
