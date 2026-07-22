@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
@@ -29,6 +31,9 @@ func encryptedAuditMetadata(secret string, metadata map[string]interface{}) (str
 }
 
 func (a *App) insertAuditRecordWithExecutor(ctx context.Context, executor sqlx.ExtContext, actorID, action, documentID, requestID, sourceIP string, metadata map[string]interface{}) error {
+	if strings.TrimSpace(actorID) == "" {
+		return fmt.Errorf("audit acting user is required")
+	}
 	sourceIPCipher, err := sealAuditSourceIP(a.cfg.AESKey, sourceIP)
 	if err != nil {
 		return err
@@ -38,7 +43,7 @@ func (a *App) insertAuditRecordWithExecutor(ctx context.Context, executor sqlx.E
 		return err
 	}
 	sourceIPLookup := piiLookupKey(a.cfg.AESKey, sourceIP)
-	_, err = executor.ExecContext(ctx, `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,source_ip_lookup,source_ip_ciphertext,metadata,metadata_ciphertext,created_at) VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,$5,'',$6,$7,'{}'::jsonb,$8,NOW())`, makeIdentifier("aud"), actorID, documentID, action, requestID, sourceIPLookup, sourceIPCipher, metadataCipher)
+	_, err = executor.ExecContext(ctx, `INSERT INTO audit_logs(id,actor_user_id,document_id,action_type,request_id,source_ip,source_ip_lookup,source_ip_ciphertext,metadata,metadata_ciphertext,created_at) VALUES($1,$2,NULLIF($3,''),$4,$5,'',$6,$7,'{}'::jsonb,$8,NOW())`, makeIdentifier("aud"), actorID, documentID, action, requestID, sourceIPLookup, sourceIPCipher, metadataCipher)
 	return err
 }
 
