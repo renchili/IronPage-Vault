@@ -11,17 +11,45 @@ tests/api/             HTTP, PostgreSQL, filesystem, PDF, bootstrap, auth, backu
 ci/                    static workflow contracts and manual full-regression helpers
 ```
 
-`run_tests.sh` is the local report entrypoint. `ci/run_full_regression.sh` is the complete regression entrypoint. Neither is called by the GitHub static workflow.
+`run_tests.sh` is the local report entrypoint. `ci/run_full_regression.sh` is the complete regression entrypoint. Neither is called by the GitHub static workflow, and neither is executed by a static reviewer.
 
 ## Static reviewer boundary
 
-A static acceptance reviewer reads source and pre-existing evidence only. The reviewer must not run tests, scripts, generators, formatters, builds, containers, databases, browsers, deployments, or CI to fill evidence gaps. Missing execution does not alter the static verdict, and static inspection must not claim runtime execution.
+A static acceptance reviewer reads source and pre-existing evidence only. The reviewer must not run tests, scripts, generators, formatters, builds, containers, databases, browsers, deployments, or CI to fill evidence gaps.
+
+The prohibition also includes:
+
+- shell or terminal commands;
+- Python, code interpreters, notebooks, or generated helper programs;
+- local `git`, `gh`, `curl`, `wget`, package managers, compilers, linters, or archive commands;
+- temporary workflows, execution branches, remote runners, or CI jobs created to outsource validation;
+- asking the user to run commands and return results.
+
+No network, missing internet, absent local checkout, unavailable Docker, missing dependencies, or unavailable runtime services does not relax the static boundary. The reviewer uses read-only repository APIs, connector file reads, uploaded-file viewers, or equivalent non-executing source retrieval. If required source remains inaccessible, the reviewer records the exact source gap and completes every other static Gate.
+
+Within the static acceptance workflow, requests phrased as `test`, `full test`, `complete test`, `完整测试`, regression, acceptance, or test-report generation mean complete static source inspection unless the user explicitly requests a separate runtime workflow and repository rules permit it. Ambiguous wording is not execution permission.
+
+Missing execution does not alter the static verdict, and static inspection must not claim runtime execution. A downloadable report request also does not authorize Python or shell execution; the report is delivered directly or through a genuinely non-executing document artifact capability.
+
+## Rule discovery during review
+
+Rule references are resolved tolerantly:
+
+- root `agent.md` and `agents.md` names are matched case-insensitively;
+- Skill files are discovered recursively from the conceptual pattern `skill/**/skill.md`, tolerating `skill`/`skills` and filename capitalization;
+- `**` is a discovery marker, not a literal path component;
+- the report names the concrete repository paths actually read;
+- capitalization, singular/plural spelling, or glob notation alone cannot produce a missing-rule failure.
+
+In this repository the concrete paths include `AGENTS.md`, `AGENT.md`, `skills/project-generation-workflow/SKILL.md`, and `skills/full-project-acceptance-hard-gates/SKILL.md`.
 
 ## Local report entrypoint
 
 ```bash
 bash run_tests.sh
 ```
+
+This command is documentation for an operator-controlled runtime workflow. Its presence does not authorize a static reviewer to execute it.
 
 Stateful stages additionally require an isolated acceptance service and:
 
@@ -32,7 +60,7 @@ SEED_EDITOR_PASSWORD
 SEED_REVIEWER_PASSWORD
 ```
 
-When absent, affected stages are `SKIP`, the report is `INCOMPLETE`, and exit status is `2`. The report describes only rows in `results.tsv`; a probe cannot claim unexecuted RBAC, PDF, backup, browser, Docker, or full-regression coverage.
+When absent, affected runtime stages are `SKIP`, the runtime report is `INCOMPLETE`, and exit status is `2`. That behavior belongs to the separate runtime workflow. A static review instead inspects the definitions and does not run the probe.
 
 ## Static GitHub acceptance
 
@@ -51,7 +79,7 @@ Admission behavior:
 - ordinary reruns are denied;
 - one-time unlock requires the canonical target, exact failed run ID, reviewed reason, same revision, and unused marker.
 
-The later job defines static checks for workflow/shell/Python syntax, Go formatting, source inventory, documentation, repository/structure contracts, backup/metadata contracts, and Swagger routes. The successful source inventory is retained only after every static gate succeeds.
+The later job defines static checks for workflow/shell/Python syntax, Go formatting, source inventory, documentation, repository/structure contracts, backup/metadata contracts, and Swagger routes. Those are workflow definitions, not permission for a reviewer to trigger, approve, cancel, wait for, or reproduce the workflow.
 
 GitHub creates a workflow-run object before YAML admission executes. The repository provides pre-checkout rejection and active-run collapse, not platform-level pre-dispatch prevention.
 
@@ -76,6 +104,8 @@ Static contracts require:
 bash ci/docker_acceptance.sh
 ```
 
+This command belongs to the separate operator-controlled runtime workflow and is not executed during static review.
+
 The orchestrator is defined to create independent generated runtime files without fixed port, database identity, path, credential, or image fallback. The API suite defines:
 
 - generated bootstrap/restart behavior;
@@ -99,8 +129,10 @@ These are test definitions. Only an existing execution artifact proves what ran 
 bash ci/run_full_regression.sh artifacts/regression
 ```
 
-The runner is defined as sequential and fail-fast, with stage results, truthful summary, source inventory, logs and UI evidence directories under `artifacts/regression/`. A static reviewer does not execute it or require its artifact.
+The runner is defined as sequential and fail-fast, with stage results, truthful summary, source inventory, logs and UI evidence directories under `artifacts/regression/`. A static reviewer inspects that definition but does not execute it, reproduce it with helper code, dispatch it remotely, or require its artifact.
 
 ## Evidence boundary
 
 A reviewer report is a static summary. When optional existing execution evidence is cited, record tested SHA, run/job, generated status, artifact identity/digest, tree differences and omitted checks.
+
+Every static report must state the following categories as `none`: shell/terminal, Python/code interpreter, helper programs, project code, tests, builds, containers, databases, browsers, deployments, and CI trigger/cancel/wait actions.
