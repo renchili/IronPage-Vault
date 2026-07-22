@@ -11,15 +11,44 @@ Use this Skill to accept or reject a repository, branch, commit, PR, generated p
 
 Acceptance is source inspection, not execution. The reviewer must not:
 
-- run project code, tests, scripts, binaries, generators, linters, formatters, compilers, or package managers;
+- run project code, tests, scripts, binaries, generators, linters, formatters, compilers, package managers, or helper programs;
+- use a shell, terminal, command runner, Python, code interpreter, notebook, container, or local virtual environment to inspect or validate the repository;
+- use local `git`, `gh`, `curl`, `wget`, archive commands, or package installation to assemble an executable checkout;
 - build packages, applications, images, or containers;
 - start services, databases, browsers, emulators, or deployments;
 - trigger, retry, rerun, dispatch, approve, cancel, or wait for CI;
+- create a temporary workflow, execution branch, remote runner, or CI job to outsource validation;
 - require CI, build, deployment, test, screenshot, log, or external-validator results before continuing;
 - ask the user to run commands as a condition for completing the review;
 - stop after the first P0, failed gate, missing artifact, or absent external result.
 
 Existing external results may be read as optional context. They are never prerequisites and never replace current-source inspection. Missing execution evidence alone must not cause `FAIL`, `CONDITIONAL`, or `NOT VERIFIED`. A green external result cannot override a static defect.
+
+## Offline and missing-tool behavior
+
+No network or missing tooling never authorizes execution. Unavailable internet, an absent local checkout, missing `git` or `gh`, missing Docker, absent dependencies, an unavailable browser or database, or an inaccessible runtime service does not change this Skill into an execution workflow.
+
+Use read-only repository APIs, connector file reads, uploaded-file viewers, archive viewers that do not execute content, or equivalent non-executing source retrieval. Repository writes may use a source-control file API only when the user requests repository changes; write access is not execution permission.
+
+If required source remains inaccessible through available non-executing sources, record the exact concrete source gap and complete every other Gate. Do not clone, install, generate helpers, download and execute archives, create CI, or ask the user to run commands to close the gap.
+
+Within this static acceptance Skill, wording such as `test`, `full test`, `complete test`, `完整测试`, `regression`, `acceptance`, or `generate a test report` means a complete static Gate 0–27 review and report unless the user explicitly requests a separate runtime workflow and the repository's controlling rules permit runtime execution. Ambiguous test wording is not execution permission.
+
+A request for a downloadable report does not authorize Python, shell, a notebook, or helper-code execution. Deliver the report directly in the response or through a genuinely non-executing document artifact capability. If no such capability exists, provide the complete static report in chat.
+
+## Tolerant rule-source discovery
+
+Resolve rule references by repository meaning rather than brittle filename spelling.
+
+- Match root agent rule files whose basename is `agent` or `agents`, case-insensitively.
+- Match Skill files from the conceptual recursive pattern `skill/**/skill.md`, treating `skill` and `skills`, filename capitalization, and nested depth tolerantly.
+- Treat `**` as a discovery marker, not literal path characters.
+- Read all relevant concrete matches and report their stored repository paths.
+- When both singular and plural root agent files exist, read both instead of asking which spelling is correct.
+- Do not fail, stop, or create a replacement solely because a reference uses `AGENT.md`, `AGENTS.md`, `agent.md`, `agents.md`, `skill/**/skill.md`, `skills/**/SKILL.md`, or another harmless case/singular/plural variant.
+- Report a rule as missing only after case-insensitive and singular/plural-tolerant discovery finds no semantically matching concrete file.
+
+A glob is not a loaded file. Evidence and reports must name the concrete paths actually read.
 
 ## No minimization and no early stop
 
@@ -43,7 +72,7 @@ A project passes only when static inspection establishes that:
 ## Evidence order
 
 1. Original requirements and explicit user corrections.
-2. `AGENTS.md`, `AGENT.md`, and relevant Skills.
+2. Concrete repository rule files resolved tolerantly and read from their stored paths.
 3. Current production source, schemas, migrations, configuration, manifests, deployment, UI assets, design-system source, and API contracts.
 4. Current positive, negative, boundary, failure-path, interaction, and accessibility test definitions.
 5. Current static guards and workflow definitions.
@@ -83,13 +112,13 @@ Code-quality gap Naming, structure, coupling, or complexity harms verification.
 
 ## Mandatory inventory
 
-Record repository/package path, exact revision/hash, file count and root layout, source, tests, docs, scripts and modes, workflows, deployment, migrations/configuration, UI assets and design-system sources, artifacts, generated/cache/secret/runtime files, and path-name hazards. For ZIPs compare archive entries and mode metadata without executing content. No inventory means no `PASS`.
+Record repository/package path, exact revision/hash, file count and root layout, source, tests, docs, scripts and modes, workflows, deployment, migrations/configuration, UI assets and design-system sources, artifacts, generated/cache/secret/runtime files, and path-name hazards. For ZIPs inspect archive entries and mode metadata without executing content. Use repository metadata or read-only inventories; do not run commands to produce the inventory. No inventory means no `PASS`.
 
 # Hard Gates
 
 ## Gate 0: Source and rule provenance
 
-Confirm exact target revision/package, latest relevant changes, loaded rules with identifiers, and existence of every cited path. FAIL for stale targets, invented paths, skipped rules, or reused conclusions without re-reading current source.
+Confirm exact target revision/package, latest relevant changes, loaded concrete rules with identifiers, and existence of every cited path. Resolve agent and Skill rule references case-insensitively and with singular/plural tolerance before declaring a source missing. FAIL for stale targets, invented paths, genuinely skipped rules, or reused conclusions without re-reading current source. Do not fail for harmless rule-path capitalization, singular/plural spelling, or glob notation.
 
 ## Gate 1: Atomic requirement coverage
 
@@ -151,7 +180,7 @@ Trace backup schedule/configuration, command construction, database dump, filesy
 
 ## Gate 12: Test and script entrypoints
 
-Statically inspect documented commands, probe modes, services, stages, nested paths, outputs, summaries, exit propagation, working-directory assumptions, shebangs, and modes. PASS does not require execution. FAIL for missing paths, swallowed failures, or reports that can count skipped work as pass.
+Statically inspect documented commands, probe modes, services, stages, nested paths, outputs, summaries, exit propagation, working-directory assumptions, shebangs, and modes. Do not invoke a command merely to inspect it. PASS does not require execution. FAIL for missing paths, swallowed failures, or reports that can count skipped work as pass.
 
 ## Gate 13: Full-regression definition
 
@@ -212,11 +241,11 @@ Compare setup, commands, paths, variables, dependencies, routes, DTOs, statuses,
 Doc claim | Document path | Implementation path | Test/static path | Match? | Severity | Correction
 ```
 
-FAIL for overstatement, nonexistent paths, stale process history, contradictions, or claims that future CI establishes current implementation.
+FAIL for overstatement, nonexistent paths after tolerant resolution, stale process history, contradictions, or claims that future CI establishes current implementation. Do not classify a rule reference as nonexistent solely because its case, singular/plural form, or glob spelling differs.
 
 ## Gate 17: Repository/package layout
 
-Inspect root files, source/test/docs/scripts/migrations/deployment/UI asset paths, package root, duplicates, generated output, and ownership. FAIL for missing required files, duplicate roots, implementation hidden in artifacts, or ambiguous near-duplicates.
+Inspect root files, source/test/docs/scripts/migrations/deployment/UI asset paths, package root, duplicates, generated output, and ownership. FAIL for missing required files, duplicate roots, implementation hidden in artifacts, or ambiguous near-duplicates. Case-only duplicates may be portability risks, but a differently cased reference to one existing file is not itself a duplicate.
 
 ## Gate 18: File formats and hygiene
 
@@ -228,11 +257,11 @@ Inspect encoding, JSON/YAML/TOML/SQL/Markdown structure, shell/Python/Go syntax 
 Claim | Implementation path | Test path | Static artifact/doc path | Exists? | Current revision? | Notes
 ```
 
-FAIL for stale, missing, unresolved, or invented paths.
+Resolve references tolerantly before marking them missing, then cite the concrete stored path. FAIL for stale, genuinely missing, unresolved, or invented paths; do not fail for harmless capitalization, singular/plural spelling, or glob notation.
 
 ## Gate 20: Naming and readability
 
-Inspect conventions for files, packages, types, functions, variables, components, icons, design tokens, configuration, environment variables, routes, DTOs, tests, and scripts. Scan non-ASCII/locale-dependent paths, spaces/control characters, case-only collisions, singular/plural near-duplicates, mixed conventions, vague critical names, and oversized functions.
+Inspect conventions for files, packages, types, functions, variables, components, icons, design tokens, configuration, environment variables, routes, DTOs, tests, and scripts. Scan non-ASCII/locale-dependent paths, spaces/control characters, true case-only collisions, singular/plural near-duplicates, mixed conventions, vague critical names, and oversized functions. Do not convert a tolerant discovery reference into a naming defect.
 
 ```text
 Area | Source path | Finding | Convention | Status | Correction
@@ -259,6 +288,8 @@ Scan tracked/package paths for caches, `node_modules`, compiled output, database
 ## Gate 24: Report integrity
 
 Inspect required sections/tables, Markdown/HTML structure, code fences, links, statuses, non-PASS corrections, verdict consistency, and evidence wording. FAIL if execution is falsely claimed, external results are treated as blockers, or the report is malformed/incomplete.
+
+The report must disclose all execution categories as none: shell/terminal, Python/code interpreter, helper programs, project code, tests, builds, containers, databases, browsers, deployment, and CI actions.
 
 ## Gate 25: Documentation pollution
 
@@ -328,6 +359,7 @@ Missing test execution, CI, build, deployment, runtime logs, screenshots, or ext
 ## Repository/package hygiene
 ## Gaps
 ## Final decision
+## Execution disclosure
 ```
 
 # Anti-false-acceptance checklist
@@ -335,8 +367,8 @@ Missing test execution, CI, build, deployment, runtime logs, screenshots, or ext
 ```text
 [ ] Requirements and user corrections reconstructed
 [ ] Exact current source confirmed
-[ ] Rule files loaded with identifiers
-[ ] Complete inventory produced
+[ ] Rule files resolved tolerantly and concrete paths loaded with identifiers
+[ ] Complete inventory produced without command execution
 [ ] Requirement matrix complete
 [ ] Entire applicable source surface inspected
 [ ] Security/RBAC positive and negative paths traced
@@ -347,7 +379,7 @@ Missing test execution, CI, build, deployment, runtime logs, screenshots, or ext
 [ ] Special interactions have commit/cancel/failure/recovery/accessibility paths
 [ ] UI artifact formats come from the request, platform, loaded rules, or repository convention
 [ ] Docs checked against source
-[ ] Naming and path hazards checked
+[ ] Naming and path hazards checked without filename nitpicking
 [ ] Comments and TODO/FIXME/HACK/XXX checked
 [ ] Formats and source paths inspected
 [ ] Script metadata inspected without execution
@@ -355,7 +387,7 @@ Missing test execution, CI, build, deployment, runtime logs, screenshots, or ext
 [ ] Tests, regression, CI, and deployment definitions distinguished
 [ ] Static interaction/error/recovery/state paths inspected
 [ ] External artifacts treated as optional read-only context
-[ ] No project or CI execution performed
+[ ] No shell, Python, helper, project, test, build, container, database, browser, deployment, or CI execution performed
 [ ] Review continued after every blocker through Gate 27
 [ ] Report structure and links inspected
 [ ] Every caveat has a static correction
