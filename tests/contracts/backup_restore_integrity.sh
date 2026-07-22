@@ -19,6 +19,8 @@ require 'withExclusiveOperation(c.Request().Context()' internal/app/backup_file.
 require 'withExclusiveOperation(ctx' internal/app/backup_scheduler.go "scheduled backup does not own exclusive barrier"
 require 'withMaintenanceOperation(c.Request().Context()' internal/app/operation_barrier.go "restore middleware does not own maintenance barrier"
 require 'admin.POST("/backup/restore", a.restoreBackup, a.restoreMaintenanceMiddleware)' internal/app/server.go "restore maintenance is not applied after Admin route authorization"
+require 'admin.POST("/backup/restore/:id/resolve", a.resolveInterruptedRestore, a.exclusiveOperationMiddleware)' internal/app/server.go "restore resolution is not serialized with the exclusive barrier"
+require 'isRestoreResolutionPath' internal/app/operation_barrier.go "restore resolution exclusive classification missing"
 require 'maintenanceOwnerContextKey' internal/app/restore.go "restore handler does not require middleware maintenance ownership"
 require 'restoreAdmission.TryLock()' internal/app/operation_barrier.go "concurrent restore admission guard missing"
 require 'MAINTENANCE_MODE' internal/app/operation_barrier.go "maintenance requests do not fail closed"
@@ -64,6 +66,7 @@ require 'TestPGPassFileUsesRestrictedModeAndEscaping' internal/platform/postgres
 
 require 'TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests' internal/app/operation_barrier_test.go "maintenance denial test definition missing"
 require 'TestRestoreAdmissionRejectsSecondAuthenticationPath' internal/app/operation_barrier_test.go "restore admission test definition missing"
+require 'TestBackupRestoreAndResolutionUseExclusiveOperationPaths' internal/app/operation_barrier_test.go "exclusive operation classification test missing"
 require 'TestRequestedRestoreBecomesInterruptedNotFailed' internal/app/operation_barrier_test.go "interrupted outcome test definition missing"
 require 'backup.local_volume' tests/api/test_admin_ops.sh "deployment-owned config API test definition missing"
 require 'pagination.default_page_size' tests/api/test_admin_ops.sh "pagination config API test definition missing"
