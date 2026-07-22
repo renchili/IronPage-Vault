@@ -30,6 +30,9 @@ func (a *App) login(c echo.Context) error {
 	if err := c.Bind(&req); err != nil || strings.TrimSpace(req.Username) == "" || req.Password == "" {
 		return apiErr(c, http.StatusBadRequest, "INVALID_LOGIN_REQUEST", "username and password are required")
 	}
+	if strings.EqualFold(strings.TrimSpace(req.Username), systemPrincipalUsername) {
+		return apiErr(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid username or password")
+	}
 
 	var u User
 	usernameKey := piiLookupKey(a.cfg.AESKey, req.Username)
@@ -39,6 +42,9 @@ func (a *App) login(c echo.Context) error {
 	}
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "DB_READ_ERROR", "could not read user")
+	}
+	if u.ID == systemPrincipalID {
+		return apiErr(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid username or password")
 	}
 
 	now := time.Now().UTC()
@@ -167,75 +173,100 @@ func rollbackQuietly(tx *sqlx.Tx) {
 	_ = tx.Rollback()
 }
 
+func (a *App) authenticateRequest(c echo.Context) error {
+	ctx := c.Request().Context()
+	raw := c.Request().Header.Get("Authorization")
+	if !strings.HasPrefix(raw, "Bearer ") {
+		return apiErr(c, http.StatusUnauthorized, "AUTH_REQUIRED", "bearer token is required")
+	}
+	ts := c.Request().Header.Get("X-Request-Timestamp")
+	if ts == "" {
+		return apiErr(c, http.StatusBadRequest, "REQUEST_TIMESTAMP_REQUIRED", "X-Request-Timestamp is required")
+	}
+	parsed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return apiErr(c, http.StatusBadRequest, "REQUEST_TIMESTAMP_INVALID", "timestamp must be RFC3339")
+	}
+	if time.Since(parsed) > a.cfg.RequestMaxAge || parsed.Sub(time.Now()) > a.cfg.RequestMaxAge {
+		return apiErr(c, http.StatusUnauthorized, "REQUEST_EXPIRED", "request timestamp is outside the allowed window")
+	}
+
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(strings.TrimPrefix(raw, "Bearer "), claims, func(t *jwt.Token) (interface{}, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method %s", t.Method.Alg())
+		}
+		return []byte(a.cfg.JWTSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return apiErr(c, http.StatusUnauthorized, "TOKEN_INVALID", "token is invalid")
+	}
+
+	jti, _ := claims["jti"].(string)
+	sub, _ := claims["sub"].(string)
+	role, _ := claims["role"].(string)
+	username, _ := claims["username"].(string)
+	if jti == "" || sub == "" || sub == systemPrincipalID {
+		return apiErr(c, http.StatusUnauthorized, "TOKEN_INVALID", "token claims are incomplete or reserved")
+	}
+	var blacklisted int
+	if err := a.db.GetContext(ctx, &blacklisted, `SELECT COUNT(*) FROM jwt_blacklist WHERE jti=$1`, jti); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUTH_STATE_READ_ERROR", "could not read token state")
+	}
+	if blacklisted > 0 {
+		return apiErr(c, http.StatusUnauthorized, "TOKEN_REVOKED", "token has been revoked")
+	}
+	reqID := currentRequestID(c)
+	res, err := a.db.ExecContext(ctx, `INSERT INTO request_replay_guard(request_id,jti,seen_at) VALUES($1,$2,NOW()) ON CONFLICT DO NOTHING`, reqID, jti)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "REPLAY_GUARD_ERROR", "could not record request id")
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "REPLAY_GUARD_ERROR", "could not verify request id")
+	}
+	if rows == 0 {
+		return apiErr(c, http.StatusConflict, "REPLAY_DETECTED", "request id was already used")
+	}
+	now := time.Now().UTC()
+	res, err = a.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at=$2 WHERE jti=$1 AND revoked_at IS NULL AND last_seen_at > $3 AND (expires_at IS NULL OR expires_at > $2)`, jti, now, now.Add(-a.cfg.SessionTTL))
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "SESSION_UPDATE_ERROR", "could not update session activity")
+	}
+	rows, err = res.RowsAffected()
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "SESSION_UPDATE_ERROR", "could not verify session activity")
+	}
+	if rows == 0 {
+		return apiErr(c, http.StatusUnauthorized, "SESSION_EXPIRED", "session is expired or revoked")
+	}
+	c.Set("principal", Principal{UserID: sub, Username: username, Role: role, JTI: jti})
+	return nil
+}
+
 func (a *App) authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		ctx := c.Request().Context()
-		raw := c.Request().Header.Get("Authorization")
-		if !strings.HasPrefix(raw, "Bearer ") {
-			return apiErr(c, http.StatusUnauthorized, "AUTH_REQUIRED", "bearer token is required")
-		}
-		ts := c.Request().Header.Get("X-Request-Timestamp")
-		if ts == "" {
-			return apiErr(c, http.StatusBadRequest, "REQUEST_TIMESTAMP_REQUIRED", "X-Request-Timestamp is required")
-		}
-		parsed, err := time.Parse(time.RFC3339, ts)
-		if err != nil {
-			return apiErr(c, http.StatusBadRequest, "REQUEST_TIMESTAMP_INVALID", "timestamp must be RFC3339")
-		}
-		if time.Since(parsed) > a.cfg.RequestMaxAge || parsed.Sub(time.Now()) > a.cfg.RequestMaxAge {
-			return apiErr(c, http.StatusUnauthorized, "REQUEST_EXPIRED", "request timestamp is outside the allowed window")
-		}
-
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(strings.TrimPrefix(raw, "Bearer "), claims, func(t *jwt.Token) (interface{}, error) {
-			if t.Method != jwt.SigningMethodHS256 {
-				return nil, fmt.Errorf("unexpected signing method %s", t.Method.Alg())
+		if a.operations != nil && isExclusiveOperationPath(c.Request().URL.Path) {
+			err := a.operations.withSharedMutation(c.Request().Context(), func() error {
+				return a.authenticateRequest(c)
+			})
+			if err != nil {
+				if c.Response().Committed {
+					return err
+				}
+				return apiErr(c, http.StatusInternalServerError, "AUTH_BARRIER_ERROR", "could not coordinate authentication state")
 			}
-			return []byte(a.cfg.JWTSecret), nil
-		})
-		if err != nil || !token.Valid {
-			return apiErr(c, http.StatusUnauthorized, "TOKEN_INVALID", "token is invalid")
+			if c.Response().Committed {
+				return nil
+			}
+			return next(c)
 		}
-
-		jti, _ := claims["jti"].(string)
-		sub, _ := claims["sub"].(string)
-		role, _ := claims["role"].(string)
-		username, _ := claims["username"].(string)
-		if jti == "" || sub == "" {
-			return apiErr(c, http.StatusUnauthorized, "TOKEN_INVALID", "token claims are incomplete")
+		if err := a.authenticateRequest(c); err != nil {
+			return err
 		}
-		var blacklisted int
-		if err := a.db.GetContext(ctx, &blacklisted, `SELECT COUNT(*) FROM jwt_blacklist WHERE jti=$1`, jti); err != nil {
-			return apiErr(c, http.StatusInternalServerError, "AUTH_STATE_READ_ERROR", "could not read token state")
+		if c.Response().Committed {
+			return nil
 		}
-		if blacklisted > 0 {
-			return apiErr(c, http.StatusUnauthorized, "TOKEN_REVOKED", "token has been revoked")
-		}
-		reqID := currentRequestID(c)
-		res, err := a.db.ExecContext(ctx, `INSERT INTO request_replay_guard(request_id,jti,seen_at) VALUES($1,$2,NOW()) ON CONFLICT DO NOTHING`, reqID, jti)
-		if err != nil {
-			return apiErr(c, http.StatusInternalServerError, "REPLAY_GUARD_ERROR", "could not record request id")
-		}
-		rows, err := res.RowsAffected()
-		if err != nil {
-			return apiErr(c, http.StatusInternalServerError, "REPLAY_GUARD_ERROR", "could not verify request id")
-		}
-		if rows == 0 {
-			return apiErr(c, http.StatusConflict, "REPLAY_DETECTED", "request id was already used")
-		}
-		now := time.Now().UTC()
-		res, err = a.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at=$2 WHERE jti=$1 AND revoked_at IS NULL AND last_seen_at > $3 AND (expires_at IS NULL OR expires_at > $2)`, jti, now, now.Add(-a.cfg.SessionTTL))
-		if err != nil {
-			return apiErr(c, http.StatusInternalServerError, "SESSION_UPDATE_ERROR", "could not update session activity")
-		}
-		rows, err = res.RowsAffected()
-		if err != nil {
-			return apiErr(c, http.StatusInternalServerError, "SESSION_UPDATE_ERROR", "could not verify session activity")
-		}
-		if rows == 0 {
-			return apiErr(c, http.StatusUnauthorized, "SESSION_EXPIRED", "session is expired or revoked")
-		}
-		c.Set("principal", Principal{UserID: sub, Username: username, Role: role, JTI: jti})
 		return next(c)
 	}
 }

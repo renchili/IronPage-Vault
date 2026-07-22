@@ -13,18 +13,25 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-const restoreLifecycleDirectoryName = ".restore-lifecycle"
+const (
+	restoreLifecycleDirectoryName = ".restore-lifecycle"
+	restoreStatusRequested        = "Requested"
+	restoreStatusCompleted        = "Completed"
+	restoreStatusFailed           = "Failed"
+	restoreStatusInterrupted      = "Interrupted"
+)
 
 type restoreLifecycleRecord struct {
-	ID                string                 `json:"id"`
-	Status            string                 `json:"status"`
-	Action            string                 `json:"action"`
-	ActorUserID       string                 `json:"actor_user_id"`
-	RequestID         string                 `json:"request_id"`
-	SourceIP          string                 `json:"source_ip"`
-	RequestedMetadata map[string]interface{} `json:"requested_metadata"`
-	Metadata          map[string]interface{} `json:"metadata"`
-	UpdatedAt         time.Time              `json:"updated_at"`
+	ID                 string                 `json:"id"`
+	Status             string                 `json:"status"`
+	Action             string                 `json:"action"`
+	ActorUserID        string                 `json:"actor_user_id"`
+	OutcomeActorUserID string                 `json:"outcome_actor_user_id,omitempty"`
+	RequestID          string                 `json:"request_id"`
+	SourceIP           string                 `json:"source_ip"`
+	RequestedMetadata  map[string]interface{} `json:"requested_metadata"`
+	Metadata           map[string]interface{} `json:"metadata"`
+	UpdatedAt          time.Time              `json:"updated_at"`
 }
 
 func (a *App) restoreLifecycleDirectory() string {
@@ -32,7 +39,7 @@ func (a *App) restoreLifecycleDirectory() string {
 }
 
 func (a *App) restoreLifecyclePath(id string) (string, error) {
-	if id == "" || filepath.Base(id) != id || strings.ContainsAny(id, `/\\`) {
+	if id == "" || filepath.Base(id) != id || strings.ContainsAny(id, `/\`) {
 		return "", fmt.Errorf("invalid restore lifecycle id")
 	}
 	return filepath.Join(a.restoreLifecycleDirectory(), id+".json"), nil
@@ -141,33 +148,52 @@ func (a *App) restoreAuditExists(ctx context.Context, executor sqlx.ExtContext, 
 	return count > 0, nil
 }
 
-func (a *App) ensureRestoreAudit(ctx context.Context, executor sqlx.ExtContext, record restoreLifecycleRecord, action string, metadata map[string]interface{}) error {
-	exists, err := a.restoreAuditExists(ctx, executor, record.ActorUserID, action, record.RequestID)
+func (a *App) ensureRestoreAudit(ctx context.Context, executor sqlx.ExtContext, actorID string, record restoreLifecycleRecord, action string, metadata map[string]interface{}) error {
+	if actorID == "" {
+		return fmt.Errorf("restore audit acting user is required")
+	}
+	exists, err := a.restoreAuditExists(ctx, executor, actorID, action, record.RequestID)
 	if err != nil {
 		return err
 	}
 	if exists {
 		return nil
 	}
-	return a.insertAuditRecordWithExecutor(ctx, executor, record.ActorUserID, action, "", record.RequestID, record.SourceIP, metadata)
+	return a.insertAuditRecordWithExecutor(ctx, executor, actorID, action, "", record.RequestID, record.SourceIP, metadata)
+}
+
+func validRestoreStatus(status string) bool {
+	switch status {
+	case restoreStatusRequested, restoreStatusCompleted, restoreStatusFailed, restoreStatusInterrupted:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *App) persistRestoreLifecycleRecord(ctx context.Context, executor sqlx.ExtContext, record restoreLifecycleRecord) error {
 	if record.ActorUserID == "" {
 		return fmt.Errorf("restore lifecycle acting user is required")
 	}
+	if !validRestoreStatus(record.Status) {
+		return fmt.Errorf("invalid restore lifecycle status %q", record.Status)
+	}
 	targetPath, _ := record.RequestedMetadata["database_dump_path"].(string)
 	if _, err := executor.ExecContext(ctx, `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'restore',$2,$3,$4,NOW()) ON CONFLICT(id) DO UPDATE SET status=excluded.status,target_path=excluded.target_path,created_by=COALESCE(backup_jobs.created_by,excluded.created_by)`, record.ID, record.Status, targetPath, record.ActorUserID); err != nil {
 		return err
 	}
-	if err := a.ensureRestoreAudit(ctx, executor, record, "BACKUP_RESTORE_REQUESTED", record.RequestedMetadata); err != nil {
+	if err := a.ensureRestoreAudit(ctx, executor, record.ActorUserID, record, "BACKUP_RESTORE_REQUESTED", record.RequestedMetadata); err != nil {
 		return err
 	}
-	if record.Status != "Requested" {
+	if record.Status != restoreStatusRequested {
 		if record.Action == "" {
 			return fmt.Errorf("terminal restore lifecycle action is required")
 		}
-		if err := a.ensureRestoreAudit(ctx, executor, record, record.Action, record.Metadata); err != nil {
+		outcomeActor := record.OutcomeActorUserID
+		if outcomeActor == "" {
+			outcomeActor = record.ActorUserID
+		}
+		if err := a.ensureRestoreAudit(ctx, executor, outcomeActor, record, record.Action, record.Metadata); err != nil {
 			return err
 		}
 	}
@@ -180,6 +206,18 @@ func cloneRestoreMetadata(source map[string]interface{}) map[string]interface{} 
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func interruptedRestoreRecord(record restoreLifecycleRecord) restoreLifecycleRecord {
+	record.Status = restoreStatusInterrupted
+	record.Action = "BACKUP_RESTORE_INTERRUPTED"
+	record.OutcomeActorUserID = systemPrincipalID
+	record.Metadata = cloneRestoreMetadata(record.RequestedMetadata)
+	record.Metadata["outcome"] = "unknown"
+	record.Metadata["error"] = "restore process ended before a durable platform outcome was recorded"
+	record.Metadata["reconciliation"] = "operator_verification_required"
+	record.UpdatedAt = time.Now().UTC()
+	return record
 }
 
 func (a *App) reconcileRestoreLifecycle(ctx context.Context) error {
@@ -200,18 +238,13 @@ func (a *App) reconcileRestoreLifecycle(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("invalid restore lifecycle journal %s: %w", entry.Name(), err)
 		}
-		if record.Status == "Requested" {
-			record.Status = "Failed"
-			record.Action = "BACKUP_RESTORE_FAILED"
-			record.Metadata = cloneRestoreMetadata(record.RequestedMetadata)
-			record.Metadata["error"] = "restore process ended before terminal lifecycle persistence; verify restored data before retrying"
-			record.Metadata["reconciliation"] = "startup"
-			record.UpdatedAt = time.Now().UTC()
+		if record.Status == restoreStatusRequested {
+			record = interruptedRestoreRecord(record)
 			if err := a.writeRestoreLifecycleRecord(record); err != nil {
 				return err
 			}
 		}
-		if record.Status != "Completed" && record.Status != "Failed" {
+		if !validRestoreStatus(record.Status) || record.Status == restoreStatusRequested {
 			return fmt.Errorf("invalid restore lifecycle status %q", record.Status)
 		}
 		tx, err := a.db.BeginTxx(ctx, nil)
@@ -225,8 +258,10 @@ func (a *App) reconcileRestoreLifecycle(ctx context.Context) error {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
-		if err := a.removeRestoreLifecycleRecord(record.ID); err != nil {
-			return err
+		if record.Status == restoreStatusCompleted || record.Status == restoreStatusFailed {
+			if err := a.removeRestoreLifecycleRecord(record.ID); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

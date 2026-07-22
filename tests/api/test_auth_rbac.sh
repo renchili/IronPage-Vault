@@ -12,6 +12,10 @@ expect_code "health" 200 "$code" || FAIL=$((FAIL+1))
 code=$(curl -s -o "$BODY" -w "%{http_code}" "$BASE_URL/api/documents")
 expect_code "anonymous documents request" 401 "$code" || FAIL=$((FAIL+1))
 
+code=$(login_as __system_scheduler__ reserved-principal-must-not-login)
+expect_code "system principal cannot log in" 401 "$code" || FAIL=$((FAIL+1))
+expect_json_field "system principal login uses generic denial" error.code INVALID_CREDENTIALS || FAIL=$((FAIL+1))
+
 code=$(auth_get "$EDITOR_TOKEN" /api/auth/me)
 expect_code "me endpoint" 200 "$code" || FAIL=$((FAIL+1))
 

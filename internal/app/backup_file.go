@@ -21,6 +21,19 @@ func (a *App) collectBackupSnapshot(c echo.Context, id string) (platform.BackupM
 }
 
 func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
+	if a.operations == nil {
+		return apiErr(c, http.StatusInternalServerError, "BACKUP_BARRIER_ERROR", "backup operation barrier is unavailable")
+	}
+	err := a.operations.withExclusiveOperation(c.Request().Context(), func() error {
+		return a.runBackupMetadataSnapshotLocked(c)
+	})
+	if err != nil && !c.Response().Committed {
+		return apiErr(c, http.StatusInternalServerError, "BACKUP_BARRIER_ERROR", "could not establish the backup recovery boundary")
+	}
+	return err
+}
+
+func (a *App) runBackupMetadataSnapshotLocked(c echo.Context) error {
 	p := principal(c)
 	id := makeIdentifier("bak")
 	if err := os.MkdirAll(a.cfg.BackupDir, 0750); err != nil {
@@ -31,7 +44,7 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_SNAPSHOT_ERROR", "could not collect backup metadata snapshot")
 	}
-	artifacts, err := platform.RunBackupArtifactsStrict(id, a.cfg.DSN(), a.cfg.StorageDir, a.cfg.BackupDir)
+	artifacts, err := platform.RunBackupArtifactsStrict(id, a.cfg.PostgresCommandConfig(), a.cfg.StorageDir, a.cfg.BackupDir)
 	if err != nil {
 		cleanupBackupArtifacts(a.cfg.BackupDir, id, target, artifacts)
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_ARTIFACT_ERROR", "strict backup artifacts were not completed")
@@ -53,7 +66,7 @@ func (a *App) runBackupMetadataSnapshot(c echo.Context) error {
 	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'full_backup','Completed',$2,$3,NOW())`, id, target, p.UserID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_CREATE_ERROR", "could not record backup job")
 	}
-	if err := a.auditWithExecutor(c, tx, p.UserID, "BACKUP_CREATE", "", map[string]interface{}{"backup_id": id, "database_dump_path": artifacts.DatabaseDumpPath, "file_snapshot_path": artifacts.FileSnapshotPath, "database_dump_mode": artifacts.DatabaseDumpMode, "file_snapshot_mode": artifacts.FileSnapshotMode}); err != nil {
+	if err := a.auditWithExecutor(c, tx, p.UserID, "BACKUP_CREATE", "", map[string]interface{}{"backup_id": id, "database_dump_path": artifacts.DatabaseDumpPath, "file_snapshot_path": artifacts.FileSnapshotPath, "database_dump_mode": artifacts.DatabaseDumpMode, "file_snapshot_mode": artifacts.FileSnapshotMode, "recovery_boundary": "exclusive_application_mutation_barrier"}); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record backup audit")
 	}
 	if err := tx.Commit(); err != nil {

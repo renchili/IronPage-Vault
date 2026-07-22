@@ -16,6 +16,7 @@ func healthSwagger() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
 // @Router /api/auth/login [post]
 func loginSwagger() {}
 
@@ -25,6 +26,7 @@ func loginSwagger() {}
 // @Security BearerAuth
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
 // @Router /api/auth/logout [post]
 func logoutSwagger() {}
 
@@ -34,6 +36,7 @@ func logoutSwagger() {}
 // @Security BearerAuth
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
 // @Router /api/auth/me [get]
 func meSwagger() {}
 
@@ -44,6 +47,7 @@ func meSwagger() {}
 // @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
 // @Router /api/admin/users [post]
 func createUserSwagger() {}
 
@@ -55,6 +59,7 @@ func createUserSwagger() {}
 // @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
 // @Router /api/admin/users [get]
 func listUsersSwagger() {}
 
@@ -66,16 +71,21 @@ func listUsersSwagger() {}
 // @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
 // @Router /api/admin/config [get]
 func listConfigSwagger() {}
 
 // patchConfigSwagger documents config patch.
-// @Summary Patch config
+// @Summary Patch Admin-managed config
+// @Description Only pagination.default_page_size and pagination.max_page_size are Admin-managed. Values must satisfy 1 <= default <= max <= 100. backup.local_volume is deployment-owned and read-only.
 // @Tags admin
 // @Security BearerAuth
 // @Param key path string true "config key"
+// @Param request body map[string]interface{} true "value"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
+// @Failure 409 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
 // @Router /api/admin/config/{key} [patch]
 func patchConfigSwagger() {}

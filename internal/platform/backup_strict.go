@@ -5,8 +5,8 @@ import (
 	"os"
 )
 
-func RunBackupArtifactsStrict(id string, dsn string, storageDir string, backupDir string) (BackupArtifactManifest, error) {
-	manifest, err := RunBackupArtifacts(id, dsn, storageDir, backupDir)
+func RunBackupArtifactsStrict(id string, postgres PostgresCommandConfig, storageDir string, backupDir string) (BackupArtifactManifest, error) {
+	manifest, err := RunBackupArtifacts(id, postgres, storageDir, backupDir)
 	if err != nil {
 		return manifest, err
 	}
@@ -26,7 +26,7 @@ func RunBackupArtifactsStrict(id string, dsn string, storageDir string, backupDi
 	return manifest, nil
 }
 
-func RunRestoreArtifactsStrict(dsn string, databaseDumpPath string, fileSnapshotPath string, storageDir string) (map[string]string, error) {
+func RunRestoreArtifactsStrict(postgres PostgresCommandConfig, databaseDumpPath string, fileSnapshotPath string, storageDir string) (map[string]string, error) {
 	if databaseDumpPath == "" || fileSnapshotPath == "" {
 		return nil, fmt.Errorf("database_dump_path and file_snapshot_path are required")
 	}
@@ -36,7 +36,7 @@ func RunRestoreArtifactsStrict(dsn string, databaseDumpPath string, fileSnapshot
 	if _, err := os.Stat(fileSnapshotPath); err != nil {
 		return nil, fmt.Errorf("file snapshot artifact not readable: %w", err)
 	}
-	result, err := RunRestoreArtifacts(dsn, databaseDumpPath, fileSnapshotPath, storageDir)
+	result, err := RunRestoreArtifacts(postgres, databaseDumpPath, fileSnapshotPath, storageDir)
 	if err != nil {
 		return result, err
 	}

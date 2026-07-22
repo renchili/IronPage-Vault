@@ -3,7 +3,7 @@ package platform
 import "testing"
 
 func TestStrictRestoreRejectsMissingArtifacts(t *testing.T) {
-	if _, err := RunRestoreArtifactsStrict("", "", "", ""); err == nil {
+	if _, err := RunRestoreArtifactsStrict(PostgresCommandConfig{}, "", "", ""); err == nil {
 		t.Fatalf("strict restore must reject missing artifact paths")
 	}
 }

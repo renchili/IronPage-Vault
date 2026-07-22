@@ -21,7 +21,9 @@ Repository YAML cannot prevent GitHub from first creating a workflow-run object.
 | Area | Implementation path | Static acceptance proof |
 |---|---|---|
 | Complete local configuration | `scripts/deploy.sh`, Compose, Dockerfile, `internal/app/config.go`, `internal/app/database.go` | installation-specific identity, paths, ports and credentials; generated `BACKUP_DIR` is persisted after migration; schema contains no fixed machine backup path |
+| Configuration ownership and range integrity | `internal/app/config_management.go`, `admin.go`, `pagination_config.go` | deployment-owned backup path rejected; unknown keys rejected; pagination rows locked and pair-validated; page offset bounded before multiplication |
 | Initial administrator | `internal/app/database.go` | empty-installation-only creation path and restart-preservation definitions |
+| Automated acting identity | `internal/app/database.go`, `domain_events.go`, `backup_scheduler.go` | protected system principal created before reconciliation; scheduled NULL history backfilled; blank audit actor rejected |
 | Host exposure | `scripts/deploy.sh` | IPv4 loopback validation, available-port selection logic, and explicit bind-race handling |
 | Acceptance fixtures and UI | config/server, `public/index.html` | acceptance-mode fixture requirements, normal-mode UI exclusion, and one canonical surface |
 | Buildable frontend generation rules | `skills/project-generation-workflow/SKILL.md`, `skills/full-project-acceptance-hard-gates/SKILL.md`, `docs/questions.md` | UI scope is conditional; production UI and implementation-guiding prototypes require exact component, icon, size, state, special-interaction, accessibility, platform-review, and traceability decisions; arbitrary YAML/JSON packages cannot substitute for the requested artifact or implementation |
@@ -34,16 +36,32 @@ Repository YAML cannot prevent GitHub from first creating a workflow-run object.
 | Version comparison | comparison service/platform extraction | structured text, page, bounding-box and modified-block implementation |
 | Annotation side effects | `annotations.go`, `mentions.go`, `notifications.go` | annotation, audit, encrypted-username mention lookup, unread-cap handling and notifications share one transaction |
 | Protected audit API | `domain_events.go`, `repository/audit.go`, `audit_filters.go`, migration 003 | ciphertext storage, deterministic source-IP lookup/backfill, typed protected query and response decryption |
-| Admin configuration | `admin.go`, `template_update.go`, `workflow_definitions.go` | user/config/template/workflow updates include audit in the same transaction |
-| Backup | `backup_file.go`, `backup_scheduler.go`, `backup_cleanup.go` | dump/tar/metadata creation plus job/audit transaction; all generated paths removed on persistence failure |
-| Restore | `platform/backup_exec.go`, `restore.go`, `restore_lifecycle.go`, `server.go` | safe staged extraction, reversible storage swap, single-transaction PostgreSQL restore, encrypted durable lifecycle journal, preserved acting user, idempotent Requested/terminal audits, and fail-closed startup reconciliation |
+| Admin configuration | `admin.go`, `config_management.go`, `template_update.go`, `workflow_definitions.go` | user/template/workflow updates include audit; generic config is restricted to validated pagination keys and deployment-owned values are immutable through API |
+| PostgreSQL subprocess authentication | `internal/platform/postgres_command.go`, `backup_exec.go` | password-free argv, short-lived mode-0600 PGPASSFILE, inherited credential environment removed, password-file escaping and cleanup |
+| Backup recovery boundary | `operation_barrier.go`, `backup_file.go`, `backup_scheduler.go`, `backup_cleanup.go` | unsafe mutations take shared advisory lock; manual/scheduled backup take exclusive lock across dump and tar; generated paths removed on persistence failure |
+| Restore maintenance | `operation_barrier.go`, `server.go`, `restore.go` | global admission prevents concurrent restore auth; after Admin authorization route middleware activates maintenance, rejects/drains ordinary requests and holds the exclusive advisory lock through the handler |
+| Interrupted restore resolution | `restore_lifecycle.go`, `restore.go` | Requested with no durable result becomes Interrupted/unknown; system-principal audit; encrypted journal retained until Admin Completed/Failed attestation with verification note |
 | Runtime limits and uniform errors | config/core/API handlers | 200 MB, 500 pages, 250 files, 50 versions, configured pagination and uniform envelope definitions |
 | Collection pagination | `pagination_config.go`, `admin.go`, `documents.go`, `redactions.go`, `annotations.go`, `audit_filters.go` | every collection query applies configured `page`/`page_size`, SQL `LIMIT`/`OFFSET`, default 25 and maximum 100; response includes `data`, `page`, and `page_size` |
 | Canonical repository layout | `tests/api/`, `tests/contracts/`, `public/index.html` | no legacy test directories, duplicate UI or process-status documents |
 | Path and contamination audit | `ci/source_inventory.py` | all tracked files, collisions, near duplicates, unsafe characters, mixed conventions and explicit exceptions |
 | Truthful local report | `run_tests.sh`, `ci/run_tests_contract_check.sh` | report coverage equals stage rows and skipped stages cannot pass |
 | CI admission safety | `.github/workflows/ci.yml` | canonical manual target validation, active-run collapse, pre-checkout admission, scoped history/cooldown/latch, exact unlock and static-only later job |
-| Documentation truth | README/docs/contracts | current paths, transaction boundaries, API routes, evidence rules, UI-generation boundaries, and limitations agree with source |
+| Documentation truth | README/docs/contracts | current paths, transaction boundaries, API routes, evidence rules, UI-generation boundaries, configuration ownership, recovery isolation and limitations agree with source |
+
+## Recovery and configuration proof mapping
+
+| Requirement | Production source | Test/static source |
+|---|---|---|
+| backup dump/tar share application write boundary | `operation_barrier.go`, `backup_file.go`, `backup_scheduler.go` | `operation_barrier_test.go`, `tests/contracts/backup_restore_integrity.sh` |
+| restore blocks live HTTP and mutations | restore admission plus `restoreMaintenanceMiddleware`, `mutationBarrierMiddleware`, `restore.go` | `TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests`, integrity static contract |
+| unknown interrupted outcome is not Failed | `interruptedRestoreRecord`, `reconcileRestoreLifecycle` | `TestRequestedRestoreBecomesInterruptedNotFailed`, static Requested-to-Failed rejection |
+| Interrupted outcome requires Admin attestation | `POST /api/admin/backup/restore/:id/resolve` | `tests/api/test_admin_ops.sh`, Swagger route coverage |
+| scheduled backup has acting user | `EnsureSystemPrincipal`, `runScheduledBackupLocked` | audit helper guard and integrity static contract |
+| invalid pagination cannot be persisted | `validateAdminConfigUpdate` | `config_management_test.go`, `tests/api/test_admin_ops.sh` |
+| deployment-owned key cannot be patched | `backupVolumeKey` ownership rejection | unit/API negative definitions |
+| database password absent from subprocess argv | `pgDumpCommandArgs`, `pgRestoreCommandArgs`, `runPostgresCommand` | `postgres_command_test.go`, integrity static contract |
+| page offset cannot overflow Go int | `maxSafePageNumber` clamp | `TestMaximumPageOffsetDoesNotOverflowInt` |
 
 ## Collection pagination route mapping
 
@@ -71,7 +89,7 @@ Existing external artifacts may be described only as optional read-only context 
 
 ## Generated API documentation
 
-Route-level Swaggo annotations under `internal/app/swagger_*.go` are authoritative. They include both GET and PUT workflow-definition routes and pagination parameters on every collection route. Generated files under `docs/swagger/` are produced only by supported execution entrypoints; static review does not authorize generation.
+Route-level Swaggo annotations under `internal/app/swagger_*.go` are authoritative. They include both GET and PUT workflow-definition routes, the Interrupted restore resolution route, configuration ownership errors, and pagination parameters on every collection route. Generated files under `docs/swagger/` are produced only by supported execution entrypoints; static review does not authorize generation.
 
 ## Compatibility notes
 

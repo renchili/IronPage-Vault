@@ -1,0 +1,194 @@
+package app
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/labstack/echo/v4"
+)
+
+func TestMutationBarrierClassifiesUnsafeMethods(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		if !requiresMutationBarrier(method) {
+			t.Fatalf("method %s must participate in the mutation barrier", method)
+		}
+	}
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
+		if requiresMutationBarrier(method) {
+			t.Fatalf("method %s must remain read-only before authentication state is considered", method)
+		}
+	}
+}
+
+func TestAPIRequestsIncludeAuthenticationStateInBarrier(t *testing.T) {
+	for _, test := range []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodGet, "/api/documents", true},
+		{http.MethodGet, "/api/auth/me", true},
+		{http.MethodPost, "/api/auth/login", true},
+		{http.MethodGet, "/healthz", false},
+		{http.MethodGet, "/swagger/index.html", false},
+		{http.MethodPost, "/api/admin/backup/run", false},
+		{http.MethodPost, "/api/admin/backup/restore", false},
+		{http.MethodPost, "/api/admin/backup/restore/rst_example/resolve", false},
+	} {
+		if got := requiresRequestBarrier(test.method, test.path); got != test.want {
+			t.Fatalf("requiresRequestBarrier(%s %s) = %v, want %v", test.method, test.path, got, test.want)
+		}
+	}
+}
+
+func TestBackupBarrierCoversUploadRedactionAndBatesRequests(t *testing.T) {
+	for _, path := range []string{
+		"/api/documents",
+		"/api/documents/doc_1/redactions",
+		"/api/documents/doc_1/redactions/red_1/confirm",
+		"/api/documents/doc_1/bates",
+	} {
+		if !requiresRequestBarrier(http.MethodPost, path) {
+			t.Fatalf("mutation %s could cross the backup dump/tar boundary", path)
+		}
+		if isExclusiveOperationPath(path) {
+			t.Fatalf("ordinary mutation %s must use the shared side of the barrier", path)
+		}
+	}
+}
+
+func TestBackupRestoreAndResolutionUseExclusiveOperationPaths(t *testing.T) {
+	for _, path := range []string{
+		"/api/admin/backup/run",
+		"/api/admin/backup/restore",
+		"/api/admin/backup/restore/rst_example/resolve",
+	} {
+		if !isExclusiveOperationPath(path) {
+			t.Fatalf("path %s must acquire the exclusive operation barrier", path)
+		}
+	}
+	if isExclusiveOperationPath("/api/documents") {
+		t.Fatal("ordinary document mutation must use the shared mutation barrier")
+	}
+	if isRestoreResolutionPath("/api/admin/backup/restore/resolve") {
+		t.Fatal("restore resolution path must contain a restore id")
+	}
+}
+
+func TestRestoreRequestClassificationIsExact(t *testing.T) {
+	e := echo.New()
+	for _, test := range []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodPost, "/api/admin/backup/restore", true},
+		{http.MethodGet, "/api/admin/backup/restore", false},
+		{http.MethodPost, "/api/admin/backup/restore/rst_1/resolve", false},
+		{http.MethodPost, "/api/admin/backup/run", false},
+	} {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		context := e.NewContext(request, httptest.NewRecorder())
+		if got := isRestoreOperationRequest(context); got != test.want {
+			t.Fatalf("isRestoreOperationRequest(%s %s) = %v, want %v", test.method, test.path, got, test.want)
+		}
+	}
+}
+
+func TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests(t *testing.T) {
+	e := echo.New()
+	operations := &operationCoordinator{}
+	operations.maintenance.Store(true)
+	a := &App{operations: operations}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+	recorder := httptest.NewRecorder()
+	context := e.NewContext(request, recorder)
+	called := false
+	if err := a.maintenanceMiddleware(func(c echo.Context) error {
+		called = true
+		return nil
+	})(context); err != nil {
+		t.Fatalf("maintenance response: %v", err)
+	}
+	if called || recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("ordinary request was not rejected during maintenance: called=%v status=%d", called, recorder.Code)
+	}
+
+	restoreRequest := httptest.NewRequest(http.MethodPost, "/api/admin/backup/restore", nil)
+	restoreRecorder := httptest.NewRecorder()
+	restoreContext := e.NewContext(restoreRequest, restoreRecorder)
+	called = false
+	if err := a.maintenanceMiddleware(func(c echo.Context) error {
+		called = true
+		return nil
+	})(restoreContext); err != nil {
+		t.Fatalf("concurrent restore response: %v", err)
+	}
+	if called || restoreRecorder.Code != http.StatusConflict {
+		t.Fatalf("concurrent restore was not rejected: called=%v status=%d", called, restoreRecorder.Code)
+	}
+}
+
+func TestRestoreAdmissionRejectsSecondAuthenticationPath(t *testing.T) {
+	e := echo.New()
+	operations := &operationCoordinator{}
+	operations.restoreAdmission.Lock()
+	defer operations.restoreAdmission.Unlock()
+	a := &App{operations: operations}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/admin/backup/restore", nil)
+	recorder := httptest.NewRecorder()
+	context := e.NewContext(request, recorder)
+	called := false
+	if err := a.maintenanceMiddleware(func(c echo.Context) error {
+		called = true
+		return nil
+	})(context); err != nil {
+		t.Fatalf("restore admission response: %v", err)
+	}
+	if called || recorder.Code != http.StatusConflict {
+		t.Fatalf("second restore entered authentication: called=%v status=%d", called, recorder.Code)
+	}
+}
+
+func TestRequestedRestoreBecomesInterruptedNotFailed(t *testing.T) {
+	record := interruptedRestoreRecord(restoreLifecycleRecord{
+		ID:                "rst_test",
+		Status:            restoreStatusRequested,
+		ActorUserID:       "usr_admin",
+		RequestID:         "req_test",
+		RequestedMetadata: map[string]interface{}{"restore_id": "rst_test"},
+	})
+	if record.Status != restoreStatusInterrupted || record.Status == restoreStatusFailed {
+		t.Fatalf("requested restore reconciled to %q", record.Status)
+	}
+	if record.Action != "BACKUP_RESTORE_INTERRUPTED" || record.OutcomeActorUserID != systemPrincipalID {
+		t.Fatalf("interrupted restore audit attribution is incomplete: %#v", record)
+	}
+	if record.Metadata["outcome"] != "unknown" {
+		t.Fatalf("interrupted restore must preserve unknown outcome: %#v", record.Metadata)
+	}
+}
+
+func TestRestoreSuccessBeforeTerminalJournalRequiresInterruptedResolution(t *testing.T) {
+	// This record models a process exit after platform restore succeeded but before
+	// Completed was durably written. Requested alone cannot prove success or failure.
+	record := interruptedRestoreRecord(restoreLifecycleRecord{
+		ID:                "rst_platform_applied",
+		Status:            restoreStatusRequested,
+		ActorUserID:       "usr_admin",
+		RequestID:         "req_platform_applied",
+		RequestedMetadata: map[string]interface{}{"platform_restore_may_have_completed": true},
+	})
+	if record.Status != restoreStatusInterrupted {
+		t.Fatalf("ambiguous post-platform crash status = %q, want Interrupted", record.Status)
+	}
+	if record.Metadata["outcome"] != "unknown" || record.Metadata["reconciliation"] != "operator_verification_required" {
+		t.Fatalf("ambiguous restore did not require verification: %#v", record.Metadata)
+	}
+	if record.Action == "BACKUP_RESTORE_COMPLETED" || record.Action == "BACKUP_RESTORE_FAILED" {
+		t.Fatalf("ambiguous restore asserted a terminal outcome: %s", record.Action)
+	}
+}
