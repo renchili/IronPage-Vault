@@ -18,9 +18,9 @@ The schema does not seed a fixed machine path. After migration, startup writes t
 
 ## Application mutation barrier
 
-Every unsafe HTTP method (`POST`, `PUT`, `PATCH`, `DELETE`) except the operations that own an exclusive boundary acquires a shared PostgreSQL advisory lock for the complete request handler. Manual backup, scheduled backup, and restore acquire the matching exclusive advisory lock on a dedicated database connection.
+Every `/api/` request except an operation that owns an exclusive boundary acquires a shared PostgreSQL advisory lock for the complete request. This includes authenticated GET requests because freshness, replay protection, and session activity update PostgreSQL. Manual backup, scheduled backup, restore, and Interrupted-restore resolution acquire the matching exclusive advisory lock on a dedicated database connection. Exclusive HTTP operations hold the shared lock only while authentication state is updated, release it, and then acquire the exclusive lock; this avoids lock promotion while still preventing authentication writes from crossing the operation boundary.
 
-The exclusive lock waits for active application mutations to complete and prevents new application mutations until the operation ends. Because the supported deployment contains one API process and one local PostgreSQL/filesystem installation, this prevents upload, rollback, redaction, annotation, Bates, workflow, auth-state, config, and other application writes from crossing the dump/tar interval. Direct out-of-band filesystem or database modification is outside the supported operating model and must not occur.
+The exclusive lock waits for active application requests and mutations to complete and prevents new application writes until the operation ends. Because the supported deployment contains one API process and one local PostgreSQL/filesystem installation, this prevents upload, rollback, redaction, annotation, Bates, workflow, login/session/replay, config, and other application writes from crossing the dump/tar interval. Direct out-of-band filesystem or database modification is outside the supported operating model and must not occur.
 
 ## Strict backup
 
@@ -59,10 +59,10 @@ The request requires:
 Restore admission and maintenance are separate boundaries:
 
 1. global middleware takes a non-blocking restore-admission mutex; a second restore request receives `409 RESTORE_ALREADY_RUNNING`;
-2. the request completes normal authentication and Admin role validation while holding only that admission token; an invalid caller releases it immediately and cannot activate maintenance;
+2. the request completes normal authentication and Admin role validation while its authentication writes hold the shared advisory lock; an invalid caller releases admission immediately and cannot activate maintenance;
 3. route middleware then marks maintenance active before restore handler work;
 4. new non-restore requests receive `503 MAINTENANCE_MODE` and the local request gate waits for active reads and writes to leave;
-5. the exclusive PostgreSQL advisory lock waits for any mutation owner using another cooperating API process;
+5. the exclusive PostgreSQL advisory lock waits for any request or mutation owner using another cooperating API process;
 6. journal creation, filesystem replacement, `pg_restore`, terminal persistence, and response all remain inside maintenance ownership.
 
 Before external restore work begins, the API creates a restore ID and writes an encrypted lifecycle journal under the installation's generated `BACKUP_DIR/.restore-lifecycle`. The journal retains the requesting Admin, request ID, source IP, artifact paths, and lifecycle metadata as AES-256-GCM ciphertext. It is outside `STORAGE_DIR`, so replacing the document filesystem snapshot does not erase the recovery record.
