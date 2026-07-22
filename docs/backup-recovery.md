@@ -56,13 +56,14 @@ The request requires:
 }
 ```
 
-The restore request itself owns maintenance mode. Maintenance begins in global middleware before authentication or restore handler database work:
+Restore admission and maintenance are separate boundaries:
 
-1. the maintenance flag rejects new non-restore requests with `503 MAINTENANCE_MODE`;
-2. the local request gate waits for already active reads and writes to leave;
-3. the exclusive PostgreSQL advisory lock waits for any mutation owner using another cooperating API process;
-4. authentication, journal creation, filesystem replacement, `pg_restore`, terminal persistence, and response all remain inside that maintenance ownership;
-5. a concurrent restore request is rejected with `409 RESTORE_ALREADY_RUNNING`.
+1. global middleware takes a non-blocking restore-admission mutex; a second restore request receives `409 RESTORE_ALREADY_RUNNING`;
+2. the request completes normal authentication and Admin role validation while holding only that admission token; an invalid caller releases it immediately and cannot activate maintenance;
+3. route middleware then marks maintenance active before restore handler work;
+4. new non-restore requests receive `503 MAINTENANCE_MODE` and the local request gate waits for active reads and writes to leave;
+5. the exclusive PostgreSQL advisory lock waits for any mutation owner using another cooperating API process;
+6. journal creation, filesystem replacement, `pg_restore`, terminal persistence, and response all remain inside maintenance ownership.
 
 Before external restore work begins, the API creates a restore ID and writes an encrypted lifecycle journal under the installation's generated `BACKUP_DIR/.restore-lifecycle`. The journal retains the requesting Admin, request ID, source IP, artifact paths, and lifecycle metadata as AES-256-GCM ciphertext. It is outside `STORAGE_DIR`, so replacing the document filesystem snapshot does not erase the recovery record.
 
@@ -123,13 +124,13 @@ A cleanup failure is returned as restore failure and recorded in the Failed life
 
 The database either commits the restored archive or rolls back that database restore. If it fails, the staged filesystem installation is rolled back to the previous directory.
 
-The PostgreSQL command and filesystem rename cannot be one cross-system ACID transaction. The implementation therefore combines code-enforced maintenance, an application mutation barrier, database single-transaction restore, reversible filesystem installation, an encrypted lifecycle journal, explicit Requested/Completed/Failed/Interrupted states, operator resolution, and fail-closed success reporting.
+The PostgreSQL command and filesystem rename cannot be one cross-system ACID transaction. The implementation therefore combines authenticated restore admission, code-enforced maintenance, an application mutation barrier, database single-transaction restore, reversible filesystem installation, an encrypted lifecycle journal, explicit Requested/Completed/Failed/Interrupted states, operator resolution, and fail-closed success reporting.
 
 ## Operational recovery order
 
 1. Retain `.env` and the generated database/storage identity.
 2. Select a completed backup and both paths returned by its manifest/API response.
-3. Submit both paths to the Admin restore route; the API enforces maintenance and drains other requests.
+3. Submit both paths to the Admin restore route; after authorization, the API enforces maintenance and drains other requests.
 4. Verify the returned restore ID is `Restored` and the jobs list contains its Completed restore row with the requesting Admin in `created_by`.
 5. Verify Admin audit results contain both `BACKUP_RESTORE_REQUESTED` and `BACKUP_RESTORE_COMPLETED` for that acting user and request ID.
 6. If the process exited with an unknown result, restart with the same installation configuration, inspect the retained Interrupted record and restored data, then use the resolution route with a concrete verification note.
@@ -139,4 +140,4 @@ Restoring only the dump or only the filesystem archive is unsupported. Reconcili
 
 ## Static and execution evidence
 
-Static inspection can verify strict mode checks, application mutation barrier definitions, maintenance admission, cleanup paths, safe archive extraction, rollback functions, PostgreSQL single-transaction flags, PGPASSFILE handling, encrypted lifecycle persistence, acting-user preservation, Interrupted semantics, operator resolution, startup ordering, and failure handling. It does not claim that an execution occurred. Existing runtime evidence, when available, applies only to its exact revision and inputs; static review neither requires nor creates it.
+Static inspection can verify strict mode checks, application mutation barrier definitions, authenticated maintenance admission, cleanup paths, safe archive extraction, rollback functions, PostgreSQL single-transaction flags, PGPASSFILE handling, encrypted lifecycle persistence, acting-user preservation, Interrupted semantics, operator resolution, startup ordering, and failure handling. It does not claim that an execution occurred. Existing runtime evidence, when available, applies only to its exact revision and inputs; static review neither requires nor creates it.
