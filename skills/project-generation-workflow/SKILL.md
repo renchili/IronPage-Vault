@@ -181,7 +181,7 @@ Generated documents and artifacts must use names derived from the request or exi
 - Do not invent marketing names, random identifiers, local machine names, or timestamps unless explicitly requested.
 - Keep names portable and repository-conventional.
 - Preserve an existing file name and path when updating it unless the user requests a rename.
-- Report final paths exactly as written.
+- Report final paths exactly as written in the repository.
 
 ## Documentation file rules
 
@@ -241,7 +241,7 @@ Before delivery, reject a questions document containing:
 Maintain a current working record for multi-turn work containing:
 
 - target repository, base branch, and working branch;
-- loaded rule paths and stable identifiers;
+- loaded concrete rule paths and stable identifiers;
 - atomic requirement ledger;
 - complete affected-file map;
 - user corrections;
@@ -255,21 +255,22 @@ The latest user feedback overrides earlier assumptions. Do not ask the user to r
 
 ## Repository constraint rules
 
-Before changing repository content, read:
+Before changing repository content:
 
-- the exact concrete file `AGENTS.md` and the distinct exact concrete file `AGENT.md` when present;
-- relevant concrete Skill files discovered with the canonical glob `skills/**/SKILL.md`;
-- README and relevant docs;
-- source layout, tests, scripts, migrations, workflows, deployment files, configuration, and artifact conventions.
+- discover root agent rule files by matching `agent.md` and `agents.md` case-insensitively;
+- discover relevant Skill files from the conceptual pattern `skill/**/skill.md`, treating `skill`/`skills`, filename capitalization, and nested depth tolerantly;
+- read every relevant concrete match using the repository's actual stored path;
+- read README and relevant docs;
+- inspect source layout, tests, scripts, migrations, workflows, deployment files, configuration, and artifact conventions.
 
-Repository rule-path semantics are strict:
+Rule-path references are tolerant discovery hints:
 
-- `AGENTS.md` and `AGENT.md` are distinct case-sensitive files with different roles;
-- `skills/**/SKILL.md` is a discovery glob, not a literal file path;
-- the canonical directory is `skills` and the canonical filename is `SKILL.md`;
-- enumerate and report the concrete Skill paths actually loaded;
-- do not use `skill/**/skill.md`, `skills/**/skill.md`, case variants, singular/plural variants, or `.chatgpt/skills/...` as substitutes;
-- do not create case-only alternate rule files.
+- `AGENT.md`, `AGENTS.md`, `agent.md`, and `agents.md` are not grounds for a missing-rule failure when a semantically matching root rule file exists;
+- `skill/**/skill.md` and `skills/**/SKILL.md` describe the same recursive discovery intent;
+- do not try to open `**` as literal path characters;
+- do not stop, fail, or ask the user solely because of capitalization, singular/plural spelling, or glob notation;
+- report the concrete repository paths actually read;
+- only report a rule as missing after tolerant discovery finds no semantic match.
 
 Do not replace the repository language, framework, database, architecture, build path, security model, deployment model, design system, or host application conventions unless explicitly requested.
 
@@ -336,7 +337,7 @@ PR text must distinguish static implementation from external runtime evidence an
 Use this evidence order for generation decisions:
 
 1. original requirement and explicit user corrections;
-2. repository rule files;
+2. repository rule files resolved tolerantly and read from their concrete stored paths;
 3. current production source, schema, migrations, configuration, manifests, deployment files, UI assets, and API contracts;
 4. current test definitions and static guards;
 5. current documentation and comments;
@@ -346,7 +347,7 @@ A missing external artifact does not demote a complete static implementation. Co
 
 ## Algorithm
 
-1. Read the requirement and rule sources.
+1. Read the requirement and resolve rule sources tolerantly.
 2. Resolve repository root, base revision, branch, and complete affected surface.
 3. Build an atomic requirement ledger.
 4. Inspect every mapped implementation and documentation path.
@@ -363,12 +364,12 @@ Use one conclusion:
 
 - `STATIC PASS`: all in-scope requirements are implemented and consistent by static inspection.
 - `STATIC FAIL`: one or more in-scope static defects remain; enumerate all known defects.
-- `STATIC INCOMPLETE`: required source or rule material was inaccessible; identify the exact missing concrete path. Do not use this status merely because CI, network access, a local checkout, or runtime evidence is absent.
+- `STATIC INCOMPLETE`: required source or rule material was inaccessible after tolerant discovery; identify the concrete inaccessible source. Do not use this status merely because CI, network access, a local checkout, or runtime evidence is absent.
 
 The final response must include:
 
 - exact branch and base revision;
-- exact files changed with canonical capitalization;
+- exact files changed using stored repository paths;
 - loaded concrete rule paths and identifiers;
 - complete static requirement summary;
 - repository reads and writes performed;
