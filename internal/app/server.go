@@ -92,7 +92,7 @@ func Run(cfg Config) error {
 	admin.POST("/backup/run", a.runBackupMetadataSnapshot)
 	admin.GET("/backup/jobs", a.backupJobs)
 	admin.POST("/backup/restore", a.restoreBackup, a.restoreMaintenanceMiddleware)
-	admin.POST("/backup/restore/:id/resolve", a.resolveInterruptedRestore)
+	admin.POST("/backup/restore/:id/resolve", a.resolveInterruptedRestore, a.exclusiveOperationMiddleware)
 
 	docs := api.Group("/documents")
 	docs.GET("", a.listDocuments)
