@@ -39,7 +39,7 @@ Repository YAML cannot prevent GitHub from first creating a workflow-run object.
 | Admin configuration | `admin.go`, `config_management.go`, `template_update.go`, `workflow_definitions.go` | user/template/workflow updates include audit; generic config is restricted to validated pagination keys and deployment-owned values are immutable through API |
 | PostgreSQL subprocess authentication | `internal/platform/postgres_command.go`, `backup_exec.go` | password-free argv, short-lived mode-0600 PGPASSFILE, inherited credential environment removed, password-file escaping and cleanup |
 | Backup recovery boundary | `operation_barrier.go`, `backup_file.go`, `backup_scheduler.go`, `backup_cleanup.go` | unsafe mutations take shared advisory lock; manual/scheduled backup take exclusive lock across dump and tar; generated paths removed on persistence failure |
-| Restore maintenance | `operation_barrier.go`, `server.go`, `restore.go` | global middleware owns maintenance before auth, rejects/drains other requests, prevents concurrent restore and holds exclusive advisory lock through lifecycle |
+| Restore maintenance | `operation_barrier.go`, `server.go`, `restore.go` | global admission prevents concurrent restore auth; after Admin authorization route middleware activates maintenance, rejects/drains ordinary requests and holds the exclusive advisory lock through the handler |
 | Interrupted restore resolution | `restore_lifecycle.go`, `restore.go` | Requested with no durable result becomes Interrupted/unknown; system-principal audit; encrypted journal retained until Admin Completed/Failed attestation with verification note |
 | Runtime limits and uniform errors | config/core/API handlers | 200 MB, 500 pages, 250 files, 50 versions, configured pagination and uniform envelope definitions |
 | Collection pagination | `pagination_config.go`, `admin.go`, `documents.go`, `redactions.go`, `annotations.go`, `audit_filters.go` | every collection query applies configured `page`/`page_size`, SQL `LIMIT`/`OFFSET`, default 25 and maximum 100; response includes `data`, `page`, and `page_size` |
@@ -54,7 +54,7 @@ Repository YAML cannot prevent GitHub from first creating a workflow-run object.
 | Requirement | Production source | Test/static source |
 |---|---|---|
 | backup dump/tar share application write boundary | `operation_barrier.go`, `backup_file.go`, `backup_scheduler.go` | `operation_barrier_test.go`, `tests/contracts/backup_restore_integrity.sh` |
-| restore blocks live HTTP and mutations | `maintenanceMiddleware`, `mutationBarrierMiddleware`, `restore.go` | `TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests`, integrity static contract |
+| restore blocks live HTTP and mutations | restore admission plus `restoreMaintenanceMiddleware`, `mutationBarrierMiddleware`, `restore.go` | `TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests`, integrity static contract |
 | unknown interrupted outcome is not Failed | `interruptedRestoreRecord`, `reconcileRestoreLifecycle` | `TestRequestedRestoreBecomesInterruptedNotFailed`, static Requested-to-Failed rejection |
 | Interrupted outcome requires Admin attestation | `POST /api/admin/backup/restore/:id/resolve` | `tests/api/test_admin_ops.sh`, Swagger route coverage |
 | scheduled backup has acting user | `EnsureSystemPrincipal`, `runScheduledBackupLocked` | audit helper guard and integrity static contract |
