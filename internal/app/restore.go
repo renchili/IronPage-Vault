@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -131,8 +132,11 @@ func (a *App) resolveInterruptedRestore(c echo.Context) error {
 		return apiErr(c, http.StatusBadRequest, "INVALID_RESTORE_ID", "restore id is invalid")
 	}
 	record, err := a.readRestoreLifecycleRecord(path)
-	if err != nil {
+	if os.IsNotExist(err) {
 		return apiErr(c, http.StatusNotFound, "RESTORE_RECONCILIATION_NOT_FOUND", "interrupted restore journal was not found")
+	}
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "RESTORE_JOURNAL_ERROR", "interrupted restore journal could not be read safely")
 	}
 	if record.Status != restoreStatusInterrupted {
 		return apiErr(c, http.StatusConflict, "RESTORE_NOT_INTERRUPTED", "only an Interrupted restore may be resolved")
