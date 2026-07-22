@@ -12,7 +12,8 @@ The implemented recovery boundary is strict logical backup and restore:
 
 - PostgreSQL custom-format dump;
 - PDF-storage tar snapshot;
-- manifest containing both artifact paths; and
+- manifest containing both artifact paths;
+- an exclusive application mutation barrier across dump and tar; and
 - restore that succeeds only after both artifacts are applied.
 
 Automated WAL archiving, scheduled physical base backups, and timestamp-target physical restore are not implemented or claimed.
@@ -36,19 +37,19 @@ PostgreSQL stores each PDF version path and hash. The generated filesystem targe
 document_versions.file_path -> restored local PDF file
 ```
 
-Restoring database metadata without the corresponding file snapshot is not supported.
+Every supported application mutation acquires a shared advisory lock. Backup acquires the corresponding exclusive lock before `pg_dump` and keeps it through the filesystem tar, so the two artifacts are created while application state is write-quiescent. Restoring database metadata without the corresponding file snapshot is not supported.
 
 ## Recovery procedure
 
-1. Stop application writes.
-2. Retain the installation `.env` and identify its generated storage targets.
-3. Select one manifest and both artifact paths.
-4. Restore PostgreSQL from the custom-format dump.
-5. Restore PDF storage from the corresponding tar snapshot.
-6. Start the service with the retained installation configuration.
-7. Verify the generated health URL.
-8. Verify representative metadata, version downloads, audit records, workflow state, notifications, and backup metadata.
+1. Retain the installation `.env` and identify its generated storage targets.
+2. Select one manifest and both artifact paths.
+3. Submit both artifacts to `POST /api/admin/backup/restore`.
+4. The service enters code-enforced maintenance, drains active requests, blocks new requests and application mutations, stages the filesystem, and runs `pg_restore --single-transaction`.
+5. Verify the restore response and the Completed job/audit state.
+6. If startup reports an Interrupted restore, inspect the database and filesystem because the result is unknown; then submit an Admin Completed or Failed resolution with a concrete verification note.
+7. Verify the generated health URL after maintenance ends.
+8. Verify representative metadata, version downloads, audit records, workflow state, notifications, backup metadata and sampled file hashes.
 
 ## Evidence boundary
 
-Strict backup/restore source paths and contracts can be inspected statically. A successful recovery claim requires an executed restore artifact tied to the exact tested revision and recovery inputs. No documentation or static report may be treated as proof of automated physical PITR.
+Strict backup/restore source paths, application barriers, maintenance, Interrupted resolution and contracts can be inspected statically. A successful recovery claim requires an executed restore artifact tied to the exact tested revision and recovery inputs. No documentation or static report may be treated as proof of automated physical PITR.
