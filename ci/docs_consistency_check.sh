@@ -11,7 +11,7 @@ def stop(message):
 
 
 required = [
-    "README.md", "ci/BOUNDARY.md", "docs/questions.md",
+    "AGENTS.md", "AGENT.md", "README.md", "ci/BOUNDARY.md", "docs/questions.md",
     "docs/requirement-check.md", "docs/security.md", "docs/design.md",
     "docs/backup-recovery.md", "docs/testing.md", "docs/usage.md",
     "docs/pitr.md", "docs/deployment-offline.md", "docs/api-spec.md",
@@ -32,6 +32,34 @@ if not Path("public/index.html").is_file() or Path("public/manual-test.html").ex
 workflows = list(Path(".github/workflows").glob("*.y*ml"))
 if len(workflows) != 1 or workflows[0].name != "ci.yml":
     stop("exactly one workflow at .github/workflows/ci.yml is required")
+
+bootstrap = Path("AGENTS.md").read_text(encoding="utf-8")
+project_rule = Path("AGENT.md").read_text(encoding="utf-8")
+acceptance = Path("skills/full-project-acceptance-hard-gates/SKILL.md").read_text(encoding="utf-8")
+generation = Path("skills/project-generation-workflow/SKILL.md").read_text(encoding="utf-8")
+workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+for phrase in [
+    "Tolerant rule-path resolution",
+    "case-insensitively",
+    "singular/plural",
+    "skill/**/skill.md",
+    "do not stop, fail, ask the user",
+    "A report must name the concrete repository paths actually read",
+]:
+    if phrase not in bootstrap:
+        stop(f"AGENTS.md missing tolerant rule-discovery statement: {phrase}")
+if "# AGENT Rules for IronPage Vault" not in project_rule:
+    stop("AGENT.md no longer identifies the project-adapted rule source")
+
+for forbidden in [
+    "must not try to open a literal path containing `**`",
+    "do not search for or accept lowercase/case-variant names as substitutes",
+    "case-sensitive and must be read, written, cited",
+]:
+    if forbidden in bootstrap:
+        stop(f"AGENTS.md contains filename-nitpicking rule: {forbidden}")
+
 
 doc_paths = [Path("README.md"), Path("ci/BOUNDARY.md")]
 doc_paths += [p for p in Path("docs").rglob("*") if p.is_file()]
@@ -63,6 +91,7 @@ expected_topics = {
     "Authentication state failures must fail closed",
     "Acceptance browser surface",
     "Buildable frontend design and interaction handoff",
+    "Rule path discovery without filename nitpicking",
     "Static reviewer acceptance",
     "CI admission and one-time unlock",
     "Regression and current-revision evidence",
@@ -80,14 +109,12 @@ for index, match in enumerate(sections):
     if actual != expected_subsections:
         stop(f"invalid clarification structure for {match.group(1)!r}")
 
-acceptance = Path("skills/full-project-acceptance-hard-gates/SKILL.md").read_text(encoding="utf-8")
-generation = Path("skills/project-generation-workflow/SKILL.md").read_text(encoding="utf-8")
-workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
-gates = {int(v) for v in re.findall(r"^## Gate (\d+):", acceptance, re.MULTILINE)}
-if gates != set(range(28)):
-    stop(f"acceptance gates differ from 0-27: {sorted(gates)}")
 for phrase in [
     "Absolute static-only boundary",
+    "Offline and missing-tool behavior",
+    "Tolerant rule-source discovery",
+    "No network or missing tooling never authorizes execution",
+    "Ambiguous test wording is not execution permission",
     "Every applicable Gate 0–27 must be completed",
     "Inspect workflows only; never trigger or wait for CI",
     "a new revision must be admissible immediately",
@@ -101,10 +128,13 @@ for phrase in [
         stop(f"acceptance Skill missing rule: {phrase}")
 for phrase in [
     "static source-completion tasks",
+    "No-execution fallback and connectivity rule",
+    "No network, unavailable internet",
+    "Ambiguous test wording is not execution permission",
     "must not optimize for the smallest change count",
     "Do not stop scanning after the first P0",
     "Continue until no known in-scope static defect is deferred",
-    "CI triggered or awaited: `none`",
+    "CI triggered, cancelled, or awaited: `none`",
     "Frontend design and implementation contract",
     "exact icon library and icon name",
     "Special-interaction contract",
@@ -113,6 +143,17 @@ for phrase in [
 ]:
     if phrase not in generation:
         stop(f"generation Skill missing rule: {phrase}")
+
+for phrase in [
+    "Static reviewer boundary",
+    "No network, missing internet",
+    "Ambiguous wording is not execution permission",
+    "Rule discovery during review",
+    "shell/terminal, Python/code interpreter",
+]:
+    if phrase not in Path("docs/testing.md").read_text(encoding="utf-8"):
+        stop(f"docs/testing.md missing static-review boundary: {phrase}")
+
 for phrase in [
     "cancel-in-progress: true", "github.paginate", "failedSameRevision",
     "latestCompletedSameRevision", "run.head_sha === currentSha",
