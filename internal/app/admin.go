@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -125,7 +126,7 @@ func (a *App) listUsers(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
 	}
 	rows := []User{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,username,username_ciphertext,display_name,display_name_ciphertext,role,password_hash,failed_attempts,locked_until FROM users ORDER BY created_at LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,username,username_ciphertext,display_name,display_name_ciphertext,role,password_hash,failed_attempts,locked_until FROM users WHERE id<>$1 ORDER BY created_at LIMIT $2 OFFSET $3`, systemPrincipalID, size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "USER_QUERY_ERROR", "could not list users")
 	}
 	for i := range rows {
@@ -161,16 +162,26 @@ func (a *App) patchConfig(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start transaction")
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO config_entries(key,value,updated_by,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=NOW()`, c.Param("key"), req.Value, p.UserID); err != nil {
+	normalized, err := validateAdminConfigUpdate(c.Request().Context(), tx, a.cfg, c.Param("key"), req.Value)
+	if errors.Is(err, errDeploymentOwnedConfig) {
+		return apiErr(c, http.StatusConflict, "CONFIG_KEY_READ_ONLY", "configuration key is owned by deployment and cannot be changed through the API")
+	}
+	if errors.Is(err, errUnsupportedConfigKey) {
+		return apiErr(c, http.StatusBadRequest, "CONFIG_KEY_NOT_MANAGED", "configuration key is not Admin-managed")
+	}
+	if err != nil {
+		return apiErr(c, http.StatusBadRequest, "INVALID_CONFIG_VALUE", err.Error())
+	}
+	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO config_entries(key,value,updated_by,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=NOW()`, c.Param("key"), normalized, p.UserID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "CONFIG_UPDATE_ERROR", "could not update config")
 	}
-	if err := a.auditWithExecutor(c, tx, p.UserID, "CONFIG_UPDATE", "", map[string]interface{}{"key": c.Param("key")}); err != nil {
+	if err := a.auditWithExecutor(c, tx, p.UserID, "CONFIG_UPDATE", "", map[string]interface{}{"key": c.Param("key"), "value": normalized}); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record configuration audit")
 	}
 	if err := tx.Commit(); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit configuration update")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"key": c.Param("key"), "value": req.Value})
+	return c.JSON(http.StatusOK, map[string]interface{}{"key": c.Param("key"), "value": normalized})
 }
 
 func (a *App) workflowStatuses(c echo.Context) error {
