@@ -17,8 +17,9 @@ import (
 )
 
 type App struct {
-	cfg Config
-	db  *sqlx.DB
+	cfg        Config
+	db         *sqlx.DB
+	operations *operationCoordinator
 }
 
 func MustRun(cfg Config) {
@@ -53,7 +54,10 @@ func Run(cfg Config) error {
 	if err := EnsureInitialUsers(context.Background(), db, cfg); err != nil {
 		return err
 	}
-	a := &App{cfg: cfg, db: db}
+	if err := EnsureSystemPrincipal(context.Background(), db, cfg); err != nil {
+		return fmt.Errorf("system principal initialization failed: %w", err)
+	}
+	a := &App{cfg: cfg, db: db, operations: newOperationCoordinator(db)}
 	if err := a.reconcileRestoreLifecycle(context.Background()); err != nil {
 		return fmt.Errorf("restore lifecycle reconciliation failed: %w", err)
 	}
@@ -63,6 +67,8 @@ func Run(cfg Config) error {
 	e.HTTPErrorHandler = apiHTTPErrorHandler
 	e.Use(middleware.Recover())
 	e.Use(a.requestIDMiddleware)
+	e.Use(a.maintenanceMiddleware)
+	e.Use(a.mutationBarrierMiddleware)
 	e.GET("/healthz", a.health)
 	if cfg.AcceptanceMode {
 		e.Static("/ui", cfg.PublicDir)
@@ -86,6 +92,7 @@ func Run(cfg Config) error {
 	admin.POST("/backup/run", a.runBackupMetadataSnapshot)
 	admin.GET("/backup/jobs", a.backupJobs)
 	admin.POST("/backup/restore", a.restoreBackup)
+	admin.POST("/backup/restore/:id/resolve", a.resolveInterruptedRestore)
 
 	docs := api.Group("/documents")
 	docs.GET("", a.listDocuments)
@@ -150,21 +157,6 @@ func requireRole(roles ...string) echo.MiddlewareFunc {
 func principal(c echo.Context) Principal {
 	p, _ := c.Get("principal").(Principal)
 	return p
-}
-
-func parsePage(c echo.Context, cfg Config) (int, int) {
-	page := atoiDefault(c.QueryParam("page"), 1)
-	size := atoiDefault(c.QueryParam("page_size"), cfg.DefaultPageSize)
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = cfg.DefaultPageSize
-	}
-	if size > cfg.MaxPageSize {
-		size = cfg.MaxPageSize
-	}
-	return page, size
 }
 
 func atoiDefault(s string, d int) int {
