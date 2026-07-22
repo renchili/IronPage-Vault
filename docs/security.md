@@ -1,6 +1,6 @@
 # Security Notes
 
-IronPage Vault is designed for a local air-gapped legal document environment. The security model uses installation-specific local identity, explicit roles/object policy, server-side sessions, protected metadata, mandatory audit side effects, and immutable Finalized documents.
+IronPage Vault is designed for a local air-gapped legal document environment. The security model uses installation-specific local identity, explicit roles/object policy, server-side sessions, protected metadata, mandatory audit side effects, immutable Finalized documents, and code-enforced backup/restore operation boundaries.
 
 ## Installation configuration
 
@@ -12,7 +12,7 @@ Normal mode creates one initial Admin from bootstrap values only while the user 
 
 Only failed attempts in the preceding 15 minutes count. The fifth applies a 15-minute lock. Failed-attempt insert/count/lock and `LOGIN_FAILED` audit commit under one user row lock. Successful attempt reset, session creation and `LOGIN` audit commit together. Logout blacklist, session revocation and `LOGOUT` audit commit together. Any required database or audit error fails the request.
 
-Authenticated requests require a fresh timestamp and unique request ID. Blacklist lookup, replay persistence and session activity fail closed.
+Authenticated requests require a fresh timestamp and unique request ID. Blacklist lookup, replay persistence and session activity fail closed. Restore maintenance starts in global middleware before authentication work, so authentication-state writes cannot occur concurrently with database replacement.
 
 ## Protected metadata and lookup
 
@@ -20,13 +20,33 @@ Sensitive source values use AES-256-GCM ciphertext columns. Deterministic keys a
 
 Annotation comments, notification messages, document titles, identities and redaction geometry/reasons use protected storage paths. Mention lookup uses the encrypted username lookup key rather than plaintext.
 
-## Mandatory side effects
+Restore lifecycle journals are stored outside `STORAGE_DIR` as AES-256-GCM envelopes in a mode-`0700` directory with mode-`0600` files. Plaintext envelopes, malformed identities and undecryptable records are rejected.
+
+## Mandatory acting-user audit
 
 A successful material database mutation cannot silently lose its audit. The main state change and audit share one transaction. Workflow/finalization also include status history and owner notification; annotation creation includes mention notifications; Admin user/config/template/workflow changes and notification acknowledgement include audit.
 
+The common audit helper rejects an empty actor and no longer converts an empty value to `NULL`. Scheduled backup and startup restore reconciliation use a protected system scheduler principal. That principal has a random, unretained bcrypt verifier and is hidden from the Admin user collection; it exists so automated mutations still have an explicit acting identity and foreign-key integrity.
+
 File-producing redaction and Bates operations keep their database transaction open through verified file generation, remove generated files on failed persistence, and commit version/document/audit state together. Bates sequence reservation is part of that transaction.
 
-Backup job/audit persistence failure removes generated dump, tar, manifest and metadata. Restore rejects unsafe archive paths and links, stages files, retains a rollback directory, and uses PostgreSQL single-transaction restore. A success response requires Completed restore state and audit.
+## Backup and restore isolation
+
+Unsafe API mutations acquire a shared PostgreSQL advisory lock. Manual and scheduled backup acquire the matching exclusive lock across metadata collection, `pg_dump`, filesystem tar creation, and job/audit persistence. This is the application mutation barrier for the supported single-container deployment.
+
+Restore additionally owns a local maintenance gate before authentication and handler work. New requests fail with `MAINTENANCE_MODE`, active requests drain, concurrent restore is rejected, and the exclusive advisory lock remains held through filesystem replacement, `pg_restore`, lifecycle persistence, and response.
+
+A crash before a durable restore result creates `Interrupted` with `outcome=unknown`; it is not mislabeled Failed. Resolution requires an Admin acting user and a non-empty verification note.
+
+## PostgreSQL command credentials
+
+`Config.DSN()` remains an in-process database-driver connection string. It is not passed to `pg_dump` or `pg_restore`. PostgreSQL subprocess arguments contain only non-secret port, username, database, paths and operation flags.
+
+For each command the platform adapter creates a short-lived `PGPASSFILE` under `BACKUP_DIR`, sets mode `0600`, escapes password-file delimiters, removes inherited `PGPASSWORD`/`PGPASSFILE`, supplies only the scoped file path to the child environment, and removes the file after command completion. Database passwords therefore do not appear in subprocess argv.
+
+## Configuration integrity
+
+`backup.local_volume` is deployment-owned and cannot be patched through the API. Unknown generic config keys are rejected. The two Admin-managed pagination values are locked and validated as one pair before persistence; they must satisfy `1 <= default <= max <= 100`. Extremely large page numbers are clamped before offset multiplication to avoid integer overflow.
 
 ## Roles and Finalized records
 
@@ -36,7 +56,7 @@ Finalized documents reject replacement, rollback, redaction, annotation mutation
 
 ## Error contract
 
-Security and business failures use the standard JSON error envelope. Authentication, audit, history, notification, sequence, version, document and restore-state errors cannot become successful responses.
+Security and business failures use the standard JSON error envelope. Authentication, audit, history, notification, sequence, version, document, configuration, barrier and restore-state errors cannot become successful responses.
 
 ## Static and runtime evidence
 
