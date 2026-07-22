@@ -11,10 +11,14 @@ require() {
   grep -Fq "$pattern" "$file" || fail "$message"
 }
 
-require 'pg_advisory_lock_shared($1)' internal/app/operation_barrier.go "shared mutation advisory lock missing"
+require 'pg_advisory_lock_shared($1)' internal/app/operation_barrier.go "shared request advisory lock missing"
 require 'pg_advisory_lock($1)' internal/app/operation_barrier.go "exclusive backup/restore advisory lock missing"
 require 'e.Use(a.maintenanceMiddleware)' internal/app/server.go "maintenance middleware not wired"
-require 'e.Use(a.mutationBarrierMiddleware)' internal/app/server.go "mutation barrier middleware not wired"
+require 'e.Use(a.mutationBarrierMiddleware)' internal/app/server.go "request barrier middleware not wired"
+require 'requiresRequestBarrier' internal/app/operation_barrier.go "authenticated read/write barrier classification missing"
+require 'strings.HasPrefix(path, "/api/")' internal/app/operation_barrier.go "API authentication state is not covered by the request barrier"
+require 'isExclusiveOperationPath(c.Request().URL.Path)' internal/app/auth.go "exclusive operations do not isolate authentication writes before lock promotion"
+require 'withSharedMutation(c.Request().Context()' internal/app/auth.go "exclusive operation authentication state is not protected by a shared barrier"
 require 'withExclusiveOperation(c.Request().Context()' internal/app/backup_file.go "manual backup does not own exclusive barrier"
 require 'withExclusiveOperation(ctx' internal/app/backup_scheduler.go "scheduled backup does not own exclusive barrier"
 require 'withMaintenanceOperation(c.Request().Context()' internal/app/operation_barrier.go "restore middleware does not own maintenance barrier"
@@ -32,6 +36,7 @@ require 'BACKUP_RESTORE_INTERRUPTED' internal/app/restore_lifecycle.go "interrup
 require 'operator_verification_required' internal/app/restore_lifecycle.go "operator verification requirement missing"
 require 'admin.POST("/backup/restore/:id/resolve"' internal/app/server.go "restore resolution route missing"
 require 'func (a *App) resolveInterruptedRestore' internal/app/restore.go "restore resolution handler missing"
+require 'EnsureSystemPrincipal(c.Request().Context(), a.db, a.cfg)' internal/app/restore.go "restored database does not re-establish the system principal"
 if grep -A8 'record.Status == restoreStatusRequested' internal/app/restore_lifecycle.go | grep -q 'restoreStatusFailed'; then
   fail "Requested restore is still converted directly to Failed"
 fi
@@ -43,6 +48,7 @@ require 'systemPrincipalID, "SCHEDULED_BACKUP_CREATE"' internal/app/backup_sched
 require 'audit acting user is required' internal/app/domain_events.go "audit helper does not reject blank actors"
 require 'strings.EqualFold(strings.TrimSpace(req.Username), systemPrincipalUsername)' internal/app/auth.go "system principal username is not rejected at login"
 require 'sub == systemPrincipalID' internal/app/auth.go "system principal token subject is not rejected"
+require 'system principal cannot log in' tests/api/test_auth_rbac.sh "system principal negative login definition missing"
 if grep -Fq 'NULLIF($2' internal/app/domain_events.go; then
   fail "audit actor can still be converted to NULL"
 fi
@@ -64,6 +70,7 @@ fi
 require 'TestPostgresCommandArgumentsExcludePassword' internal/platform/postgres_command_test.go "postgres argv exposure test definition missing"
 require 'TestPGPassFileUsesRestrictedModeAndEscaping' internal/platform/postgres_command_test.go "PGPASSFILE permission test definition missing"
 
+require 'TestAPIRequestsIncludeAuthenticationStateInBarrier' internal/app/operation_barrier_test.go "authenticated GET/write barrier definition missing"
 require 'TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests' internal/app/operation_barrier_test.go "maintenance denial test definition missing"
 require 'TestRestoreAdmissionRejectsSecondAuthenticationPath' internal/app/operation_barrier_test.go "restore admission test definition missing"
 require 'TestBackupRestoreAndResolutionUseExclusiveOperationPaths' internal/app/operation_barrier_test.go "exclusive operation classification test missing"
@@ -75,4 +82,4 @@ require 'application mutation barrier' docs/backup-recovery.md "backup barrier d
 require 'Interrupted' docs/backup-recovery.md "interrupted restore documentation missing"
 require 'PGPASSFILE' docs/security.md "postgres credential boundary documentation missing"
 
-echo "PASS: backup/restore integrity static contract"
+ echo "PASS: backup/restore integrity static contract"
