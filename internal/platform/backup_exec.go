@@ -34,8 +34,7 @@ func RunBackupArtifacts(id string, postgres PostgresCommandConfig, storageDir st
 		RestoreSupported: true,
 	}
 	if _, err := exec.LookPath("pg_dump"); err == nil {
-		args := []string{"--format=custom", "--file", manifest.DatabaseDumpPath, "--port", postgres.Port, "--username", postgres.User, "--dbname", postgres.Database}
-		if err := runPostgresCommand("pg_dump", args, postgres); err != nil {
+		if err := runPostgresCommand("pg_dump", pgDumpCommandArgs(postgres, manifest.DatabaseDumpPath), postgres); err != nil {
 			manifest.DatabaseDumpMode = "pg_dump_failed_metadata_only"
 			_ = os.WriteFile(manifest.DatabaseDumpPath+".error", []byte(err.Error()), 0640)
 		} else {
@@ -203,8 +202,7 @@ func RunRestoreArtifacts(postgres PostgresCommandConfig, databaseDumpPath string
 		return result, err
 	}
 	stagedInstalled = true
-	args := []string{"--clean", "--if-exists", "--single-transaction", "--port", postgres.Port, "--username", postgres.User, "--dbname", postgres.Database, databaseDumpPath}
-	if err := runPostgresCommand("pg_restore", args, postgres); err != nil {
+	if err := runPostgresCommand("pg_restore", pgRestoreCommandArgs(postgres, databaseDumpPath), postgres); err != nil {
 		result["database_restore"] = "pg_restore_failed"
 		result["database_restore_error"] = err.Error()
 		if rollbackErr := rollbackStorage(); rollbackErr != nil {
