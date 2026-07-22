@@ -46,7 +46,7 @@ stale = {
     "workflow overstatement": r"static workflow.*complete regression|sole workflow.*complete regression|workflow.*uploads evidence only after the complete regression",
     "best-effort backup": r"best-effort.*(?:pg_dump|backup)|metadata-only backup",
     "manual-only restore isolation": r"^\s*1\.\s*Stop application writes\.",
-    "false interrupted failure": r"Requested.*(?:converts|changes).*Failed|Requested journal.*Failed",
+    "false interrupted failure": r"Requested(?: journal)?.{0,80}(?:converts|changes)\s+(?:directly\s+)?(?:to|into)\s+Failed|Requested journal.{0,80}(?:treated|marked|recorded)\s+as\s+Failed",
     "overlay redaction": r"draw filled black rectangles|overlay-style redaction|marker-only redaction",
     "obsolete compare limitation": r"not true bbox-level|no bounding-box reporting|binary-only compare",
     "old local runner claim": r"run_tests\.sh directly runs go test",
