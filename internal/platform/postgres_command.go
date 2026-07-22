@@ -40,6 +40,14 @@ func (c PostgresCommandConfig) validate() error {
 	return nil
 }
 
+func pgDumpCommandArgs(config PostgresCommandConfig, outputPath string) []string {
+	return []string{"--format=custom", "--file", outputPath, "--port", config.Port, "--username", config.User, "--dbname", config.Database}
+}
+
+func pgRestoreCommandArgs(config PostgresCommandConfig, inputPath string) []string {
+	return []string{"--clean", "--if-exists", "--single-transaction", "--port", config.Port, "--username", config.User, "--dbname", config.Database, inputPath}
+}
+
 func pgpassEscape(value string) string {
 	value = strings.ReplaceAll(value, `\`, `\\`)
 	return strings.ReplaceAll(value, ":", `\:`)
