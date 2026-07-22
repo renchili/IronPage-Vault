@@ -15,7 +15,7 @@ During generation, repair, validation, or review under this Skill, the agent mus
 - execute repository scripts or generated binaries;
 - build images, packages, applications, or containers;
 - start services, databases, browsers, emulators, or deployment environments;
-- trigger, rerun, retry, dispatch, or wait for CI;
+- trigger, rerun, retry, dispatch, approve, cancel, or wait for CI;
 - treat CI, a build, a deployment, a test run, or another external validator as a prerequisite for continuing work;
 - stop after a minimum patch, first defect, first stage, first commit, or first green external signal;
 - defer statically identifiable work to a later step, follow-up PR, future pass, or CI result.
@@ -23,6 +23,27 @@ During generation, repair, validation, or review under this Skill, the agent mus
 Existing logs, CI results, test reports, screenshots, artifacts, or deployment records may be inspected read-only when they already exist. They are optional context, not generation dependencies and not permission to stop before the static implementation is complete.
 
 Missing external execution evidence must never produce `ci_pending`, `waiting_for_tests`, `waiting_for_build`, or an equivalent stop state. Continue the static work and describe runtime execution as outside this workflow.
+
+## No-execution fallback and connectivity rule
+
+The static boundary does not weaken when the environment is incomplete. No network, unavailable internet, missing local checkout, missing `git` or `gh`, missing Docker, missing package dependencies, unavailable browser, unavailable database, or an inaccessible runtime service is never permission to execute a different path.
+
+Under this Skill the agent must not use any of the following to inspect, validate, assemble, or report repository work:
+
+- a shell, terminal, or command runner;
+- Python, a code interpreter, a notebook, or generated helper code;
+- a container or local virtual environment;
+- local `git`, `gh`, `curl`, `wget`, package managers, compilers, formatters, linters, or archive-extraction commands;
+- a temporary workflow, temporary execution branch, remote runner, or CI job created to outsource execution;
+- a request that the user run commands and return results.
+
+Use read-only repository APIs, connector file reads, uploaded-file viewers, or equivalent non-executing source retrieval. Repository writes may use a file or source-control API only when the user request requires repository changes; that write access does not authorize execution.
+
+If required source cannot be read through available non-executing sources, report the exact inaccessible concrete path as a source gap and continue every other statically inspectable part. Do not clone, download an archive, install tooling, or create CI merely to close the gap.
+
+Within a task governed by this Skill, wording such as `test`, `full test`, `complete test`, `完整测试`, `regression`, `acceptance`, or `generate a test report` means complete static source inspection and report generation unless the user explicitly requests a separate runtime workflow and the controlling repository rules permit that runtime workflow. Ambiguous test wording is not execution permission.
+
+A request for a downloadable report does not authorize shell or code execution to create one. Return the report directly in the response, or use a genuinely non-executing document artifact capability when available. Otherwise state that the static report is provided in chat.
 
 ## Complete-delivery rule
 
@@ -236,10 +257,19 @@ The latest user feedback overrides earlier assumptions. Do not ask the user to r
 
 Before changing repository content, read:
 
-- `AGENTS.md` and `AGENT.md` when present;
-- relevant `skills/**/SKILL.md`;
+- the exact concrete file `AGENTS.md` and the distinct exact concrete file `AGENT.md` when present;
+- relevant concrete Skill files discovered with the canonical glob `skills/**/SKILL.md`;
 - README and relevant docs;
 - source layout, tests, scripts, migrations, workflows, deployment files, configuration, and artifact conventions.
+
+Repository rule-path semantics are strict:
+
+- `AGENTS.md` and `AGENT.md` are distinct case-sensitive files with different roles;
+- `skills/**/SKILL.md` is a discovery glob, not a literal file path;
+- the canonical directory is `skills` and the canonical filename is `SKILL.md`;
+- enumerate and report the concrete Skill paths actually loaded;
+- do not use `skill/**/skill.md`, `skills/**/skill.md`, case variants, singular/plural variants, or `.chatgpt/skills/...` as substitutes;
+- do not create case-only alternate rule files.
 
 Do not replace the repository language, framework, database, architecture, build path, security model, deployment model, design system, or host application conventions unless explicitly requested.
 
@@ -251,8 +281,8 @@ For repository changes:
 2. build an atomic requirement ledger;
 3. map every requirement to all affected source, tests, schema, config, deployment, API, UI, docs, and comments;
 4. edit the complete mapped surface, not only the first convenient file;
-5. inspect syntax and consistency from source text without executing repository code or scripts;
-6. review the complete diff for unrelated files and unresolved requirement rows;
+5. inspect syntax and consistency from source text without executing repository code, scripts, commands, or helper programs;
+6. review the complete diff for unrelated files and unresolved requirement rows through non-executing repository APIs;
 7. repeat static inspection until every row is `STATIC PASS`, `STATIC FAIL`, or justified `N/A`;
 8. deliver without waiting for CI or external execution.
 
@@ -323,9 +353,9 @@ A missing external artifact does not demote a complete static implementation. Co
 5. Generate or repair all statically identifiable requirements, including implementation-ready UI decisions when UI is in scope.
 6. Add or update complete positive, negative, boundary, failure-path, interaction-state, and accessibility test definitions.
 7. Update schemas, configuration, deployment, comments, UI assets, and docs consistently.
-8. Perform a complete static rescan and diff review.
+8. Perform a complete static rescan and diff review through non-executing source APIs.
 9. Continue until no known in-scope static defect is deferred.
-10. Report the static conclusion without waiting for CI, tests, builds, containers, browsers, or deployment.
+10. Report the static conclusion without waiting for CI, tests, builds, containers, browsers, deployment, commands, or helper execution.
 
 ## Final response contract
 
@@ -333,15 +363,16 @@ Use one conclusion:
 
 - `STATIC PASS`: all in-scope requirements are implemented and consistent by static inspection.
 - `STATIC FAIL`: one or more in-scope static defects remain; enumerate all known defects.
-- `STATIC INCOMPLETE`: required source or rule material was inaccessible; identify the exact missing path. Do not use this status merely because CI or runtime evidence is absent.
+- `STATIC INCOMPLETE`: required source or rule material was inaccessible; identify the exact missing concrete path. Do not use this status merely because CI, network access, a local checkout, or runtime evidence is absent.
 
 The final response must include:
 
 - exact branch and base revision;
-- exact files changed;
-- loaded rule paths and identifiers;
+- exact files changed with canonical capitalization;
+- loaded concrete rule paths and identifiers;
 - complete static requirement summary;
-- repository writes performed;
+- repository reads and writes performed;
+- shell, terminal, Python, code interpreter, container, local `git`/`gh`, package-manager, and helper execution performed: `none`;
 - external execution performed: `none`;
-- CI triggered or awaited: `none`;
-- every remaining static defect or inaccessible source.
+- CI triggered, cancelled, or awaited: `none`;
+- every remaining static defect or inaccessible concrete source path.
