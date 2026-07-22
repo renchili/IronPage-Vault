@@ -102,6 +102,9 @@ func (a *App) restoreBackupLocked(c echo.Context) error {
 	if err := a.writeRestoreLifecycleRecord(record); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore completed but its durable completion state could not be recorded")
 	}
+	if err := EnsureSystemPrincipal(c.Request().Context(), a.db, a.cfg); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore completed but the system principal could not be restored")
+	}
 	if err := a.recordRestoreState(c, record); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore completed but its completion state and audit could not be recorded")
 	}
