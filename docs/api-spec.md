@@ -38,7 +38,7 @@ Errors use:
 
 Collection endpoints use `page` and `page_size`; default is `25` and maximum is `100`. Values below one normalize to the default rules, values above the configured maximum clamp to that maximum, and extremely large page values clamp before offset multiplication.
 
-During restore maintenance, non-owner requests return `503` with `error.code=MAINTENANCE_MODE`. A second restore request returns `409` with `error.code=RESTORE_ALREADY_RUNNING`.
+During authorized restore maintenance, non-owner requests return `503` with `error.code=MAINTENANCE_MODE`. A second restore request returns `409` with `error.code=RESTORE_ALREADY_RUNNING`.
 
 ## Roles
 
@@ -134,7 +134,7 @@ Restore requires both paths:
 }
 ```
 
-The route owns code-enforced maintenance for the full authentication and restore lifecycle. It records a restore ID and Requested state, then Completed or Failed only after the platform result is known. `200` is returned only after Completed state and audit are persisted.
+A non-blocking admission guard allows only one restore request to enter authentication. After the request passes authentication and Admin role validation, route middleware activates maintenance and drains ordinary requests before calling the handler. The lifecycle records a restore ID and Requested state, then Completed or Failed only after the platform result is known. `200` is returned only after Completed state and audit are persisted.
 
 A process interruption before a durable result is recorded becomes `Interrupted` with unknown outcome. After inspecting the database and filesystem, an Admin resolves it without rerunning restore:
 
