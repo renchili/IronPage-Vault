@@ -21,9 +21,10 @@ const (
 var errMaintenanceActive = errors.New("maintenance operation is active")
 
 type operationCoordinator struct {
-	db              *sqlx.DB
-	maintenanceGate sync.RWMutex
-	maintenance     atomic.Bool
+	db               *sqlx.DB
+	restoreAdmission sync.Mutex
+	maintenanceGate  sync.RWMutex
+	maintenance      atomic.Bool
 }
 
 func newOperationCoordinator(db *sqlx.DB) *operationCoordinator {
@@ -96,23 +97,24 @@ func isExclusiveOperationPath(path string) bool {
 	return path == "/api/admin/backup/run" || path == "/api/admin/backup/restore"
 }
 
+// maintenanceMiddleware rejects ordinary traffic while restore owns the
+// maintenance gate. Restore requests acquire a non-blocking admission mutex so
+// only one request may authenticate and attempt maintenance at a time; an
+// unauthenticated request releases admission immediately after auth fails.
 func (a *App) maintenanceMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if a.operations == nil {
 			return next(c)
 		}
 		if isRestoreOperationRequest(c) {
-			err := a.operations.withMaintenanceOperation(c.Request().Context(), func() error {
-				c.Set(maintenanceOwnerContextKey, true)
-				return next(c)
-			})
-			if errors.Is(err, errMaintenanceActive) {
+			if !a.operations.restoreAdmission.TryLock() {
+				return apiErr(c, http.StatusConflict, "RESTORE_ALREADY_RUNNING", "another restore request is already active")
+			}
+			defer a.operations.restoreAdmission.Unlock()
+			if a.operations.maintenance.Load() {
 				return apiErr(c, http.StatusConflict, "RESTORE_ALREADY_RUNNING", "another restore maintenance operation is already active")
 			}
-			if err != nil && !c.Response().Committed {
-				return apiErr(c, http.StatusInternalServerError, "RESTORE_BARRIER_ERROR", "could not establish exclusive restore maintenance")
-			}
-			return err
+			return next(c)
 		}
 		if a.operations.maintenance.Load() {
 			return apiErr(c, http.StatusServiceUnavailable, "MAINTENANCE_MODE", "restore maintenance is in progress")
@@ -123,6 +125,29 @@ func (a *App) maintenanceMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			return apiErr(c, http.StatusServiceUnavailable, "MAINTENANCE_MODE", "restore maintenance is in progress")
 		}
 		return next(c)
+	}
+}
+
+// restoreMaintenanceMiddleware runs after authentication and Admin role
+// validation. It marks maintenance active, drains ordinary requests, obtains
+// the exclusive advisory lock and keeps all of those boundaries through the
+// restore handler response.
+func (a *App) restoreMaintenanceMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if a.operations == nil {
+			return apiErr(c, http.StatusInternalServerError, "RESTORE_BARRIER_ERROR", "restore maintenance barrier is unavailable")
+		}
+		err := a.operations.withMaintenanceOperation(c.Request().Context(), func() error {
+			c.Set(maintenanceOwnerContextKey, true)
+			return next(c)
+		})
+		if errors.Is(err, errMaintenanceActive) {
+			return apiErr(c, http.StatusConflict, "RESTORE_ALREADY_RUNNING", "another restore maintenance operation is already active")
+		}
+		if err != nil && !c.Response().Committed {
+			return apiErr(c, http.StatusInternalServerError, "RESTORE_BARRIER_ERROR", "could not establish exclusive restore maintenance")
+		}
+		return err
 	}
 }
 
