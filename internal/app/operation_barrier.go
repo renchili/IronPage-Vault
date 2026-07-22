@@ -37,11 +37,12 @@ func (o *operationCoordinator) withAdvisoryLock(ctx context.Context, lockSQL, un
 	}
 	locked := false
 	defer func() {
-		if !locked {
+		if locked {
 			_ = conn.Close()
 		}
 	}()
 	if _, err := conn.ExecContext(ctx, lockSQL, operationAdvisoryLockID); err != nil {
+		_ = conn.Close()
 		return err
 	}
 	locked = true
@@ -50,6 +51,7 @@ func (o *operationCoordinator) withAdvisoryLock(ctx context.Context, lockSQL, un
 	defer cancel()
 	_, unlockErr := conn.ExecContext(releaseCtx, unlockSQL, operationAdvisoryLockID)
 	closeErr := conn.Close()
+	locked = false
 	return errors.Join(operationErr, unlockErr, closeErr)
 }
 
