@@ -22,7 +22,7 @@ type BackupArtifactManifest struct {
 	RestoreSupported bool      `json:"restore_supported"`
 }
 
-func RunBackupArtifacts(id string, dsn string, storageDir string, backupDir string) (BackupArtifactManifest, error) {
+func RunBackupArtifacts(id string, postgres PostgresCommandConfig, storageDir string, backupDir string) (BackupArtifactManifest, error) {
 	if err := os.MkdirAll(backupDir, 0750); err != nil {
 		return BackupArtifactManifest{}, err
 	}
@@ -33,9 +33,9 @@ func RunBackupArtifacts(id string, dsn string, storageDir string, backupDir stri
 		FileSnapshotPath: filepath.Join(backupDir, id+"_files.tar"),
 		RestoreSupported: true,
 	}
-	if _, err := exec.LookPath("pg_dump"); err == nil && dsn != "" {
-		cmd := exec.Command("pg_dump", "--format=custom", "--file", manifest.DatabaseDumpPath, dsn)
-		if err := cmd.Run(); err != nil {
+	if _, err := exec.LookPath("pg_dump"); err == nil {
+		args := []string{"--format=custom", "--file", manifest.DatabaseDumpPath, "--port", postgres.Port, "--username", postgres.User, "--dbname", postgres.Database}
+		if err := runPostgresCommand("pg_dump", args, postgres); err != nil {
 			manifest.DatabaseDumpMode = "pg_dump_failed_metadata_only"
 			_ = os.WriteFile(manifest.DatabaseDumpPath+".error", []byte(err.Error()), 0640)
 		} else {
@@ -43,7 +43,7 @@ func RunBackupArtifacts(id string, dsn string, storageDir string, backupDir stri
 		}
 	} else {
 		manifest.DatabaseDumpMode = "pg_dump_unavailable_metadata_only"
-		_ = os.WriteFile(manifest.DatabaseDumpPath+".missing", []byte("pg_dump or DSN unavailable"), 0640)
+		_ = os.WriteFile(manifest.DatabaseDumpPath+".missing", []byte("pg_dump unavailable"), 0640)
 	}
 	if _, err := exec.LookPath("tar"); err == nil {
 		cmd := exec.Command("tar", "-cf", manifest.FileSnapshotPath, "-C", storageDir, ".")
@@ -166,11 +166,11 @@ func installStagedStorage(storageDir string, stagedDir string) (func() error, fu
 	return rollback, commit, nil
 }
 
-func RunRestoreArtifacts(dsn string, databaseDumpPath string, fileSnapshotPath string, storageDir string) (map[string]string, error) {
+func RunRestoreArtifacts(postgres PostgresCommandConfig, databaseDumpPath string, fileSnapshotPath string, storageDir string) (map[string]string, error) {
 	result := map[string]string{}
-	if dsn == "" {
-		result["database_restore"] = "dsn_missing"
-		return result, fmt.Errorf("database DSN is required")
+	if err := postgres.validate(); err != nil {
+		result["database_restore"] = "postgres_configuration_invalid"
+		return result, err
 	}
 	if _, err := exec.LookPath("pg_restore"); err != nil {
 		result["database_restore"] = "pg_restore_unavailable"
@@ -203,8 +203,8 @@ func RunRestoreArtifacts(dsn string, databaseDumpPath string, fileSnapshotPath s
 		return result, err
 	}
 	stagedInstalled = true
-	cmd := exec.Command("pg_restore", "--clean", "--if-exists", "--single-transaction", "--dbname", dsn, databaseDumpPath)
-	if err := cmd.Run(); err != nil {
+	args := []string{"--clean", "--if-exists", "--single-transaction", "--port", postgres.Port, "--username", postgres.User, "--dbname", postgres.Database, databaseDumpPath}
+	if err := runPostgresCommand("pg_restore", args, postgres); err != nil {
 		result["database_restore"] = "pg_restore_failed"
 		result["database_restore_error"] = err.Error()
 		if rollbackErr := rollbackStorage(); rollbackErr != nil {
