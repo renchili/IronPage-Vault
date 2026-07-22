@@ -17,7 +17,7 @@ The backend implements:
 - visible Bates numbering with transactional page-range allocation;
 - structured text/page/bounding-box comparison;
 - encrypted audit source/metadata with Admin filtering and decrypted responses;
-- configuration, strict backup, staged restore, and explicit restore lifecycle records.
+- validated configuration, mutation-isolated backup, maintenance-mode restore, and explicit restore lifecycle reconciliation.
 
 Material database mutations include their required audit, history, and notification side effects in the same transaction. File-producing mutations remove generated output when database persistence fails.
 
@@ -75,6 +75,8 @@ The deployment layer supplies every local runtime value. The schema does not see
 | Product storage | `IRONPAGE_VOLUME_ROOT`, `STORAGE_DIR`, `BACKUP_DIR` |
 | Acceptance fixtures | `ACCEPTANCE_MODE`, `SEED_ADMIN_PASSWORD`, `SEED_EDITOR_PASSWORD`, `SEED_REVIEWER_PASSWORD` |
 
+`backup.local_volume` is deployment-owned and read-only through the Admin API. The only Admin-managed generic configuration keys are `pagination.default_page_size` and `pagination.max_page_size`; every update is validated transactionally against `1 <= default <= max <= 100`. Unknown keys are rejected.
+
 To generate and inspect a clean installation file before startup:
 
 ```bash
@@ -122,15 +124,17 @@ PUT /api/admin/workflow-statuses
 
 Audit source IP and structured metadata are stored in ciphertext columns. Source IP also has a deterministic equality lookup. Startup backfills the lookup for older rows. The Admin audit route decrypts source IP and JSON metadata before response; compatibility plaintext columns are not the source of truth.
 
-User/config/template/workflow changes, upload/rollback, workflow/finalization, redaction, annotation, Bates, backup, notification acknowledgement, failed login, successful login, and logout all fail rather than report success if their required audit cannot be persisted. Workflow and mention notifications share the parent mutation transaction.
+Every audit write requires a non-empty acting user. Scheduled backup and startup reconciliation use a protected, non-interactive system principal instead of `NULL`; this principal is omitted from the Admin user collection. User/config/template/workflow changes, upload/rollback, workflow/finalization, redaction, annotation, Bates, backup, notification acknowledgement, failed login, successful login, and logout all fail rather than report success if their required audit cannot be persisted. Workflow and mention notifications share the parent mutation transaction.
 
 ## Storage, backup, and restore
 
 PostgreSQL stores metadata/security/workflow/audit/notification/configuration/backup state. The local filesystem stores PDF versions and transformed output.
 
-Strict backup requires a PostgreSQL custom dump, filesystem tar, metadata snapshot, backup job, and audit. Failed job/audit persistence removes the generated artifacts.
+All unsafe API mutations acquire a shared PostgreSQL advisory lock. Manual and scheduled backup acquire the matching exclusive lock before collecting metadata, running `pg_dump`, and archiving `STORAGE_DIR`; no application mutation can cross the database-dump/filesystem-snapshot interval. This is the application recovery boundary for the supported single-container deployment. Failed job/audit persistence removes the generated artifacts.
 
-Strict restore safely extracts the archive to staging, rejects path traversal, links, and special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. PostgreSQL failure restores the previous filesystem directory. The API records Requested followed by Completed or Failed; success is returned only after completion state and audit are stored.
+Restore enters code-enforced maintenance before authentication and restore work: new non-restore requests receive `MAINTENANCE_MODE`, active requests drain, and an exclusive advisory lock blocks application mutations. Strict restore safely extracts the archive to staging, rejects path traversal, links, and special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. PostgreSQL failure restores the previous filesystem directory.
+
+The encrypted lifecycle records `Requested`, then `Completed` or `Failed` when the platform result is known. A process exit before that result is durable becomes `Interrupted` with an unknown outcome, never an inferred failure. An Admin resolves an Interrupted record through `POST /api/admin/backup/restore/:id/resolve` after verifying the restored database and files. PostgreSQL subprocess passwords are supplied through a short-lived mode-`0600` `PGPASSFILE`, not command-line arguments.
 
 See `docs/backup-recovery.md` and `docs/pitr.md`.
 
@@ -152,7 +156,7 @@ bash ci/run_full_regression.sh artifacts/regression
 
 GitHub verification is defined only in `.github/workflows/ci.yml` and is static acceptance only. Admission precedes checkout. Automatic targets are derived from the event. A manual target must equal the selected branch or identify the same-repository open PR whose branch and head SHA match the selected ref. The workflow collapses active duplicates, paginates scoped history, applies cooldown/latching to the canonical target/revision, rejects ordinary reruns, and permits one exact reviewed unlock.
 
-The later job runs static syntax, formatting, inventory, documentation, and contract gates. It does not run Docker, API, browser, deployment, or complete regression. GitHub creates the run object before repository YAML executes, so repository admission is pre-checkout rather than platform-level pre-dispatch prevention.
+The later job runs static syntax, formatting, inventory, documentation, and contract gates. It does not run Docker, API, browser, deployment, or complete regression. GitHub creates the run object before YAML admission executes, so repository admission is pre-checkout rather than platform-level pre-dispatch prevention.
 
 A static reviewer reads source and existing evidence only and must not trigger, run, retry, wait for, or validate execution to fill gaps.
 
