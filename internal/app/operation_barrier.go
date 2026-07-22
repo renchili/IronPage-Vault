@@ -13,7 +13,10 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-const operationAdvisoryLockID int64 = 52833707454590
+const (
+	operationAdvisoryLockID     int64 = 52833707454590
+	maintenanceOwnerContextKey       = "restore_maintenance_owner"
+)
 
 var errMaintenanceActive = errors.New("maintenance operation is active")
 
@@ -85,14 +88,31 @@ func requiresMutationBarrier(method string) bool {
 	}
 }
 
+func isRestoreOperationRequest(c echo.Context) bool {
+	return c.Request().Method == http.MethodPost && c.Request().URL.Path == "/api/admin/backup/restore"
+}
+
 func isExclusiveOperationPath(path string) bool {
 	return path == "/api/admin/backup/run" || path == "/api/admin/backup/restore"
 }
 
 func (a *App) maintenanceMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if a.operations == nil || c.Request().URL.Path == "/api/admin/backup/restore" {
+		if a.operations == nil {
 			return next(c)
+		}
+		if isRestoreOperationRequest(c) {
+			err := a.operations.withMaintenanceOperation(c.Request().Context(), func() error {
+				c.Set(maintenanceOwnerContextKey, true)
+				return next(c)
+			})
+			if errors.Is(err, errMaintenanceActive) {
+				return apiErr(c, http.StatusConflict, "RESTORE_ALREADY_RUNNING", "another restore maintenance operation is already active")
+			}
+			if err != nil && !c.Response().Committed {
+				return apiErr(c, http.StatusInternalServerError, "RESTORE_BARRIER_ERROR", "could not establish exclusive restore maintenance")
+			}
+			return err
 		}
 		if a.operations.maintenance.Load() {
 			return apiErr(c, http.StatusServiceUnavailable, "MAINTENANCE_MODE", "restore maintenance is in progress")
