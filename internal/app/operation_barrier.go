@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -93,8 +94,12 @@ func isRestoreOperationRequest(c echo.Context) bool {
 	return c.Request().Method == http.MethodPost && c.Request().URL.Path == "/api/admin/backup/restore"
 }
 
+func isRestoreResolutionPath(path string) bool {
+	return strings.HasPrefix(path, "/api/admin/backup/restore/") && strings.HasSuffix(path, "/resolve")
+}
+
 func isExclusiveOperationPath(path string) bool {
-	return path == "/api/admin/backup/run" || path == "/api/admin/backup/restore"
+	return path == "/api/admin/backup/run" || path == "/api/admin/backup/restore" || isRestoreResolutionPath(path)
 }
 
 // maintenanceMiddleware rejects ordinary traffic while restore owns the
@@ -146,6 +151,21 @@ func (a *App) restoreMaintenanceMiddleware(next echo.HandlerFunc) echo.HandlerFu
 		}
 		if err != nil && !c.Response().Committed {
 			return apiErr(c, http.StatusInternalServerError, "RESTORE_BARRIER_ERROR", "could not establish exclusive restore maintenance")
+		}
+		return err
+	}
+}
+
+func (a *App) exclusiveOperationMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if a.operations == nil {
+			return apiErr(c, http.StatusInternalServerError, "OPERATION_BARRIER_ERROR", "exclusive operation barrier is unavailable")
+		}
+		err := a.operations.withExclusiveOperation(c.Request().Context(), func() error {
+			return next(c)
+		})
+		if err != nil && !c.Response().Committed {
+			return apiErr(c, http.StatusInternalServerError, "OPERATION_BARRIER_ERROR", "could not establish exclusive operation barrier")
 		}
 		return err
 	}
