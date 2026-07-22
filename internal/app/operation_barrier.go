@@ -95,7 +95,13 @@ func isRestoreOperationRequest(c echo.Context) bool {
 }
 
 func isRestoreResolutionPath(path string) bool {
-	return strings.HasPrefix(path, "/api/admin/backup/restore/") && strings.HasSuffix(path, "/resolve")
+	const prefix = "/api/admin/backup/restore/"
+	const suffix = "/resolve"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return false
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	return id != "" && !strings.Contains(id, "/")
 }
 
 func isExclusiveOperationPath(path string) bool {
