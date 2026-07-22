@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -24,19 +23,11 @@ func (a *App) recordRestoreState(c echo.Context, record restoreLifecycleRecord) 
 }
 
 func (a *App) restoreBackup(c echo.Context) error {
-	if a.operations == nil {
-		return apiErr(c, http.StatusInternalServerError, "RESTORE_BARRIER_ERROR", "restore maintenance barrier is unavailable")
+	owner, _ := c.Get(maintenanceOwnerContextKey).(bool)
+	if !owner {
+		return apiErr(c, http.StatusInternalServerError, "RESTORE_BARRIER_ERROR", "restore request did not acquire exclusive maintenance ownership")
 	}
-	err := a.operations.withMaintenanceOperation(c.Request().Context(), func() error {
-		return a.restoreBackupLocked(c)
-	})
-	if errors.Is(err, errMaintenanceActive) {
-		return apiErr(c, http.StatusConflict, "RESTORE_ALREADY_RUNNING", "another restore maintenance operation is already active")
-	}
-	if err != nil && !c.Response().Committed {
-		return apiErr(c, http.StatusInternalServerError, "RESTORE_BARRIER_ERROR", "could not establish exclusive restore maintenance")
-	}
-	return err
+	return a.restoreBackupLocked(c)
 }
 
 func (a *App) restoreBackupLocked(c echo.Context) error {
