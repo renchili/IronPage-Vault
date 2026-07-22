@@ -32,7 +32,27 @@ func TestBackupAndRestoreUseExclusiveOperationPaths(t *testing.T) {
 	}
 }
 
-func TestMaintenanceRejectsOrdinaryRequestsButAllowsRestoreOwner(t *testing.T) {
+func TestRestoreRequestClassificationIsExact(t *testing.T) {
+	e := echo.New()
+	for _, test := range []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodPost, "/api/admin/backup/restore", true},
+		{http.MethodGet, "/api/admin/backup/restore", false},
+		{http.MethodPost, "/api/admin/backup/restore/rst_1/resolve", false},
+		{http.MethodPost, "/api/admin/backup/run", false},
+	} {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		context := e.NewContext(request, httptest.NewRecorder())
+		if got := isRestoreOperationRequest(context); got != test.want {
+			t.Fatalf("isRestoreOperationRequest(%s %s) = %v, want %v", test.method, test.path, got, test.want)
+		}
+	}
+}
+
+func TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests(t *testing.T) {
 	e := echo.New()
 	operations := &operationCoordinator{}
 	operations.maintenance.Store(true)
@@ -60,10 +80,10 @@ func TestMaintenanceRejectsOrdinaryRequestsButAllowsRestoreOwner(t *testing.T) {
 		called = true
 		return nil
 	})(restoreContext); err != nil {
-		t.Fatalf("restore maintenance owner: %v", err)
+		t.Fatalf("concurrent restore response: %v", err)
 	}
-	if !called {
-		t.Fatal("restore owner request must enter the handler that owns maintenance")
+	if called || restoreRecorder.Code != http.StatusConflict {
+		t.Fatalf("concurrent restore was not rejected: called=%v status=%d", called, restoreRecorder.Code)
 	}
 }
 
