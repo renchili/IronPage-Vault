@@ -69,7 +69,8 @@ Static contracts require:
 - every application mutation to participate in the shared advisory barrier;
 - manual and scheduled backup to hold the exclusive barrier across PostgreSQL dump and filesystem tar;
 - scheduled backup job/audit attribution to use the protected system principal;
-- restore maintenance to begin before authentication, reject new requests, drain active requests and prevent concurrent restore;
+- global restore admission to prevent concurrent restore authentication;
+- authenticated Admin restore to activate route maintenance before handler work, reject new requests, drain active requests and prevent live mutation;
 - staged restore path validation, filesystem rollback and PostgreSQL single-transaction mode;
 - a Requested journal with no durable platform result to become Interrupted/unknown rather than Failed;
 - Interrupted resolution to require an Admin, Completed or Failed conclusion, and a non-empty verification note;
@@ -82,6 +83,7 @@ Static contracts require:
 | Behavior | Definition |
 |---|---|
 | unsafe method and exclusive operation classification | `internal/app/operation_barrier_test.go` |
+| exact restore request classification | `TestRestoreRequestClassificationIsExact` |
 | maintenance denial and concurrent restore rejection | `TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests` |
 | Requested becomes Interrupted/unknown | `TestRequestedRestoreBecomesInterruptedNotFailed` |
 | lifecycle journal encryption/plaintext rejection | `internal/app/restore_lifecycle_test.go` |
