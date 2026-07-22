@@ -33,6 +33,25 @@ PY
 
 code=$(auth_get "$ADMIN_TOKEN" /api/admin/config)
 expect_code "admin config list" 200 "$code" || FAIL=$((FAIL+1))
+
+code=$(auth_patch_json "$ADMIN_TOKEN" /api/admin/config/backup.local_volume '{"value":"/tmp/not-runtime-owned"}')
+expect_code "deployment-owned config is read-only" 409 "$code" || FAIL=$((FAIL+1))
+expect_json_field "deployment-owned config error" error.code CONFIG_KEY_READ_ONLY || FAIL=$((FAIL+1))
+code=$(auth_patch_json "$ADMIN_TOKEN" /api/admin/config/unknown.key '{"value":"1"}')
+expect_code "unknown config key is rejected" 400 "$code" || FAIL=$((FAIL+1))
+expect_json_field "unknown config error" error.code CONFIG_KEY_NOT_MANAGED || FAIL=$((FAIL+1))
+code=$(auth_patch_json "$ADMIN_TOKEN" /api/admin/config/pagination.default_page_size '{"value":"0"}')
+expect_code "pagination default rejects zero" 400 "$code" || FAIL=$((FAIL+1))
+expect_json_field "pagination default error" error.code INVALID_CONFIG_VALUE || FAIL=$((FAIL+1))
+code=$(auth_patch_json "$ADMIN_TOKEN" /api/admin/config/pagination.max_page_size '{"value":"101"}')
+expect_code "pagination max rejects above absolute maximum" 400 "$code" || FAIL=$((FAIL+1))
+code=$(auth_patch_json "$ADMIN_TOKEN" /api/admin/config/pagination.max_page_size '{"value":"20"}')
+expect_code "pagination max rejects below current default" 400 "$code" || FAIL=$((FAIL+1))
+code=$(auth_patch_json "$ADMIN_TOKEN" /api/admin/config/pagination.max_page_size '{"value":"100"}')
+expect_code "pagination max accepts 100" 200 "$code" || FAIL=$((FAIL+1))
+code=$(auth_patch_json "$ADMIN_TOKEN" /api/admin/config/pagination.default_page_size '{"value":"25"}')
+expect_code "pagination default accepts 25" 200 "$code" || FAIL=$((FAIL+1))
+
 code=$(auth_get "$ADMIN_TOKEN" /api/admin/workflow-statuses)
 expect_code "admin workflow statuses" 200 "$code" || FAIL=$((FAIL+1))
 workflow_body='{"statuses":[{"name":"Draft","mutable":true},{"name":"Under Review","mutable":true},{"name":"Redaction Pending","mutable":true},{"name":"Approved","mutable":true},{"name":"Finalized","mutable":false}]}'
@@ -76,6 +95,9 @@ fi
 
 code=$(auth_post_json "$ADMIN_TOKEN" /api/admin/backup/restore '{}')
 expect_code "admin restore rejects empty request" 400 "$code" || FAIL=$((FAIL+1))
+code=$(auth_post_json "$ADMIN_TOKEN" /api/admin/backup/restore/rst_missing/resolve '{"status":"Completed","verification_note":"verified against restored files and database"}')
+expect_code "missing interrupted restore cannot be resolved" 404 "$code" || FAIL=$((FAIL+1))
+expect_json_field "missing restore resolution error" error.code RESTORE_RECONCILIATION_NOT_FOUND || FAIL=$((FAIL+1))
 if [ -n "$DB_DUMP_PATH" ] && [ -n "$FILE_SNAPSHOT_PATH" ]; then
   body="{\"database_dump_path\":\"$DB_DUMP_PATH\",\"file_snapshot_path\":\"$FILE_SNAPSHOT_PATH\"}"
   code=$(auth_post_json "$ADMIN_TOKEN" /api/admin/backup/restore "$body")
