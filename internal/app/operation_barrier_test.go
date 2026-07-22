@@ -21,14 +21,21 @@ func TestMutationBarrierClassifiesUnsafeMethods(t *testing.T) {
 	}
 }
 
-func TestBackupAndRestoreUseExclusiveOperationPaths(t *testing.T) {
-	for _, path := range []string{"/api/admin/backup/run", "/api/admin/backup/restore"} {
+func TestBackupRestoreAndResolutionUseExclusiveOperationPaths(t *testing.T) {
+	for _, path := range []string{
+		"/api/admin/backup/run",
+		"/api/admin/backup/restore",
+		"/api/admin/backup/restore/rst_example/resolve",
+	} {
 		if !isExclusiveOperationPath(path) {
 			t.Fatalf("path %s must acquire the exclusive operation barrier", path)
 		}
 	}
 	if isExclusiveOperationPath("/api/documents") {
 		t.Fatal("ordinary document mutation must use the shared mutation barrier")
+	}
+	if isRestoreResolutionPath("/api/admin/backup/restore/resolve") {
+		t.Fatal("restore resolution path must contain a restore id")
 	}
 }
 
