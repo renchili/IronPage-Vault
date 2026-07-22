@@ -42,6 +42,22 @@ func TestAPIRequestsIncludeAuthenticationStateInBarrier(t *testing.T) {
 	}
 }
 
+func TestBackupBarrierCoversUploadRedactionAndBatesRequests(t *testing.T) {
+	for _, path := range []string{
+		"/api/documents",
+		"/api/documents/doc_1/redactions",
+		"/api/documents/doc_1/redactions/red_1/confirm",
+		"/api/documents/doc_1/bates",
+	} {
+		if !requiresRequestBarrier(http.MethodPost, path) {
+			t.Fatalf("mutation %s could cross the backup dump/tar boundary", path)
+		}
+		if isExclusiveOperationPath(path) {
+			t.Fatalf("ordinary mutation %s must use the shared side of the barrier", path)
+		}
+	}
+}
+
 func TestBackupRestoreAndResolutionUseExclusiveOperationPaths(t *testing.T) {
 	for _, path := range []string{
 		"/api/admin/backup/run",
@@ -153,5 +169,26 @@ func TestRequestedRestoreBecomesInterruptedNotFailed(t *testing.T) {
 	}
 	if record.Metadata["outcome"] != "unknown" {
 		t.Fatalf("interrupted restore must preserve unknown outcome: %#v", record.Metadata)
+	}
+}
+
+func TestRestoreSuccessBeforeTerminalJournalRequiresInterruptedResolution(t *testing.T) {
+	// This record models a process exit after platform restore succeeded but before
+	// Completed was durably written. Requested alone cannot prove success or failure.
+	record := interruptedRestoreRecord(restoreLifecycleRecord{
+		ID:                "rst_platform_applied",
+		Status:            restoreStatusRequested,
+		ActorUserID:       "usr_admin",
+		RequestID:         "req_platform_applied",
+		RequestedMetadata: map[string]interface{}{"platform_restore_may_have_completed": true},
+	})
+	if record.Status != restoreStatusInterrupted {
+		t.Fatalf("ambiguous post-platform crash status = %q, want Interrupted", record.Status)
+	}
+	if record.Metadata["outcome"] != "unknown" || record.Metadata["reconciliation"] != "operator_verification_required" {
+		t.Fatalf("ambiguous restore did not require verification: %#v", record.Metadata)
+	}
+	if record.Action == "BACKUP_RESTORE_COMPLETED" || record.Action == "BACKUP_RESTORE_FAILED" {
+		t.Fatalf("ambiguous restore asserted a terminal outcome: %s", record.Action)
 	}
 }
