@@ -132,7 +132,7 @@ PostgreSQL stores metadata/security/workflow/audit/notification/configuration/ba
 
 All unsafe API mutations acquire a shared PostgreSQL advisory lock. Manual and scheduled backup acquire the matching exclusive lock before collecting metadata, running `pg_dump`, and archiving `STORAGE_DIR`; no application mutation can cross the database-dump/filesystem-snapshot interval. This is the application recovery boundary for the supported single-container deployment. Failed job/audit persistence removes the generated artifacts.
 
-Restore enters code-enforced maintenance before authentication and restore work: new non-restore requests receive `MAINTENANCE_MODE`, active requests drain, and an exclusive advisory lock blocks application mutations. Strict restore safely extracts the archive to staging, rejects path traversal, links, and special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. PostgreSQL failure restores the previous filesystem directory.
+Restore requests first pass authentication and Admin role validation. A route-specific middleware then activates code-enforced maintenance before restore handler work: new non-restore requests receive `MAINTENANCE_MODE`, active requests drain, and an exclusive advisory lock blocks application mutations. A non-blocking admission guard prevents a second restore request from authenticating concurrently with the active restore. Strict restore safely extracts the archive to staging, rejects path traversal, links, and special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. PostgreSQL failure restores the previous filesystem directory.
 
 The encrypted lifecycle records `Requested`, then `Completed` or `Failed` when the platform result is known. A process exit before that result is durable becomes `Interrupted` with an unknown outcome, never an inferred failure. An Admin resolves an Interrupted record through `POST /api/admin/backup/restore/:id/resolve` after verifying the restored database and files. PostgreSQL subprocess passwords are supplied through a short-lived mode-`0600` `PGPASSFILE`, not command-line arguments.
 
@@ -156,7 +156,7 @@ bash ci/run_full_regression.sh artifacts/regression
 
 GitHub verification is defined only in `.github/workflows/ci.yml` and is static acceptance only. Admission precedes checkout. Automatic targets are derived from the event. A manual target must equal the selected branch or identify the same-repository open PR whose branch and head SHA match the selected ref. The workflow collapses active duplicates, paginates scoped history, applies cooldown/latching to the canonical target/revision, rejects ordinary reruns, and permits one exact reviewed unlock.
 
-The later job runs static syntax, formatting, inventory, documentation, and contract gates. It does not run Docker, API, browser, deployment, or complete regression. GitHub creates the run object before YAML admission executes, so repository admission is pre-checkout rather than platform-level pre-dispatch prevention.
+The later job runs static syntax, formatting, inventory, documentation, and contract gates. It does not run Docker, API, browser, deployment, or complete regression. GitHub creates a run object before YAML admission executes, so repository admission is pre-checkout rather than platform-level pre-dispatch prevention.
 
 A static reviewer reads source and existing evidence only and must not trigger, run, retry, wait for, or validate execution to fill gaps.
 
