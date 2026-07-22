@@ -87,6 +87,28 @@ func TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests(t *testing.T) {
 	}
 }
 
+func TestRestoreAdmissionRejectsSecondAuthenticationPath(t *testing.T) {
+	e := echo.New()
+	operations := &operationCoordinator{}
+	operations.restoreAdmission.Lock()
+	defer operations.restoreAdmission.Unlock()
+	a := &App{operations: operations}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/admin/backup/restore", nil)
+	recorder := httptest.NewRecorder()
+	context := e.NewContext(request, recorder)
+	called := false
+	if err := a.maintenanceMiddleware(func(c echo.Context) error {
+		called = true
+		return nil
+	})(context); err != nil {
+		t.Fatalf("restore admission response: %v", err)
+	}
+	if called || recorder.Code != http.StatusConflict {
+		t.Fatalf("second restore entered authentication: called=%v status=%d", called, recorder.Code)
+	}
+}
+
 func TestRequestedRestoreBecomesInterruptedNotFailed(t *testing.T) {
 	record := interruptedRestoreRecord(restoreLifecycleRecord{
 		ID:                "rst_test",
