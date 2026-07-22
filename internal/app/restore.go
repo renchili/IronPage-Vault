@@ -2,23 +2,20 @@ package app
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
 	"ironpage-vault/internal/platform"
 )
 
-func (a *App) recordRestoreState(c echo.Context, id string, status string, action string, actorID string, metadata map[string]interface{}) error {
-	targetPath, _ := metadata["database_dump_path"].(string)
+func (a *App) recordRestoreState(c echo.Context, record restoreLifecycleRecord) error {
 	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO backup_jobs(id,kind,status,target_path,created_by,created_at) VALUES($1,'restore',$2,$3,NULLIF($4,''),NOW()) ON CONFLICT(id) DO UPDATE SET status=excluded.status,target_path=excluded.target_path,created_by=excluded.created_by`, id, status, targetPath, actorID); err != nil {
-		return err
-	}
-	if err := a.auditWithExecutor(c, tx, actorID, action, "", metadata); err != nil {
+	if err := a.persistRestoreLifecycleRecord(c.Request().Context(), tx, record); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -40,33 +37,63 @@ func (a *App) restoreBackup(c echo.Context) error {
 		"database_dump_path":   req.DatabaseDumpPath,
 		"file_snapshot_path":   req.FileSnapshotPath,
 	}
-	if err := a.recordRestoreState(c, id, "Requested", "BACKUP_RESTORE_REQUESTED", p.UserID, baseMetadata); err != nil {
+	record := restoreLifecycleRecord{
+		ID:                id,
+		Status:            "Requested",
+		Action:            "BACKUP_RESTORE_REQUESTED",
+		ActorUserID:       p.UserID,
+		RequestID:         currentRequestID(c),
+		SourceIP:          c.RealIP(),
+		RequestedMetadata: cloneRestoreMetadata(baseMetadata),
+		Metadata:          cloneRestoreMetadata(baseMetadata),
+		UpdatedAt:         time.Now().UTC(),
+	}
+	if err := a.writeRestoreLifecycleRecord(record); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "could not create durable restore lifecycle journal")
+	}
+	if err := a.recordRestoreState(c, record); err != nil {
+		if cleanupErr := a.removeRestoreLifecycleRecord(id); cleanupErr != nil {
+			return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "could not record restore request or clean its lifecycle journal")
+		}
 		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "could not record restore request")
 	}
+
 	result, err := platform.RunRestoreArtifactsStrict(a.cfg.DSN(), req.DatabaseDumpPath, req.FileSnapshotPath, a.cfg.StorageDir)
 	if err != nil {
-		failed := map[string]interface{}{
-			"restore_id":           id,
-			"requested_by_user_id": p.UserID,
-			"database_dump_path":   req.DatabaseDumpPath,
-			"file_snapshot_path":   req.FileSnapshotPath,
-			"result":               result,
-			"error":                err.Error(),
+		failed := cloneRestoreMetadata(baseMetadata)
+		failed["result"] = result
+		failed["error"] = err.Error()
+		record.Status = "Failed"
+		record.Action = "BACKUP_RESTORE_FAILED"
+		record.Metadata = failed
+		record.UpdatedAt = time.Now().UTC()
+		if journalErr := a.writeRestoreLifecycleRecord(record); journalErr != nil {
+			return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore failed and its durable failure state could not be recorded")
 		}
-		if stateErr := a.recordRestoreState(c, id, "Failed", "BACKUP_RESTORE_FAILED", "", failed); stateErr != nil {
+		if stateErr := a.recordRestoreState(c, record); stateErr != nil {
 			return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore failed and its failure state could not be recorded")
+		}
+		if cleanupErr := a.removeRestoreLifecycleRecord(id); cleanupErr != nil {
+			return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore failure was recorded but lifecycle journal cleanup failed")
 		}
 		return apiErr(c, http.StatusBadRequest, "RESTORE_ARTIFACT_REQUIRED", "strict restore requires readable database and filesystem artifacts")
 	}
-	completed := map[string]interface{}{
-		"restore_id":           id,
-		"requested_by_user_id": p.UserID,
-		"database_dump_path":   req.DatabaseDumpPath,
-		"file_snapshot_path":   req.FileSnapshotPath,
-		"result":               result,
+
+	completed := cloneRestoreMetadata(baseMetadata)
+	completed["result"] = result
+	record.Status = "Completed"
+	record.Action = "BACKUP_RESTORE_COMPLETED"
+	record.Metadata = completed
+	record.UpdatedAt = time.Now().UTC()
+	if err := a.writeRestoreLifecycleRecord(record); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore completed but its durable completion state could not be recorded")
 	}
-	if err := a.recordRestoreState(c, id, "Completed", "BACKUP_RESTORE_COMPLETED", "", completed); err != nil {
-		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore completed but its completion audit could not be recorded")
+	if err := a.recordRestoreState(c, record); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "RESTORE_STATE_ERROR", "restore completed but its completion state and audit could not be recorded")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"id": id, "status": "Restored", "result": result})
+	response := map[string]interface{}{"id": id, "status": "Restored", "result": result}
+	if err := a.removeRestoreLifecycleRecord(id); err != nil {
+		response["lifecycle_reconciliation_pending"] = true
+	}
+	return c.JSON(http.StatusOK, response)
 }

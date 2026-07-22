@@ -51,6 +51,8 @@ func createUserSwagger() {}
 // @Summary List users
 // @Tags admin
 // @Security BearerAuth
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/admin/users [get]
@@ -60,6 +62,8 @@ func listUsersSwagger() {}
 // @Summary List config
 // @Tags admin
 // @Security BearerAuth
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/admin/config [get]

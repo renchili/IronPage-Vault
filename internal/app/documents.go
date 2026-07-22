@@ -202,11 +202,15 @@ func (a *App) listVersions(c echo.Context) error {
 	if !canReadDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope")
 	}
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []DocumentVersion{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT * FROM document_versions WHERE document_id=$1 ORDER BY version_number DESC`, c.Param("id")); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT * FROM document_versions WHERE document_id=$1 ORDER BY version_number DESC LIMIT $2 OFFSET $3`, c.Param("id"), size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "VERSION_QUERY_ERROR", "could not list versions")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
 
 func (a *App) rollbackVersion(c echo.Context) error {

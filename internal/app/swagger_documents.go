@@ -73,6 +73,8 @@ func downloadDocumentSwagger() {}
 // @Tags versions
 // @Security BearerAuth
 // @Param id path string true "document id"
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Failure 404 {object} map[string]interface{}

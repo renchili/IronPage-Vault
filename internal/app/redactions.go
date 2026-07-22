@@ -87,11 +87,15 @@ func (a *App) listRedactions(c echo.Context) error {
 	if !canReadDocumentObject(p, d) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal scope")
 	}
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []redactionListRow{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,page,status,created_by,created_at::text AS created_at FROM redaction_proposals WHERE document_id=$1 ORDER BY created_at DESC`, c.Param("id")); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,page,status,created_by,created_at::text AS created_at FROM redaction_proposals WHERE document_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, c.Param("id"), size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_QUERY_ERROR", "could not list redactions")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
 
 func (a *App) confirmRedaction(c echo.Context) error {

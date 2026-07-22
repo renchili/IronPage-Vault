@@ -16,6 +16,8 @@ func createAnnotationSwagger() {}
 // @Tags annotations
 // @Security BearerAuth
 // @Param id path string true "document id"
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Router /api/documents/{id}/annotations [get]
@@ -64,6 +66,8 @@ func auditLogsSwagger() {}
 // @Summary List notifications
 // @Tags notifications
 // @Security BearerAuth
+// @Param page query int false "page"
+// @Param page_size query int false "page size"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Router /api/notifications [get]

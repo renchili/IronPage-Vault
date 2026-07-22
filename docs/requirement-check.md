@@ -36,13 +36,32 @@ Repository YAML cannot prevent GitHub from first creating a workflow-run object.
 | Protected audit API | `domain_events.go`, `repository/audit.go`, `audit_filters.go`, migration 003 | ciphertext storage, deterministic source-IP lookup/backfill, typed protected query and response decryption |
 | Admin configuration | `admin.go`, `template_update.go`, `workflow_definitions.go` | user/config/template/workflow updates include audit in the same transaction |
 | Backup | `backup_file.go`, `backup_scheduler.go`, `backup_cleanup.go` | dump/tar/metadata creation plus job/audit transaction; all generated paths removed on persistence failure |
-| Restore | `platform/backup_exec.go`, `restore.go` | safe staged extraction, path/link rejection, reversible storage swap, single-transaction PostgreSQL restore and explicit Requested/Completed/Failed audit lifecycle |
-| Runtime limits and uniform errors | config/core/API handlers | 200 MB, 500 pages, 250 files, 50 versions, pagination 25/100 and uniform envelope definitions |
+| Restore | `platform/backup_exec.go`, `restore.go`, `restore_lifecycle.go`, `server.go` | safe staged extraction, reversible storage swap, single-transaction PostgreSQL restore, encrypted durable lifecycle journal, preserved acting user, idempotent Requested/terminal audits, and fail-closed startup reconciliation |
+| Runtime limits and uniform errors | config/core/API handlers | 200 MB, 500 pages, 250 files, 50 versions, configured pagination and uniform envelope definitions |
+| Collection pagination | `pagination_config.go`, `admin.go`, `documents.go`, `redactions.go`, `annotations.go`, `audit_filters.go` | every collection query applies configured `page`/`page_size`, SQL `LIMIT`/`OFFSET`, default 25 and maximum 100; response includes `data`, `page`, and `page_size` |
 | Canonical repository layout | `tests/api/`, `tests/contracts/`, `public/index.html` | no legacy test directories, duplicate UI or process-status documents |
 | Path and contamination audit | `ci/source_inventory.py` | all tracked files, collisions, near duplicates, unsafe characters, mixed conventions and explicit exceptions |
 | Truthful local report | `run_tests.sh`, `ci/run_tests_contract_check.sh` | report coverage equals stage rows and skipped stages cannot pass |
 | CI admission safety | `.github/workflows/ci.yml` | canonical manual target validation, active-run collapse, pre-checkout admission, scoped history/cooldown/latch, exact unlock and static-only later job |
 | Documentation truth | README/docs/contracts | current paths, transaction boundaries, API routes, evidence rules, UI-generation boundaries, and limitations agree with source |
+
+## Collection pagination route mapping
+
+| Collection route | Handler source | Contract definition |
+|---|---|---|
+| `GET /api/admin/users` | `internal/app/admin.go` | `tests/api/test_api_contracts.sh`, `swagger_auth_admin.go` |
+| `GET /api/admin/config` | `internal/app/admin.go` | `tests/api/test_api_contracts.sh`, `swagger_auth_admin.go` |
+| `GET /api/admin/workflow-statuses` | `internal/app/admin.go` | `tests/api/test_api_contracts.sh`, `swagger_admin_backup.go` |
+| `GET /api/admin/notification-templates` | `internal/app/admin.go` | `tests/api/test_api_contracts.sh`, `swagger_admin_backup.go` |
+| `GET /api/admin/backup/jobs` | `internal/app/admin.go` | `tests/api/test_api_contracts.sh`, `swagger_admin_backup.go` |
+| `GET /api/documents` | `internal/app/documents.go` | `tests/api/test_api_contracts.sh`, `swagger_documents.go` |
+| `GET /api/documents/:id/versions` | `internal/app/documents.go` | `tests/api/test_api_contracts.sh`, `swagger_documents.go` |
+| `GET /api/documents/:id/redactions` | `internal/app/redactions.go` | `tests/api/test_api_contracts.sh`, `swagger_workflow_review.go` |
+| `GET /api/documents/:id/annotations` | `internal/app/annotations.go` | `tests/api/test_api_contracts.sh`, `swagger_annotations_misc.go` |
+| `GET /api/audit-logs` | `internal/app/audit_filters.go` | `tests/api/test_api_contracts.sh`, `swagger_annotations_misc.go` |
+| `GET /api/notifications` | `internal/app/admin.go` | `tests/api/test_api_contracts.sh`, `swagger_annotations_misc.go` |
+
+Each route has default, minimum-normalization, explicit boundary, and maximum-clamping definitions in `tests/api/test_api_contracts.sh`. The static repository contract checks that every listed route, handler, and Swaggo pagination annotation remains present.
 
 ## Static acceptance conditions
 
@@ -52,7 +71,7 @@ Existing external artifacts may be described only as optional read-only context 
 
 ## Generated API documentation
 
-Route-level Swaggo annotations under `internal/app/swagger_*.go` are authoritative. They include both GET and PUT workflow-definition routes. Generated files under `docs/swagger/` are produced only by supported execution entrypoints; static review does not authorize generation.
+Route-level Swaggo annotations under `internal/app/swagger_*.go` are authoritative. They include both GET and PUT workflow-definition routes and pagination parameters on every collection route. Generated files under `docs/swagger/` are produced only by supported execution entrypoints; static review does not authorize generation.
 
 ## Compatibility notes
 

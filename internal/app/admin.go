@@ -120,8 +120,12 @@ func (a *App) createUser(c echo.Context) error {
 }
 
 func (a *App) listUsers(c echo.Context) error {
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []User{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,username,username_ciphertext,display_name,display_name_ciphertext,role,password_hash,failed_attempts,locked_until FROM users ORDER BY created_at`); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,username,username_ciphertext,display_name,display_name_ciphertext,role,password_hash,failed_attempts,locked_until FROM users ORDER BY created_at LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "USER_QUERY_ERROR", "could not list users")
 	}
 	for i := range rows {
@@ -129,15 +133,19 @@ func (a *App) listUsers(c echo.Context) error {
 			return apiErr(c, http.StatusInternalServerError, "USER_QUERY_ERROR", "could not read user")
 		}
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
 
 func (a *App) listConfig(c echo.Context) error {
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []configEntryResponse{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT key,value,updated_at FROM config_entries ORDER BY key`); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT key,value,updated_at FROM config_entries ORDER BY key LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "CONFIG_QUERY_ERROR", "could not list config")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
 
 func (a *App) patchConfig(c echo.Context) error {
@@ -166,25 +174,37 @@ func (a *App) patchConfig(c echo.Context) error {
 }
 
 func (a *App) workflowStatuses(c echo.Context) error {
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []workflowStatusResponse{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT name,position,mutable FROM workflow_status_definitions ORDER BY position`); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT name,position,mutable FROM workflow_status_definitions ORDER BY position LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "WORKFLOW_STATUS_QUERY_ERROR", "could not list statuses")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
 
 func (a *App) notificationTemplates(c echo.Context) error {
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []notificationTemplateResponse{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,key,subject,body FROM notification_templates ORDER BY key`); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,key,subject,body FROM notification_templates ORDER BY key LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "TEMPLATE_QUERY_ERROR", "could not list templates")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
 
 func (a *App) notifications(c echo.Context) error {
 	p := principal(c)
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []notificationResponse{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,template_key,message,message_ciphertext,read_at,created_at FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`, p.UserID); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,document_id,template_key,message,message_ciphertext,read_at,created_at FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, p.UserID, size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_QUERY_ERROR", "could not list notifications")
 	}
 	for i := range rows {
@@ -192,13 +212,17 @@ func (a *App) notifications(c echo.Context) error {
 			return apiErr(c, http.StatusInternalServerError, "NOTIFICATION_QUERY_ERROR", "could not read notification")
 		}
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
 
 func (a *App) backupJobs(c echo.Context) error {
+	page, size, err := a.configuredPage(c)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
+	}
 	rows := []backupJobResponse{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,kind,status,target_path,created_by,created_at FROM backup_jobs ORDER BY created_at DESC`); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT id,kind,status,target_path,created_by,created_at FROM backup_jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2`, size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "BACKUP_QUERY_ERROR", "could not list backups")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
 }
