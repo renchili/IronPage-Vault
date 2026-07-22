@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	operationAdvisoryLockID     int64 = 52833707454590
+	operationAdvisoryLockID    int64 = 52833707454590
 	maintenanceOwnerContextKey       = "restore_maintenance_owner"
 )
 
