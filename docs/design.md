@@ -31,7 +31,9 @@ File-producing mutations use a compensating filesystem boundary: the file is gen
 - an in-process read/write maintenance gate covers every ordinary HTTP request;
 - PostgreSQL session advisory locks coordinate application mutations across cooperating API processes that share the database.
 
-Unsafe HTTP methods acquire the shared advisory lock for their complete handler. Manual backup and scheduled backup acquire the exclusive advisory lock across metadata collection, logical dump, filesystem tar, job and audit. Restore begins in global middleware, marks maintenance active, rejects new requests, drains active requests, and acquires the exclusive advisory lock before authentication and restore work continue.
+Unsafe HTTP methods acquire the shared advisory lock for their complete handler. Manual backup and scheduled backup acquire the exclusive advisory lock across metadata collection, logical dump, filesystem tar, job and audit.
+
+Restore has two middleware boundaries. Global middleware takes a non-blocking admission mutex so only one restore request can enter authentication. After normal authentication and Admin role validation, route middleware marks maintenance active, rejects new ordinary requests, drains active requests, and acquires the exclusive advisory lock before calling the restore handler. Invalid callers release admission without activating maintenance.
 
 The supported deployment has one API process and one local database/filesystem installation. The barrier therefore defines the recovery boundary for all supported application mutation paths. Direct external writes to PostgreSQL or `STORAGE_DIR` are outside the operating model.
 
@@ -95,7 +97,7 @@ Restore lifecycle journals are encrypted as local AES-256-GCM envelopes. Postgre
 
 Backup success requires a PostgreSQL custom dump, filesystem archive, metadata snapshot, job record, and audit record. The exclusive application mutation barrier spans the database dump and filesystem archive, so no supported application write can split those artifacts into different states. Database metadata and audit commit together; failed database persistence removes all generated backup files.
 
-Restore validates both artifacts, enters code-enforced maintenance, safely extracts regular files and directories to staging, rejects path traversal and link/special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. Database failure restores the previous filesystem directory.
+Restore validates both artifacts, enters code-enforced maintenance after authorization and before handler work, safely extracts regular files and directories to staging, rejects path traversal and link/special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. Database failure restores the previous filesystem directory.
 
 The API records Requested followed by Completed or Failed only when the platform outcome is known. A retained Requested journal after process interruption becomes Interrupted with an unknown result and a system-principal audit. It remains until an Admin verifies the restored database/filesystem and submits Completed or Failed plus a verification note through `/api/admin/backup/restore/:id/resolve`. Automated WAL-based PITR orchestration is not claimed.
 
