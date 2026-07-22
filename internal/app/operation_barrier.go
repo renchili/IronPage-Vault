@@ -108,6 +108,13 @@ func isExclusiveOperationPath(path string) bool {
 	return path == "/api/admin/backup/run" || path == "/api/admin/backup/restore" || isRestoreResolutionPath(path)
 }
 
+func requiresRequestBarrier(method, path string) bool {
+	if isExclusiveOperationPath(path) {
+		return false
+	}
+	return strings.HasPrefix(path, "/api/") || requiresMutationBarrier(method)
+}
+
 // maintenanceMiddleware rejects ordinary traffic while restore owns the
 // maintenance gate. Restore requests acquire a non-blocking admission mutex so
 // only one request may authenticate and attempt maintenance at a time; an
@@ -179,7 +186,7 @@ func (a *App) exclusiveOperationMiddleware(next echo.HandlerFunc) echo.HandlerFu
 
 func (a *App) mutationBarrierMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if a.operations == nil || !requiresMutationBarrier(c.Request().Method) || isExclusiveOperationPath(c.Request().URL.Path) {
+		if a.operations == nil || !requiresRequestBarrier(c.Request().Method, c.Request().URL.Path) {
 			return next(c)
 		}
 		return a.operations.withSharedMutation(c.Request().Context(), func() error {
