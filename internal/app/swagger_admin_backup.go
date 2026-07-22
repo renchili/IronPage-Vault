@@ -49,6 +49,7 @@ func patchNotificationTemplateSwagger() {}
 
 // runBackupSwagger documents backup run.
 // @Summary Run backup
+// @Description Acquires the exclusive application mutation barrier across the PostgreSQL dump and filesystem snapshot so both artifacts form one application recovery boundary.
 // @Tags backup
 // @Security BearerAuth
 // @Success 201 {object} map[string]interface{}
@@ -70,12 +71,30 @@ func backupJobsSwagger() {}
 
 // restoreBackupSwagger documents the explicit restore lifecycle.
 // @Summary Restore backup
-// @Description Uses a durable local lifecycle journal, preserves the requesting Admin as acting user, and reconciles interrupted terminal persistence before startup continues.
+// @Description Enters exclusive HTTP maintenance, drains application requests, blocks new reads and mutations, and uses a durable encrypted lifecycle journal. A crash before a durable platform outcome creates Interrupted rather than falsely asserting Failed.
 // @Tags backup
 // @Security BearerAuth
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
+// @Failure 409 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
 // @Router /api/admin/backup/restore [post]
 func restoreBackupSwagger() {}
+
+// resolveInterruptedRestoreSwagger documents operator attestation for an unknown restore outcome.
+// @Summary Resolve interrupted restore
+// @Description Records an Admin-verified Completed or Failed conclusion for an Interrupted restore. This endpoint does not rerun restore; verification_note must describe the external evidence used.
+// @Tags backup
+// @Security BearerAuth
+// @Param id path string true "restore id"
+// @Param request body map[string]interface{} true "status and verification_note"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 409 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/admin/backup/restore/{id}/resolve [post]
+func resolveInterruptedRestoreSwagger() {}
