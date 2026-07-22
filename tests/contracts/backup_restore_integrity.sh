@@ -71,10 +71,12 @@ require 'TestPostgresCommandArgumentsExcludePassword' internal/platform/postgres
 require 'TestPGPassFileUsesRestrictedModeAndEscaping' internal/platform/postgres_command_test.go "PGPASSFILE permission test definition missing"
 
 require 'TestAPIRequestsIncludeAuthenticationStateInBarrier' internal/app/operation_barrier_test.go "authenticated GET/write barrier definition missing"
+require 'TestBackupBarrierCoversUploadRedactionAndBatesRequests' internal/app/operation_barrier_test.go "backup concurrency mutation coverage definition missing"
 require 'TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests' internal/app/operation_barrier_test.go "maintenance denial test definition missing"
 require 'TestRestoreAdmissionRejectsSecondAuthenticationPath' internal/app/operation_barrier_test.go "restore admission test definition missing"
 require 'TestBackupRestoreAndResolutionUseExclusiveOperationPaths' internal/app/operation_barrier_test.go "exclusive operation classification test missing"
 require 'TestRequestedRestoreBecomesInterruptedNotFailed' internal/app/operation_barrier_test.go "interrupted outcome test definition missing"
+require 'TestRestoreSuccessBeforeTerminalJournalRequiresInterruptedResolution' internal/app/operation_barrier_test.go "post-platform pre-terminal crash definition missing"
 require 'backup.local_volume' tests/api/test_admin_ops.sh "deployment-owned config API test definition missing"
 require 'pagination.default_page_size' tests/api/test_admin_ops.sh "pagination config API test definition missing"
 
@@ -82,4 +84,4 @@ require 'application mutation barrier' docs/backup-recovery.md "backup barrier d
 require 'Interrupted' docs/backup-recovery.md "interrupted restore documentation missing"
 require 'PGPASSFILE' docs/security.md "postgres credential boundary documentation missing"
 
- echo "PASS: backup/restore integrity static contract"
+echo "PASS: backup/restore integrity static contract"
