@@ -12,7 +12,7 @@ Normal mode creates one initial Admin from bootstrap values only while the user 
 
 Only failed attempts in the preceding 15 minutes count. The fifth applies a 15-minute lock. Failed-attempt insert/count/lock and `LOGIN_FAILED` audit commit under one user row lock. Successful attempt reset, session creation and `LOGIN` audit commit together. Logout blacklist, session revocation and `LOGOUT` audit commit together. Any required database or audit error fails the request.
 
-Authenticated requests require a fresh timestamp and unique request ID. Blacklist lookup, replay persistence and session activity fail closed. Restore maintenance starts in global middleware before authentication work, so authentication-state writes cannot occur concurrently with database replacement.
+Authenticated requests require a fresh timestamp and unique request ID. Blacklist lookup, replay persistence and session activity fail closed. A restore request must complete normal authentication and Admin role validation before its route middleware can activate maintenance. A non-blocking admission mutex prevents concurrent restore authentication; invalid callers release admission without changing service mode.
 
 ## Protected metadata and lookup
 
@@ -34,7 +34,7 @@ File-producing redaction and Bates operations keep their database transaction op
 
 Unsafe API mutations acquire a shared PostgreSQL advisory lock. Manual and scheduled backup acquire the matching exclusive lock across metadata collection, `pg_dump`, filesystem tar creation, and job/audit persistence. This is the application mutation barrier for the supported single-container deployment.
 
-Restore additionally owns a local maintenance gate before authentication and handler work. New requests fail with `MAINTENANCE_MODE`, active requests drain, concurrent restore is rejected, and the exclusive advisory lock remains held through filesystem replacement, `pg_restore`, lifecycle persistence, and response.
+Restore admission first prevents a second restore request from authenticating concurrently. After authentication and Admin role validation, route middleware marks maintenance active, rejects new ordinary requests, drains active requests, and obtains the exclusive advisory lock before filesystem replacement, `pg_restore`, lifecycle persistence, and response. An unauthenticated request cannot activate maintenance.
 
 A crash before a durable restore result creates `Interrupted` with `outcome=unknown`; it is not mislabeled Failed. Resolution requires an Admin acting user and a non-empty verification note.
 
