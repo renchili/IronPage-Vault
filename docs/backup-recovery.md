@@ -81,7 +81,7 @@ A terminal database or audit failure cannot be rolled back across a PostgreSQL r
 4. a Completed or Failed journal is removed only after that commit;
 5. startup reconciles every remaining journal before the backup scheduler or HTTP API starts.
 
-A retained Completed or Failed journal is replayed idempotently. A journal still in Requested means the process ended before it durably recorded the platform result. Startup changes that record to `Interrupted`, not Failed. Its audit is attributed to the protected system principal and records `outcome=unknown` plus `operator_verification_required`. The encrypted Interrupted journal remains on disk.
+A retained Completed or Failed journal is replayed idempotently. A journal still in Requested means the process ended before it durably recorded the platform result. Startup classifies the unresolved record as `Interrupted`; it does not assert `Failed`. Its audit is attributed to the protected system principal and records `outcome=unknown` plus `operator_verification_required`. The encrypted Interrupted journal remains on disk.
 
 After checking representative restored database rows and filesystem objects, an Admin resolves the record without rerunning restore:
 
