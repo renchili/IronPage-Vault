@@ -91,7 +91,7 @@ func Run(cfg Config) error {
 	admin.PATCH("/notification-templates/:key", a.patchNotificationTemplate)
 	admin.POST("/backup/run", a.runBackupMetadataSnapshot)
 	admin.GET("/backup/jobs", a.backupJobs)
-	admin.POST("/backup/restore", a.restoreBackup)
+	admin.POST("/backup/restore", a.restoreBackup, a.restoreMaintenanceMiddleware)
 	admin.POST("/backup/restore/:id/resolve", a.resolveInterruptedRestore)
 
 	docs := api.Group("/documents")
