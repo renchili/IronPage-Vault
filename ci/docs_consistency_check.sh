@@ -45,13 +45,15 @@ stale = {
     "execution-gated static verdict": r"complete acceptance result requires executed evidence|Missing runtime or interaction evidence is `NOT VERIFIED`|Full acceptance requires a pre-existing generated",
     "workflow overstatement": r"static workflow.*complete regression|sole workflow.*complete regression|workflow.*uploads evidence only after the complete regression",
     "best-effort backup": r"best-effort.*(?:pg_dump|backup)|metadata-only backup",
+    "manual-only restore isolation": r"^\s*1\.\s*Stop application writes\.",
+    "false interrupted failure": r"Requested.*(?:converts|changes).*Failed|Requested journal.*Failed",
     "overlay redaction": r"draw filled black rectangles|overlay-style redaction|marker-only redaction",
     "obsolete compare limitation": r"not true bbox-level|no bounding-box reporting|binary-only compare",
     "old local runner claim": r"run_tests\.sh directly runs go test",
     "acceptance process residue": r"acceptance fix bundle|implementation followup|test-effectiveness followup",
 }
 for label, pattern in stale.items():
-    if re.search(pattern, docs, re.IGNORECASE):
+    if re.search(pattern, docs, re.IGNORECASE | re.MULTILINE):
         stop(f"stale documentation claim: {label}")
 
 questions = Path("docs/questions.md").read_text(encoding="utf-8")
@@ -131,27 +133,42 @@ for path, phrases in {
     "README.md": [
         "PUT /api/admin/workflow-statuses", "same-repository open PR",
         "audit source IP and structured metadata", "pg_restore --single-transaction",
+        "application recovery boundary", "Interrupted", "PGPASSFILE",
         "under review", "redaction pending", "approved",
     ],
     "docs/design.md": [
         "same transaction", "page-number range", "safe archive extraction",
+        "operation coordination", "system principal", "Interrupted",
         "same-repository open PR", "Draft -> Under Review -> Redaction Pending -> Approved -> Finalized",
     ],
     "docs/requirement-check.md": [
         "admin get/put route", "deterministic source-ip lookup/backfill",
         "canonical manual target validation", "ordered validation",
+        "backup recovery boundary", "restore maintenance", "password-free argv",
         "buildable frontend generation rules", "exact component, icon, size",
         "arbitrary yaml/json packages cannot substitute",
     ],
     "docs/testing.md": [
         "exact same-repository open PR", "audit source ip/metadata",
-        "staged restore", "ordered definitions",
+        "staged restore", "ordered definitions", "backup/restore integrity",
+        "Requested becomes Interrupted/unknown",
     ],
     "docs/api-spec.md": [
         "put | `/api/admin/workflow-statuses`", "source_ip",
         "start_number", "end_number", "complete ordered chain",
+        "/api/admin/backup/restore/:id/resolve", "CONFIG_KEY_READ_ONLY",
     ],
-    "docs/backup-recovery.md": ["safe", "--single-transaction", "requested", "completed", "failed"],
+    "docs/backup-recovery.md": [
+        "safe", "--single-transaction", "requested", "completed", "failed",
+        "application mutation barrier", "Interrupted", "PGPASSFILE",
+    ],
+    "docs/security.md": [
+        "Mandatory acting-user audit", "PGPASSFILE", "database passwords therefore do not appear in subprocess argv",
+        "configuration integrity", "Interrupted",
+    ],
+    "docs/pitr.md": [
+        "exclusive application mutation barrier", "code-enforced maintenance", "Interrupted",
+    ],
 }.items():
     text = Path(path).read_text(encoding="utf-8").lower()
     for phrase in phrases:
