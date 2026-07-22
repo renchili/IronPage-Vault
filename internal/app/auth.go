@@ -30,6 +30,9 @@ func (a *App) login(c echo.Context) error {
 	if err := c.Bind(&req); err != nil || strings.TrimSpace(req.Username) == "" || req.Password == "" {
 		return apiErr(c, http.StatusBadRequest, "INVALID_LOGIN_REQUEST", "username and password are required")
 	}
+	if strings.EqualFold(strings.TrimSpace(req.Username), systemPrincipalUsername) {
+		return apiErr(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid username or password")
+	}
 
 	var u User
 	usernameKey := piiLookupKey(a.cfg.AESKey, req.Username)
@@ -39,6 +42,9 @@ func (a *App) login(c echo.Context) error {
 	}
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "DB_READ_ERROR", "could not read user")
+	}
+	if u.ID == systemPrincipalID {
+		return apiErr(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid username or password")
 	}
 
 	now := time.Now().UTC()
@@ -201,8 +207,8 @@ func (a *App) authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		sub, _ := claims["sub"].(string)
 		role, _ := claims["role"].(string)
 		username, _ := claims["username"].(string)
-		if jti == "" || sub == "" {
-			return apiErr(c, http.StatusUnauthorized, "TOKEN_INVALID", "token claims are incomplete")
+		if jti == "" || sub == "" || sub == systemPrincipalID {
+			return apiErr(c, http.StatusUnauthorized, "TOKEN_INVALID", "token claims are incomplete or reserved")
 		}
 		var blacklisted int
 		if err := a.db.GetContext(ctx, &blacklisted, `SELECT COUNT(*) FROM jwt_blacklist WHERE jti=$1`, jti); err != nil {
