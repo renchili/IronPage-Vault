@@ -18,7 +18,9 @@ require 'e.Use(a.mutationBarrierMiddleware)' internal/app/server.go "mutation ba
 require 'withExclusiveOperation(c.Request().Context()' internal/app/backup_file.go "manual backup does not own exclusive barrier"
 require 'withExclusiveOperation(ctx' internal/app/backup_scheduler.go "scheduled backup does not own exclusive barrier"
 require 'withMaintenanceOperation(c.Request().Context()' internal/app/operation_barrier.go "restore middleware does not own maintenance barrier"
+require 'admin.POST("/backup/restore", a.restoreBackup, a.restoreMaintenanceMiddleware)' internal/app/server.go "restore maintenance is not applied after Admin route authorization"
 require 'maintenanceOwnerContextKey' internal/app/restore.go "restore handler does not require middleware maintenance ownership"
+require 'restoreAdmission.TryLock()' internal/app/operation_barrier.go "concurrent restore admission guard missing"
 require 'MAINTENANCE_MODE' internal/app/operation_barrier.go "maintenance requests do not fail closed"
 require 'RESTORE_ALREADY_RUNNING' internal/app/operation_barrier.go "concurrent restore rejection missing"
 
@@ -37,6 +39,8 @@ require 'EnsureSystemPrincipal' internal/app/server.go "system principal startup
 require "'scheduled_full_backup','Completed',\$2,\$3" internal/app/backup_scheduler.go "scheduled backup created_by is not explicit"
 require 'systemPrincipalID, "SCHEDULED_BACKUP_CREATE"' internal/app/backup_scheduler.go "scheduled backup audit actor is not the system principal"
 require 'audit acting user is required' internal/app/domain_events.go "audit helper does not reject blank actors"
+require 'strings.EqualFold(strings.TrimSpace(req.Username), systemPrincipalUsername)' internal/app/auth.go "system principal username is not rejected at login"
+require 'sub == systemPrincipalID' internal/app/auth.go "system principal token subject is not rejected"
 if grep -Fq 'NULLIF($2' internal/app/domain_events.go; then
   fail "audit actor can still be converted to NULL"
 fi
@@ -59,6 +63,7 @@ require 'TestPostgresCommandArgumentsExcludePassword' internal/platform/postgres
 require 'TestPGPassFileUsesRestrictedModeAndEscaping' internal/platform/postgres_command_test.go "PGPASSFILE permission test definition missing"
 
 require 'TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests' internal/app/operation_barrier_test.go "maintenance denial test definition missing"
+require 'TestRestoreAdmissionRejectsSecondAuthenticationPath' internal/app/operation_barrier_test.go "restore admission test definition missing"
 require 'TestRequestedRestoreBecomesInterruptedNotFailed' internal/app/operation_barrier_test.go "interrupted outcome test definition missing"
 require 'backup.local_volume' tests/api/test_admin_ops.sh "deployment-owned config API test definition missing"
 require 'pagination.default_page_size' tests/api/test_admin_ops.sh "pagination config API test definition missing"
