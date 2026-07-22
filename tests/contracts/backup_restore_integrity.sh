@@ -17,8 +17,10 @@ require 'e.Use(a.maintenanceMiddleware)' internal/app/server.go "maintenance mid
 require 'e.Use(a.mutationBarrierMiddleware)' internal/app/server.go "mutation barrier middleware not wired"
 require 'withExclusiveOperation(c.Request().Context()' internal/app/backup_file.go "manual backup does not own exclusive barrier"
 require 'withExclusiveOperation(ctx' internal/app/backup_scheduler.go "scheduled backup does not own exclusive barrier"
-require 'withMaintenanceOperation(c.Request().Context()' internal/app/restore.go "restore does not own maintenance barrier"
+require 'withMaintenanceOperation(c.Request().Context()' internal/app/operation_barrier.go "restore middleware does not own maintenance barrier"
+require 'maintenanceOwnerContextKey' internal/app/restore.go "restore handler does not require middleware maintenance ownership"
 require 'MAINTENANCE_MODE' internal/app/operation_barrier.go "maintenance requests do not fail closed"
+require 'RESTORE_ALREADY_RUNNING' internal/app/operation_barrier.go "concurrent restore rejection missing"
 
 require 'restoreStatusInterrupted' internal/app/restore_lifecycle.go "interrupted restore state missing"
 require 'outcome"] = "unknown"' internal/app/restore_lifecycle.go "interrupted restore does not preserve unknown outcome"
@@ -56,7 +58,7 @@ fi
 require 'TestPostgresCommandArgumentsExcludePassword' internal/platform/postgres_command_test.go "postgres argv exposure test definition missing"
 require 'TestPGPassFileUsesRestrictedModeAndEscaping' internal/platform/postgres_command_test.go "PGPASSFILE permission test definition missing"
 
-require 'TestMaintenanceRejectsOrdinaryRequestsButAllowsRestoreOwner' internal/app/operation_barrier_test.go "maintenance denial test definition missing"
+require 'TestMaintenanceRejectsOrdinaryAndConcurrentRestoreRequests' internal/app/operation_barrier_test.go "maintenance denial test definition missing"
 require 'TestRequestedRestoreBecomesInterruptedNotFailed' internal/app/operation_barrier_test.go "interrupted outcome test definition missing"
 require 'backup.local_volume' tests/api/test_admin_ops.sh "deployment-owned config API test definition missing"
 require 'pagination.default_page_size' tests/api/test_admin_ops.sh "pagination config API test definition missing"
