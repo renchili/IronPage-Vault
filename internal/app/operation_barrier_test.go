@@ -16,7 +16,28 @@ func TestMutationBarrierClassifiesUnsafeMethods(t *testing.T) {
 	}
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
 		if requiresMutationBarrier(method) {
-			t.Fatalf("method %s must remain read-only", method)
+			t.Fatalf("method %s must remain read-only before authentication state is considered", method)
+		}
+	}
+}
+
+func TestAPIRequestsIncludeAuthenticationStateInBarrier(t *testing.T) {
+	for _, test := range []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodGet, "/api/documents", true},
+		{http.MethodGet, "/api/auth/me", true},
+		{http.MethodPost, "/api/auth/login", true},
+		{http.MethodGet, "/healthz", false},
+		{http.MethodGet, "/swagger/index.html", false},
+		{http.MethodPost, "/api/admin/backup/run", false},
+		{http.MethodPost, "/api/admin/backup/restore", false},
+		{http.MethodPost, "/api/admin/backup/restore/rst_example/resolve", false},
+	} {
+		if got := requiresRequestBarrier(test.method, test.path); got != test.want {
+			t.Fatalf("requiresRequestBarrier(%s %s) = %v, want %v", test.method, test.path, got, test.want)
 		}
 	}
 }
