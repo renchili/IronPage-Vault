@@ -27,6 +27,7 @@ require_route patch /api/admin/notification-templates/{key}
 require_route post /api/admin/backup/run
 require_route get /api/admin/backup/jobs
 require_route post /api/admin/backup/restore
+require_route post /api/admin/backup/restore/{id}/resolve
 require_route get /api/documents
 require_route post /api/documents
 require_route post /api/documents/batch
