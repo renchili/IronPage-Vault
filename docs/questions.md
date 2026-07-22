@@ -112,27 +112,49 @@ When a requested project includes a production UI or implementation-guiding prot
 
 Static contracts confirm both Skills contain the implementation-readiness, exact icon and sizing, special-interaction, platform-review, accessibility, traceability, and artifact-format boundaries. A UI acceptance report must either map those items to current source and design evidence or give a justified `N/A`; a screenshot, prose-only mock, or arbitrary structured package cannot establish readiness by itself.
 
+## Rule path discovery without filename nitpicking
+
+### Easy-to-make interpretation
+
+An agent can treat `AGENT.md`, `AGENTS.md`, `agent.md`, `agents.md`, `skill/**/skill.md`, and `skills/**/SKILL.md` as unrelated literal requirements, then stop because the reference capitalization, singular/plural spelling, or glob notation does not exactly match one repository path.
+
+### Why it fails
+
+Those spelling differences often express the same discovery intent. Treating `**` as literal path characters or treating a harmless case difference as a missing rule creates false blockers, especially across case-sensitive and case-insensitive clients. It also encourages creation of duplicate rule files instead of reading the files already present.
+
+### Correct requirement interpretation
+
+Rule discovery is tolerant, while concrete reporting is precise. Root files whose basename is `agent` or `agents` are discovered case-insensitively. Skill files are discovered recursively under `skill` or `skills` directories with a case-insensitive `skill.md` filename. When multiple semantically relevant concrete files exist, read them all. After discovery, use the repository's stored path when opening, editing, citing, or reporting.
+
+### Required implementation
+
+`AGENTS.md` and both repository Skills must define case-insensitive, singular/plural-tolerant discovery and must state that `**` is a recursive marker rather than a literal filename component. Agents must not stop, fail, ask the user, or synthesize a replacement solely because a reference uses a different harmless spelling. A missing-rule result is allowed only after tolerant discovery finds no semantically matching concrete file.
+
+### Acceptance evidence
+
+Static repository contracts verify tolerant discovery phrases, prohibit literal-glob and case-only missing-rule behavior, and require reports to name concrete repository paths actually read. The current repository still reports the stored paths `AGENTS.md`, `AGENT.md`, `skills/project-generation-workflow/SKILL.md`, and `skills/full-project-acceptance-hard-gates/SKILL.md` after resolving them tolerantly.
+
 ## Static reviewer acceptance
 
 ### Easy-to-make interpretation
 
-A reviewer can run tests, build containers, trigger CI, or generate reports to close whatever evidence gaps appear during acceptance.
+A reviewer can run tests, shell commands, Python helpers, build containers, trigger CI, or create a temporary remote workflow to close evidence gaps. Missing network or local tools can be treated as a reason to outsource execution, and wording such as “完整测试” can be treated as implicit permission to run the repository.
 
 ### Why it fails
 
-That changes the target environment, creates reviewer-owned evidence, can trigger unrelated work, and turns external execution into a stopping condition instead of completing source inspection.
+That changes the target environment, creates reviewer-owned evidence, can trigger unrelated work, and turns external execution into a stopping condition instead of completing source inspection. An offline or incomplete environment makes such execution less trustworthy, not more permissible. Ambiguous test wording does not override the repository's static-only workflow.
 
 ### Correct requirement interpretation
 
-Acceptance is static and read-only. Missing runtime, deployment, interaction, CI, or full-regression evidence does not alter the static verdict. `NOT VERIFIED` is reserved for required source, package content, or rule material that was inaccessible or not inspected.
+Acceptance is static and read-only. Missing runtime, network, local checkout, deployment, interaction, CI, or full-regression evidence does not alter the static verdict. Under the static Skill, “test”, “full test”, “完整测试”, regression, acceptance, and report-generation requests mean a complete Gate 0–27 source review unless the user explicitly requests a separate runtime workflow and controlling rules allow it. `NOT VERIFIED` is reserved for required source or rule material that remains inaccessible after non-executing retrieval attempts.
 
 ### Required implementation
 
-`skills/full-project-acceptance-hard-gates/SKILL.md` must prohibit reviewer execution of project code, scripts, tests, builds, containers, databases, browsers, deployments, and CI. It must require complete source inspection, forbid waiting for CI, and continue through every applicable Gate 0–27 after each blocker.
+`skills/full-project-acceptance-hard-gates/SKILL.md` and `skills/project-generation-workflow/SKILL.md` must prohibit shell, terminal, Python, code interpreter, notebooks, local `git`/`gh`, package managers, project scripts, builds, containers, databases, browsers, deployments, CI actions, temporary workflows, and asking the user to run commands. They must require read-only repository APIs or equivalent source viewers, complete source inspection, and continuation through every applicable Gate 0–27.
 
 ### Acceptance evidence
 
-The acceptance report states reviewer execution as none, distinguishes optional external artifacts from static proof, completes all static gates, and does not claim that source inspection is an executed runtime result.
+The acceptance report states every execution category as `none`, distinguishes optional pre-existing artifacts from static proof, completes all static gates, and does not claim that source inspection is an executed runtime result. Static contracts require the no-network/no-tool fallback and ambiguous-test-wording rules.
 
 ## CI admission and one-time unlock
 
