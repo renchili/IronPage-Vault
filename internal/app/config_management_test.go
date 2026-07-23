@@ -34,6 +34,39 @@ func TestConfigurationOwnershipRejectsDeploymentAndUnknownKeys(t *testing.T) {
 	}
 }
 
+func TestAdminManagedBackupConfigurationKeys(t *testing.T) {
+	for _, test := range []struct {
+		key   string
+		value string
+	}{
+		{backupScheduleEnabledKey, "true"},
+		{backupScheduleEnabledKey, "false"},
+		{backupScheduleIntervalKey, "1m"},
+		{backupScheduleIntervalKey, "24h"},
+		{backupScheduleIntervalKey, "168h"},
+	} {
+		if _, err := validateAdminConfigUpdate(context.Background(), nil, Config{}, test.key, test.value); err != nil {
+			t.Fatalf("Admin-managed backup config rejected: %s=%q: %v", test.key, test.value, err)
+		}
+	}
+}
+
+func TestAdminBackupConfigurationRejectsInvalidValues(t *testing.T) {
+	for _, test := range []struct {
+		key   string
+		value string
+	}{
+		{backupScheduleEnabledKey, "yes"},
+		{backupScheduleIntervalKey, "59s"},
+		{backupScheduleIntervalKey, "169h"},
+		{backupScheduleIntervalKey, "invalid"},
+	} {
+		if _, err := validateAdminConfigUpdate(context.Background(), nil, Config{}, test.key, test.value); err == nil {
+			t.Fatalf("invalid Admin backup config accepted: %s=%q", test.key, test.value)
+		}
+	}
+}
+
 func TestPaginationConfigurationRejectsNonIntegerBeforePersistence(t *testing.T) {
 	if _, err := validateAdminConfigUpdate(context.Background(), nil, Config{}, paginationDefaultKey, "not-an-integer"); err == nil {
 		t.Fatal("non-integer pagination value was accepted")
