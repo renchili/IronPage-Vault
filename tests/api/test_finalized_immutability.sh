@@ -54,6 +54,9 @@ code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/$DOC_ID/finalize" '{}')
 expect_code "finalize approved probe" 200 "$code" || FAIL=$((FAIL+1))
 
 BASE_VERSIONS=$(read_count "$EDITOR_TOKEN" "/api/documents/$DOC_ID/versions?page_size=100" "read finalized version baseline") || FAIL=$((FAIL+1))
+code=$(auth_get "$EDITOR_TOKEN" "/api/documents/$DOC_ID/versions?page_size=100")
+expect_code "read finalized version id" 200 "$code" || FAIL=$((FAIL+1))
+FINALIZED_VERSION_ID="$(json_field data[0].id)"
 BASE_REDACTIONS=$(read_count "$EDITOR_TOKEN" "/api/documents/$DOC_ID/redactions?page_size=100" "read finalized redaction baseline") || FAIL=$((FAIL+1))
 BASE_ANNOTATIONS=$(read_count "$EDITOR_TOKEN" "/api/documents/$DOC_ID/annotations?page_size=100" "read finalized annotation baseline") || FAIL=$((FAIL+1))
 BASE_AUDITS=$(read_count "$ADMIN_TOKEN" "/api/audit-logs?document_id=$DOC_ID&page_size=100" "read finalized audit baseline") || FAIL=$((FAIL+1))
@@ -76,6 +79,9 @@ expect_finalized_denial "finalized document rejects annotation disposition" "$co
 
 code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/$DOC_ID/bates" '{"prefix":"X","start":1}')
 expect_finalized_denial "finalized document rejects Bates mutation" "$code" || FAIL=$((FAIL+1))
+
+code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/compare" "{\"left_version_id\":\"$FINALIZED_VERSION_ID\",\"right_version_id\":\"$FINALIZED_VERSION_ID\"}")
+expect_finalized_denial "finalized document rejects persisted comparison" "$code" || FAIL=$((FAIL+1))
 
 code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/$DOC_ID/workflow/transition" '{"status":"Finalized"}')
 expect_finalized_denial "finalized document rejects workflow transition" "$code" || FAIL=$((FAIL+1))
