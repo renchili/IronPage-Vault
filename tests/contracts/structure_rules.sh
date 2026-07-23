@@ -26,6 +26,9 @@ check "backup restore consumes returned paths" "grep -q 'DB_DUMP_PATH=.*database
 check "Bates sequence multi-document test exists" "test -f tests/api/test_bates_sequence_multi_doc.sh"
 check "strict dependency negative test exists" "test -f tests/api/test_strict_dependency_failures.sh"
 check "mention side-effect test exists" "test -f tests/api/test_notification_mention_side_effect.sh"
+check "product limits are fixed constants" "grep -q 'productMaxUploadBytes int64 = 200 \* 1024 \* 1024' internal/app/config.go && grep -q 'productMaxPDFPages.*= 500' internal/app/config.go && grep -q 'productMaxBatchFiles.*= 250' internal/app/config.go && grep -q 'productMaxVersions.*= 50' internal/app/config.go"
+check "product limit environment overrides are ignored" "grep -q 'TestLoadConfigIgnoresProductLimitEnvironmentOverrides' internal/app/config_test.go && ! grep -q 'envInt(\"MAX_' internal/app/config.go"
+check "request timestamp 60-second boundary is explicit" "grep -q '60-second-old timestamp is rejected' tests/api/test_request_guard_edges.sh"
 check "canonical UI is the only served HTML" "test \"$(find public -maxdepth 1 -type f -name '*.html' | wc -l | tr -d ' ')\" = 1 && test -f public/index.html"
 check "canonical test directories are unambiguous" "test -d tests/api && test -d tests/contracts && test ! -e API_tests && test ! -e unit_tests"
 
