@@ -7,17 +7,21 @@ import (
 
 func validRuntimeConfig() Config {
 	return Config{
-		HTTPAddr:      ":28080",
-		DBPort:        "25432",
-		DBUser:        "ironpage_test",
-		DBPassword:    strings.Repeat("d", 16),
-		DBName:        "ironpage_test",
-		JWTSecret:     strings.Repeat("j", 32),
-		AESKey:        strings.Repeat("a", 32),
-		StorageDir:    "/runtime/storage",
-		BackupDir:     "/runtime/backups",
-		MigrationsDir: "/runtime/app/migrations",
-		PublicDir:     "/runtime/app/public",
+		HTTPAddr:       ":28080",
+		DBPort:         "25432",
+		DBUser:         "ironpage_test",
+		DBPassword:     strings.Repeat("d", 16),
+		DBName:         "ironpage_test",
+		JWTSecret:      strings.Repeat("j", 32),
+		AESKey:         strings.Repeat("a", 32),
+		StorageDir:     "/runtime/storage",
+		BackupDir:      "/runtime/backups",
+		MigrationsDir:  "/runtime/app/migrations",
+		PublicDir:      "/runtime/app/public",
+		MaxUploadBytes: productMaxUploadBytes,
+		MaxPDFPages:    productMaxPDFPages,
+		MaxBatchFiles:  productMaxBatchFiles,
+		MaxVersions:    productMaxVersions,
 	}
 }
 
@@ -86,6 +90,29 @@ func TestConfigValidateRequiresAbsoluteRuntimePaths(t *testing.T) {
 		{name: "backup", edit: func(cfg *Config) { cfg.BackupDir = "backups" }, want: "BACKUP_DIR must be an absolute path"},
 		{name: "migrations", edit: func(cfg *Config) { cfg.MigrationsDir = "migrations" }, want: "MIGRATIONS_DIR must be an absolute path"},
 		{name: "public", edit: func(cfg *Config) { cfg.PublicDir = "public" }, want: "PUBLIC_DIR must be an absolute path"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validRuntimeConfig()
+			tt.edit(&cfg)
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestConfigValidateRejectsProductLimitOverrides(t *testing.T) {
+	tests := []struct {
+		name string
+		edit func(*Config)
+		want string
+	}{
+		{name: "upload bytes", edit: func(cfg *Config) { cfg.MaxUploadBytes-- }, want: "MAX_UPLOAD_BYTES is fixed"},
+		{name: "pdf pages", edit: func(cfg *Config) { cfg.MaxPDFPages-- }, want: "MAX_PDF_PAGES is fixed"},
+		{name: "batch files", edit: func(cfg *Config) { cfg.MaxBatchFiles-- }, want: "MAX_BATCH_FILES is fixed"},
+		{name: "versions", edit: func(cfg *Config) { cfg.MaxVersions-- }, want: "MAX_VERSIONS is fixed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -194,5 +221,16 @@ func TestLoadConfigHasNoLocalRuntimeFallbacks(t *testing.T) {
 	}
 	if cfg.SeedAdminPassword != "" || cfg.SeedEditorPassword != "" || cfg.SeedReviewerPassword != "" {
 		t.Fatalf("LoadConfig() supplied a seed-user fallback")
+	}
+}
+
+func TestLoadConfigIgnoresProductLimitEnvironmentOverrides(t *testing.T) {
+	t.Setenv("MAX_UPLOAD_BYTES", "1")
+	t.Setenv("MAX_PDF_PAGES", "1")
+	t.Setenv("MAX_BATCH_FILES", "1")
+	t.Setenv("MAX_VERSIONS", "1")
+	cfg := LoadConfig()
+	if cfg.MaxUploadBytes != productMaxUploadBytes || cfg.MaxPDFPages != productMaxPDFPages || cfg.MaxBatchFiles != productMaxBatchFiles || cfg.MaxVersions != productMaxVersions {
+		t.Fatalf("LoadConfig() allowed product limit environment overrides: %#v", cfg)
 	}
 }
