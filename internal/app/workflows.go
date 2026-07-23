@@ -143,39 +143,51 @@ func (a *App) compareVersions(c echo.Context) error {
 	if err := c.Bind(&req); err != nil || req.LeftVersionID == "" || req.RightVersionID == "" {
 		return apiErr(c, http.StatusBadRequest, "VERSION_IDS_REQUIRED", "left_version_id and right_version_id are required")
 	}
-	versionQuery := `SELECT version.id,version.document_id,version.version_number,file.file_path,file.file_sha256,file.size_bytes,file.page_count,version.created_by,version.created_at FROM document_versions AS version JOIN document_files AS file ON file.version_id=version.id WHERE version.id=$1`
-	var left DocumentVersion
-	var right DocumentVersion
-	if err := a.db.GetContext(c.Request().Context(), &left, versionQuery, req.LeftVersionID); err != nil {
-		return apiErr(c, http.StatusNotFound, "LEFT_VERSION_NOT_FOUND", "left version not found")
-	}
-	if err := a.db.GetContext(c.Request().Context(), &right, versionQuery, req.RightVersionID); err != nil {
-		return apiErr(c, http.StatusNotFound, "RIGHT_VERSION_NOT_FOUND", "right version not found")
-	}
-	var leftDoc Document
-	var rightDoc Document
-	if err := a.db.GetContext(c.Request().Context(), &leftDoc, `SELECT * FROM documents WHERE id=$1`, left.DocumentID); err != nil {
-		return apiErr(c, http.StatusNotFound, "LEFT_DOCUMENT_NOT_FOUND", "left document not found")
-	}
-	if err := a.db.GetContext(c.Request().Context(), &rightDoc, `SELECT * FROM documents WHERE id=$1`, right.DocumentID); err != nil {
-		return apiErr(c, http.StatusNotFound, "RIGHT_DOCUMENT_NOT_FOUND", "right document not found")
-	}
-	if !canReadDocumentObject(p, leftDoc) || !canReadDocumentObject(p, rightDoc) {
-		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "version comparison is outside this principal scope")
-	}
-	if leftDoc.Status == StatusFinalized || rightDoc.Status == StatusFinalized {
-		return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents cannot create persisted comparison metadata")
-	}
-	result := versionTextComparisonResult(left, right)
-	resultCiphertext, err := sealAuditMetadata(a.cfg.AESKey, result)
-	if err != nil {
-		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_DIFF_ENCRYPT_ERROR", "could not protect version comparison")
-	}
+
 	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start comparison transaction")
 	}
 	defer tx.Rollback()
+
+	versionQuery := `SELECT version.id,version.document_id,version.version_number,file.file_path,file.file_sha256,file.size_bytes,file.page_count,version.created_by,version.created_at FROM document_versions AS version JOIN document_files AS file ON file.version_id=version.id WHERE version.id=$1`
+	var left DocumentVersion
+	var right DocumentVersion
+	if err := tx.GetContext(c.Request().Context(), &left, versionQuery, req.LeftVersionID); err != nil {
+		return apiErr(c, http.StatusNotFound, "LEFT_VERSION_NOT_FOUND", "left version not found")
+	}
+	if err := tx.GetContext(c.Request().Context(), &right, versionQuery, req.RightVersionID); err != nil {
+		return apiErr(c, http.StatusNotFound, "RIGHT_VERSION_NOT_FOUND", "right version not found")
+	}
+
+	lockedDocuments := []Document{}
+	if err := tx.SelectContext(c.Request().Context(), &lockedDocuments, `SELECT * FROM documents WHERE id IN ($1,$2) ORDER BY id FOR UPDATE`, left.DocumentID, right.DocumentID); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_LOCK_ERROR", "could not lock comparison documents")
+	}
+	documentsByID := map[string]Document{}
+	for _, document := range lockedDocuments {
+		documentsByID[document.ID] = document
+	}
+	leftDoc, leftOK := documentsByID[left.DocumentID]
+	if !leftOK {
+		return apiErr(c, http.StatusNotFound, "LEFT_DOCUMENT_NOT_FOUND", "left document not found")
+	}
+	rightDoc, rightOK := documentsByID[right.DocumentID]
+	if !rightOK {
+		return apiErr(c, http.StatusNotFound, "RIGHT_DOCUMENT_NOT_FOUND", "right document not found")
+	}
+	if leftDoc.Status == StatusFinalized || rightDoc.Status == StatusFinalized {
+		return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents cannot create persisted comparison metadata")
+	}
+	if !canReadDocumentObject(p, leftDoc) || !canReadDocumentObject(p, rightDoc) {
+		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "version comparison is outside this principal scope")
+	}
+
+	result := versionTextComparisonResult(left, right)
+	resultCiphertext, err := sealAuditMetadata(a.cfg.AESKey, result)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_DIFF_ENCRYPT_ERROR", "could not protect version comparison")
+	}
 	diffID := makeIdentifier("dif")
 	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO document_diffs(id,left_document_id,right_document_id,left_version_id,right_version_id,result_ciphertext,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,NOW())`, diffID, left.DocumentID, right.DocumentID, left.ID, right.ID, resultCiphertext, p.UserID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_DIFF_CREATE_ERROR", "could not persist version comparison")
