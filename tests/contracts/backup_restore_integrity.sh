@@ -72,6 +72,7 @@ require 'maxSafePageNumber' internal/app/pagination_config.go "safe page upper b
 require 'TestMaximumPageOffsetDoesNotOverflowInt' internal/app/config_management_test.go "offset overflow test definition missing"
 
 require 'CREATE TABLE IF NOT EXISTS document_files' migrations/004_required_entities_and_backup_schedule.sql "document_files entity missing"
+require 'version_id TEXT NOT NULL UNIQUE' migrations/004_required_entities_and_backup_schedule.sql "document_files must remain one-to-one with versions"
 require 'CREATE TABLE IF NOT EXISTS redaction_confirmations' migrations/004_required_entities_and_backup_schedule.sql "redaction_confirmations entity missing"
 require 'CREATE TABLE IF NOT EXISTS document_diffs' migrations/004_required_entities_and_backup_schedule.sql "document_diffs entity missing"
 require 'insertDocumentFileWithExecutor' internal/app/documents.go "document file entity is not written on upload"
@@ -103,6 +104,8 @@ if test "$(grep -n 'nextDocumentVersion' internal/app/bates_version.go | head -1
   fail "Bates version limit is checked after sequence allocation"
 fi
 
+require 'exact 60-second-old timestamp should be accepted' internal/core/rules_test.go "exact freshness boundary test missing"
+require 'exact 60-second-future timestamp should be accepted' internal/core/rules_test.go "exact future freshness boundary test missing"
 require '59-second-old timestamp is accepted' tests/api/test_request_guard_edges.sh "fresh timestamp middleware test missing"
 require '61-second-old timestamp is rejected' tests/api/test_request_guard_edges.sh "expired timestamp middleware test missing"
 require '61-second-future timestamp is rejected' tests/api/test_request_guard_edges.sh "future timestamp middleware test missing"
@@ -116,11 +119,18 @@ for phrase in \
   'rejects annotation creation' \
   'rejects annotation disposition' \
   'rejects Bates mutation' \
+  'rejects persisted comparison' \
   'rejects workflow transition' \
   'rejects repeated finalization'; do
   require "$phrase" tests/api/test_finalized_immutability.sh "Finalized matrix missing: $phrase"
 done
+require 'if leftDoc.Status == StatusFinalized || rightDoc.Status == StatusFinalized' internal/app/workflows.go "persisted comparison does not reject Finalized documents"
+if test "$(grep -n 'if leftDoc.Status == StatusFinalized || rightDoc.Status == StatusFinalized' internal/app/workflows.go | head -1 | cut -d: -f1)" -ge "$(grep -n 'result := versionTextComparisonResult' internal/app/workflows.go | head -1 | cut -d: -f1)"; then
+  fail "Finalized comparison guard runs after diff generation"
+fi
 require '"versions:$BASE_VERSIONS:$AFTER_VERSIONS"' tests/api/test_finalized_immutability.sh "Finalized version side-effect snapshot missing"
+require '"redactions:$BASE_REDACTIONS:$AFTER_REDACTIONS"' tests/api/test_finalized_immutability.sh "Finalized redaction side-effect snapshot missing"
+require '"annotations:$BASE_ANNOTATIONS:$AFTER_ANNOTATIONS"' tests/api/test_finalized_immutability.sh "Finalized annotation side-effect snapshot missing"
 require '"audits:$BASE_AUDITS:$AFTER_AUDITS"' tests/api/test_finalized_immutability.sh "Finalized audit side-effect snapshot missing"
 require '"notifications:$BASE_NOTIFICATIONS:$AFTER_NOTIFICATIONS"' tests/api/test_finalized_immutability.sh "Finalized notification side-effect snapshot missing"
 require 'finalized denials leave $name unchanged' tests/api/test_finalized_immutability.sh "Finalized unchanged-count assertion missing"
@@ -149,4 +159,4 @@ require 'application mutation barrier' docs/backup-recovery.md "backup barrier d
 require 'Interrupted' docs/backup-recovery.md "interrupted restore documentation missing"
 require 'PGPASSFILE' docs/security.md "postgres credential boundary documentation missing"
 
-echo "PASS: backup/restore integrity static contract"
+ echo "PASS: backup/restore integrity static contract"
