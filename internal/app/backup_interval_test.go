@@ -14,8 +14,11 @@ func TestBackupIntervalParsing(t *testing.T) {
 		{name: "empty", value: "", want: 0},
 		{name: "invalid", value: "not-a-duration", want: 0},
 		{name: "zero", value: "0s", want: 0},
-		{name: "negative", value: "-1s", want: 0},
-		{name: "valid", value: "15m", want: 15 * time.Minute},
+		{name: "below minimum", value: "59s", want: 0},
+		{name: "minimum", value: "1m", want: time.Minute},
+		{name: "normal", value: "24h", want: 24 * time.Hour},
+		{name: "maximum", value: "168h", want: 7 * 24 * time.Hour},
+		{name: "above maximum", value: "169h", want: 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
