@@ -143,12 +143,13 @@ func (a *App) compareVersions(c echo.Context) error {
 	if err := c.Bind(&req); err != nil || req.LeftVersionID == "" || req.RightVersionID == "" {
 		return apiErr(c, http.StatusBadRequest, "VERSION_IDS_REQUIRED", "left_version_id and right_version_id are required")
 	}
+	versionQuery := `SELECT version.id,version.document_id,version.version_number,file.file_path,file.file_sha256,file.size_bytes,file.page_count,version.created_by,version.created_at FROM document_versions AS version JOIN document_files AS file ON file.version_id=version.id WHERE version.id=$1`
 	var left DocumentVersion
 	var right DocumentVersion
-	if err := a.db.GetContext(c.Request().Context(), &left, `SELECT * FROM document_versions WHERE id=$1`, req.LeftVersionID); err != nil {
+	if err := a.db.GetContext(c.Request().Context(), &left, versionQuery, req.LeftVersionID); err != nil {
 		return apiErr(c, http.StatusNotFound, "LEFT_VERSION_NOT_FOUND", "left version not found")
 	}
-	if err := a.db.GetContext(c.Request().Context(), &right, `SELECT * FROM document_versions WHERE id=$1`, req.RightVersionID); err != nil {
+	if err := a.db.GetContext(c.Request().Context(), &right, versionQuery, req.RightVersionID); err != nil {
 		return apiErr(c, http.StatusNotFound, "RIGHT_VERSION_NOT_FOUND", "right version not found")
 	}
 	var leftDoc Document
