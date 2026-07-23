@@ -10,14 +10,15 @@ The backend implements:
 
 - local identity, rolling failed-login lockout, server-side sessions, token revocation, freshness validation, and replay protection;
 - Admin, Editor, and Reviewer authorization boundaries;
-- PDF intake, local binary storage, version history, and revision limits;
+- PDF intake with a real local PDF page-tree parser, local binary storage, version history, a 500-page ceiling, and a 50-revision ceiling;
+- explicit `document_files`, `redaction_confirmations`, and protected `document_diffs` persistence entities;
 - an Admin-managed persisted workflow chain with terminal Finalized immutability;
 - staged redaction followed by confirmed strict PDF burn-in;
 - reviewer annotations, dispositions, and local mention notifications;
-- visible Bates numbering with transactional page-range allocation;
-- structured text/page/bounding-box comparison;
+- visible Bates numbering with transactional page-range allocation based on parsed PDF page counts;
+- structured text/page/bounding-box comparison with protected persisted diff records;
 - encrypted audit source/metadata with Admin filtering and decrypted responses;
-- validated configuration, mutation-isolated backup, maintenance-mode restore, and explicit restore lifecycle reconciliation.
+- validated configuration, Admin-managed scheduled backup, mutation-isolated backup, maintenance-mode restore, and explicit restore lifecycle reconciliation.
 
 Material database mutations include their required audit, history, and notification side effects in the same transaction. File-producing mutations remove generated output when database persistence fails.
 
@@ -61,7 +62,7 @@ The generated `.env` is excluded from Git and the Docker context. Re-running the
 
 ## Runtime configuration ownership
 
-The deployment layer supplies every local runtime value. The schema does not seed a fixed machine backup path. After migrations, startup persists the generated `BACKUP_DIR` and paging limits into `config_entries`.
+The deployment layer supplies every local runtime value. The schema does not seed a fixed machine backup path. After migrations, startup persists the generated `BACKUP_DIR` into `config_entries`.
 
 | Area | Variables |
 |---|---|
@@ -75,7 +76,14 @@ The deployment layer supplies every local runtime value. The schema does not see
 | Product storage | `IRONPAGE_VOLUME_ROOT`, `STORAGE_DIR`, `BACKUP_DIR` |
 | Acceptance fixtures | `ACCEPTANCE_MODE`, `SEED_ADMIN_PASSWORD`, `SEED_EDITOR_PASSWORD`, `SEED_REVIEWER_PASSWORD` |
 
-`backup.local_volume` is deployment-owned and read-only through the Admin API. The only Admin-managed generic configuration keys are `pagination.default_page_size` and `pagination.max_page_size`; every update is validated transactionally against `1 <= default <= max <= 100`. Unknown keys are rejected.
+`backup.local_volume` is deployment-owned and read-only through the Admin API. Admin manages four generic keys:
+
+- `pagination.default_page_size`
+- `pagination.max_page_size`
+- `backup.schedule_enabled`
+- `backup.interval`
+
+Pagination updates are validated transactionally against `1 <= default <= max <= 100`. `backup.schedule_enabled` is Boolean. `backup.interval` accepts a duration from `1m` through `168h`. The scheduler reads both backup keys from PostgreSQL at startup and every minute, so changes survive restart and take effect without process restart. There is no supported `BACKUP_INTERVAL` environment switch. Unknown keys are rejected, and every accepted update is audited.
 
 To generate and inspect a clean installation file before startup:
 
@@ -99,7 +107,7 @@ The browser page contains no fixture credential.
 
 | Role | Responsibility |
 |---|---|
-| Admin | local users, configuration, persisted workflow definitions, templates, backup/restore operations |
+| Admin | local users, pagination and backup schedule configuration, persisted workflow definitions, templates, backup/restore operations |
 | Editor | owned-document upload, versions, redaction confirmation, Bates numbering, finalization |
 | Reviewer | document retrieval, annotations, dispositions, permitted review transitions |
 
@@ -120,17 +128,29 @@ PUT /api/admin/workflow-statuses
 
 `Draft` must remain first and mutable; `Finalized` must remain last and immutable; existing document statuses cannot be removed. Runtime transitions read the persisted order. A transition/finalization commits document state, history, audit, and owner notification together.
 
+## Persistence ownership
+
+`document_versions` owns revision identity and ordering. `document_files` owns each version's path, digest, byte size, parsed page count, and creator. Upload, redaction, and Bates write the version and file rows in the same transaction. `redaction_confirmations` records the proposal plus source and result versions for each completed burn-in. `document_diffs` stores an encrypted comparison result with the two document/version identities and an acting user; diff persistence and `DOCUMENT_DIFF_CREATE` audit commit together.
+
 ## Audit and notification integrity
 
 Audit source IP and structured metadata are stored in ciphertext columns. Source IP also has a deterministic equality lookup. Startup backfills the lookup for older rows. The Admin audit route decrypts source IP and JSON metadata before response; compatibility plaintext columns are not the source of truth.
 
-Every audit write requires a non-empty acting user. Scheduled backup and startup reconciliation use a protected, non-interactive system principal instead of `NULL`; this principal is omitted from the Admin user collection. User/config/template/workflow changes, upload/rollback, workflow/finalization, redaction, annotation, Bates, backup, notification acknowledgement, failed login, successful login, and logout all fail rather than report success if their required audit cannot be persisted. Workflow and mention notifications share the parent mutation transaction.
+Every audit write requires a non-empty acting user. Scheduled backup and startup reconciliation use a protected, non-interactive system principal instead of `NULL`; this principal is omitted from the Admin user collection. User/config/template/workflow changes, upload/rollback, workflow/finalization, redaction, annotation, Bates, comparison persistence, backup, notification acknowledgement, failed login, successful login, and logout all fail rather than report success if their required audit cannot be persisted. Workflow and mention notifications share the parent mutation transaction.
+
+## PDF validation and revision limits
+
+PDF intake validates the `%PDF-` header and uses the local `pdfcpu` page-tree parser. It does not count `/Type /Page` byte substrings, so `/Pages` roots, compressed streams, and compressed object streams do not distort the 500-page contract. Invalid structure, zero pages, and 501 or more pages are rejected. Parsed page counts are persisted in `document_files` and drive Bates range allocation.
+
+The shared revision guard permits 49 → 50 and rejects creation of revision 51 before sequence allocation or output-file generation. Redaction and Bates use that guard. Rollback selects an existing revision and cannot create a new one. Finalized documents return `409 DOCUMENT_FINALIZED` for every existing content/review/workflow mutation route, without changing versions, redactions, annotations, audit rows, or notifications.
 
 ## Storage, backup, and restore
 
 PostgreSQL stores metadata/security/workflow/audit/notification/configuration/backup state. The local filesystem stores PDF versions and transformed output.
 
 All unsafe API mutations acquire a shared PostgreSQL advisory lock. Manual and scheduled backup acquire the matching exclusive lock before collecting metadata, running `pg_dump`, and archiving `STORAGE_DIR`; no application mutation can cross the database-dump/filesystem-snapshot interval. This is the application recovery boundary for the supported single-container deployment. Failed job/audit persistence removes the generated artifacts.
+
+The scheduled worker polls persisted configuration every minute. When enabled, it compares the latest completed `scheduled_full_backup` time with the configured interval and invokes the same strict, exclusive backup path. The schedule is installation data in PostgreSQL and is included in the backup snapshot table inventory.
 
 Restore requests first pass authentication and Admin role validation. A route-specific middleware then activates code-enforced maintenance before restore handler work: new non-restore requests receive `MAINTENANCE_MODE`, active requests drain, and an exclusive advisory lock blocks application mutations. A non-blocking admission guard prevents a second restore request from authenticating concurrently with the active restore. Strict restore safely extracts the archive to staging, rejects path traversal, links, and special entries, swaps the storage directory with a rollback copy, and invokes `pg_restore --single-transaction`. PostgreSQL failure restores the previous filesystem directory.
 
