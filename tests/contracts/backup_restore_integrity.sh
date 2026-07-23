@@ -57,8 +57,72 @@ require 'CONFIG_KEY_READ_ONLY' internal/app/admin.go "deployment-owned config re
 require 'CONFIG_KEY_NOT_MANAGED' internal/app/admin.go "unknown config key rejection missing"
 require 'SELECT key,value FROM config_entries WHERE key IN ($1,$2) FOR UPDATE' internal/app/config_management.go "pagination pair is not locked for validation"
 require 'validatePaginationValues(defaultSize, maxSize)' internal/app/config_management.go "pagination pair validation missing"
+require 'backup.schedule_enabled' internal/app/config_management.go "Admin-managed backup enabled key missing"
+require 'backup.interval' internal/app/config_management.go "Admin-managed backup interval key missing"
+require 'loadBackupSchedule' internal/app/backup_scheduler.go "scheduler does not reload persisted configuration"
+require 'runScheduledBackupIfDue' internal/app/backup_scheduler.go "scheduler due evaluation missing"
+require 'MAX(created_at)' internal/app/backup_scheduler.go "scheduler does not persist restart timing"
+if grep -R -q 'BACKUP_INTERVAL' internal/app docker-compose.yml scripts; then
+  fail "scheduled backup still depends on an unreachable environment variable"
+fi
+require 'backup.schedule_enabled' tests/api/test_admin_ops.sh "Admin backup enabled API test missing"
+require 'backup.interval' tests/api/test_admin_ops.sh "Admin backup interval API test missing"
+require 'TestBackupScheduleConfigurationValidation' internal/app/backup_scheduler_test.go "backup schedule validation tests missing"
 require 'maxSafePageNumber' internal/app/pagination_config.go "safe page upper bound missing"
 require 'TestMaximumPageOffsetDoesNotOverflowInt' internal/app/config_management_test.go "offset overflow test definition missing"
+
+require 'CREATE TABLE IF NOT EXISTS document_files' migrations/004_required_entities_and_backup_schedule.sql "document_files entity missing"
+require 'CREATE TABLE IF NOT EXISTS redaction_confirmations' migrations/004_required_entities_and_backup_schedule.sql "redaction_confirmations entity missing"
+require 'CREATE TABLE IF NOT EXISTS document_diffs' migrations/004_required_entities_and_backup_schedule.sql "document_diffs entity missing"
+require 'insertDocumentFileWithExecutor' internal/app/documents.go "document file entity is not written on upload"
+require 'insertDocumentFileWithExecutor' internal/app/redactions.go "redacted file entity is not written"
+require 'redaction_confirmations' internal/app/redactions.go "redaction confirmation entity is not written"
+require 'insertDocumentFileWithExecutor' internal/app/bates_version.go "Bates file entity is not written"
+require 'document_diffs' internal/app/workflows.go "document diff entity is not written"
+require 'DOCUMENT_DIFF_CREATE' internal/app/workflows.go "document diff persistence is not audited"
+require 'document_files' internal/repository/backup.go "backup snapshots omit document file entities"
+require 'redaction_confirmations' internal/repository/backup.go "backup snapshots omit redaction confirmations"
+require 'document_diffs' internal/repository/backup.go "backup snapshots omit document diffs"
+
+require 'api.PageCountFile(path)' internal/platform/pdf.go "PDF page tree parser missing"
+if grep -Fq 'bytes.Count' internal/platform/pdf.go; then
+  fail "PDF page count still uses byte substring counting"
+fi
+require 'TestInspectPDFPageBoundaries' internal/platform/pdf_test.go "0/1/499/500/501 PDF boundary tests missing"
+require 'TestInspectPDFReadsPageFromCompressedObjectStream' internal/platform/pdf_test.go "compressed object stream page test missing"
+require 'TestInspectPDFIgnoresPagesRootAndCompressedStreamTokens' internal/platform/pdf_test.go "Pages root/token false-positive test missing"
+
+require 'TestVersionLimitAllowsFortyNineToFifty' internal/app/version_limit_test.go "49 to 50 version boundary missing"
+require 'TestVersionLimitRejectsFiftyToFiftyOne' internal/app/version_limit_test.go "50 to 51 version rejection missing"
+require 'nextDocumentVersion' internal/app/redactions.go "redaction does not use shared version ceiling"
+require 'nextDocumentVersion' internal/app/bates_version.go "Bates does not use shared version ceiling"
+if test "$(grep -n 'nextDocumentVersion' internal/app/redactions.go | head -1 | cut -d: -f1)" -ge "$(grep -n 'ApplyRedactionBurnIn' internal/app/redactions.go | head -1 | cut -d: -f1)"; then
+  fail "redaction version limit is checked after file generation"
+fi
+if test "$(grep -n 'nextDocumentVersion' internal/app/bates_version.go | head -1 | cut -d: -f1)" -ge "$(grep -n 'AllocateBatesRange' internal/app/bates_version.go | head -1 | cut -d: -f1)"; then
+  fail "Bates version limit is checked after sequence allocation"
+fi
+
+require '59-second-old timestamp is accepted' tests/api/test_request_guard_edges.sh "fresh timestamp middleware test missing"
+require '61-second-old timestamp is rejected' tests/api/test_request_guard_edges.sh "expired timestamp middleware test missing"
+require '61-second-future timestamp is rejected' tests/api/test_request_guard_edges.sh "future timestamp middleware test missing"
+require 'same JWT rejects duplicate request id' tests/api/test_request_guard_edges.sh "same-token replay rejection test missing"
+require 'request id scope permits a different JWT' tests/api/test_request_guard_edges.sh "cross-token replay scope test missing"
+
+for phrase in \
+  'rejects rollback' \
+  'rejects redaction proposal' \
+  'rejects redaction confirmation' \
+  'rejects annotation creation' \
+  'rejects annotation disposition' \
+  'rejects Bates mutation' \
+  'rejects workflow transition' \
+  'rejects repeated finalization'; do
+  require "$phrase" tests/api/test_finalized_immutability.sh "Finalized matrix missing: $phrase"
+done
+require 'finalized denials leave versions unchanged' tests/api/test_finalized_immutability.sh "Finalized version side-effect assertion missing"
+require 'finalized denials leave audits unchanged' tests/api/test_finalized_immutability.sh "Finalized audit side-effect assertion missing"
+require 'finalized denials leave notifications unchanged' tests/api/test_finalized_immutability.sh "Finalized notification side-effect assertion missing"
 
 require 'PGPASSFILE=' internal/platform/postgres_command.go "PGPASSFILE command authentication missing"
 require 'file.Chmod(0600)' internal/platform/postgres_command.go "PGPASSFILE mode is not restricted"
