@@ -120,9 +120,10 @@ for phrase in \
   'rejects repeated finalization'; do
   require "$phrase" tests/api/test_finalized_immutability.sh "Finalized matrix missing: $phrase"
 done
-require 'finalized denials leave versions unchanged' tests/api/test_finalized_immutability.sh "Finalized version side-effect assertion missing"
-require 'finalized denials leave audits unchanged' tests/api/test_finalized_immutability.sh "Finalized audit side-effect assertion missing"
-require 'finalized denials leave notifications unchanged' tests/api/test_finalized_immutability.sh "Finalized notification side-effect assertion missing"
+require '"versions:$BASE_VERSIONS:$AFTER_VERSIONS"' tests/api/test_finalized_immutability.sh "Finalized version side-effect snapshot missing"
+require '"audits:$BASE_AUDITS:$AFTER_AUDITS"' tests/api/test_finalized_immutability.sh "Finalized audit side-effect snapshot missing"
+require '"notifications:$BASE_NOTIFICATIONS:$AFTER_NOTIFICATIONS"' tests/api/test_finalized_immutability.sh "Finalized notification side-effect snapshot missing"
+require 'finalized denials leave $name unchanged' tests/api/test_finalized_immutability.sh "Finalized unchanged-count assertion missing"
 
 require 'PGPASSFILE=' internal/platform/postgres_command.go "PGPASSFILE command authentication missing"
 require 'file.Chmod(0600)' internal/platform/postgres_command.go "PGPASSFILE mode is not restricted"
