@@ -12,7 +12,7 @@ Normal mode creates one initial Admin from bootstrap values only while the user 
 
 Only failed attempts in the preceding 15 minutes count. The fifth applies a 15-minute lock. Failed-attempt insert/count/lock and `LOGIN_FAILED` audit commit under one user row lock. Successful attempt reset, session creation and `LOGIN` audit commit together. Logout blacklist, session revocation and `LOGOUT` audit commit together. Any required database or audit error fails the request.
 
-Authenticated requests require a fresh timestamp and unique request ID. The timestamp window is an absolute 60 seconds in either direction: 59 seconds is accepted, while 61 seconds old or future returns `REQUEST_EXPIRED`. Replay uniqueness is the `(request_id,jti)` primary key: one JWT cannot reuse an ID, while a different JTI has a distinct scope. Blacklist lookup, replay persistence and session activity fail closed.
+Authenticated requests require a fresh timestamp and unique request ID. The timestamp window is an absolute 60 seconds in either direction: an exact 60-second difference is accepted, while 61 seconds old or future returns `REQUEST_EXPIRED`. Replay uniqueness is the `(request_id,jti)` primary key: one JWT cannot reuse an ID, while a different JTI has a distinct scope. Blacklist lookup, replay persistence and session activity fail closed.
 
 A restore request must complete normal authentication and Admin role validation before its route middleware can activate maintenance. A non-blocking admission mutex prevents concurrent restore authentication; invalid callers release admission without changing service mode.
 
@@ -54,7 +54,7 @@ File-producing redaction and Bates operations keep their database transaction op
 
 The local parser validates the PDF page tree instead of scanning bytes for `/Type /Page`. This prevents `/Pages` roots or tokens inside compressed data from changing the security boundary. Corrupt or zero-page documents and documents above 500 pages are rejected. The parsed count is persisted in `document_files` and used by Bates allocation.
 
-A shared version guard allows revision 50 and rejects revision 51 before redaction output generation or Bates sequence allocation. Finalized status is checked before object-policy denial so existing mutation routes return `409 DOCUMENT_FINALIZED` without changing versions, files, redactions, annotations, audit rows, or notifications.
+A shared version guard allows revision 50 and rejects revision 51 before redaction output generation or Bates sequence allocation. Finalized status is checked before material write paths so existing mutation routes return `409 DOCUMENT_FINALIZED` without changing versions, files, redactions, annotations, status history, audit rows, notifications, or persisted comparison metadata.
 
 ## Backup and restore isolation
 
@@ -80,7 +80,7 @@ For each command the platform adapter creates a short-lived `PGPASSFILE` under `
 
 The only roles are Admin, Editor and Reviewer. Admin is system management/oversight and does not inherit Editor document mutation rights. Object-level policy remains required after route-level checks.
 
-Finalized documents reject rollback, redaction proposal/confirmation, annotation creation/disposition, Bates, workflow movement and repeated finalization regardless of role. The backend exposes no document-replacement or metadata-mutation route.
+Finalized documents reject rollback, redaction proposal/confirmation, annotation creation/disposition, Bates, persisted comparison creation, workflow movement and repeated finalization regardless of role. The backend exposes no document-replacement or metadata-mutation route.
 
 ## Error contract
 
