@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -8,8 +9,14 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
+
+func insertDocumentFileWithExecutor(ctx context.Context, executor sqlx.ExtContext, documentID, versionID, path, digest string, size int64, pageCount int, createdBy string) error {
+	_, err := executor.ExecContext(ctx, `INSERT INTO document_files(id,document_id,version_id,file_path,file_sha256,size_bytes,page_count,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW())`, makeIdentifier("fil"), documentID, versionID, path, digest, size, pageCount, createdBy)
+	return err
+}
 
 func (a *App) persistPDFUpload(c echo.Context, fh *multipart.FileHeader, title string, p Principal) (Document, error) {
 	src, err := fh.Open()
@@ -66,6 +73,9 @@ func (a *App) persistPDFUpload(c echo.Context, fh *multipart.FileHeader, title s
 		return Document{}, err
 	}
 	if _, err = tx.ExecContext(c.Request().Context(), `INSERT INTO document_versions(id,document_id,version_number,file_path,file_sha256,size_bytes,page_count,created_by,created_at) VALUES($1,$2,1,$3,$4,$5,$6,$7,NOW())`, versionID, docID, path, info.SHA256, info.Size, info.PageCount, p.UserID); err != nil {
+		return Document{}, err
+	}
+	if err := insertDocumentFileWithExecutor(c.Request().Context(), tx, docID, versionID, path, info.SHA256, info.Size, info.PageCount, p.UserID); err != nil {
 		return Document{}, err
 	}
 	if err := a.auditWithExecutor(c, tx, p.UserID, "DOCUMENT_UPLOAD", docID, map[string]interface{}{"version": 1, "file_sha256": info.SHA256}); err != nil {
@@ -172,7 +182,7 @@ func (a *App) currentVersion(c echo.Context, docID string) (Document, DocumentVe
 	if err := a.db.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1`, docID); err != nil {
 		return d, v, err
 	}
-	if err := a.db.GetContext(c.Request().Context(), &v, `SELECT * FROM document_versions WHERE document_id=$1 AND version_number=$2`, docID, d.CurrentVersion); err != nil {
+	if err := a.db.GetContext(c.Request().Context(), &v, `SELECT version.id,version.document_id,version.version_number,file.file_path,file.file_sha256,file.size_bytes,file.page_count,version.created_by,version.created_at FROM document_versions AS version JOIN document_files AS file ON file.version_id=version.id WHERE version.document_id=$1 AND version.version_number=$2`, docID, d.CurrentVersion); err != nil {
 		return d, v, err
 	}
 	if err := openDocumentPII(a.cfg.AESKey, &d); err != nil {
@@ -207,7 +217,7 @@ func (a *App) listVersions(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "PAGINATION_CONFIG_ERROR", "could not read pagination configuration")
 	}
 	rows := []DocumentVersion{}
-	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT * FROM document_versions WHERE document_id=$1 ORDER BY version_number DESC LIMIT $2 OFFSET $3`, c.Param("id"), size, (page-1)*size); err != nil {
+	if err := a.db.SelectContext(c.Request().Context(), &rows, `SELECT version.id,version.document_id,version.version_number,file.file_path,file.file_sha256,file.size_bytes,file.page_count,version.created_by,version.created_at FROM document_versions AS version JOIN document_files AS file ON file.version_id=version.id WHERE version.document_id=$1 ORDER BY version.version_number DESC LIMIT $2 OFFSET $3`, c.Param("id"), size, (page-1)*size); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "VERSION_QUERY_ERROR", "could not list versions")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "page": page, "page_size": size})
