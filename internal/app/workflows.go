@@ -39,11 +39,11 @@ func (a *App) transitionDocument(c echo.Context) error {
 	if err := tx.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1 FOR UPDATE`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
 	}
-	if !canTransitionDocumentObject(p, d) {
-		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal transition scope")
-	}
 	if d.Status == StatusFinalized {
 		return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable")
+	}
+	if !canTransitionDocumentObject(p, d) {
+		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this principal transition scope")
 	}
 	next, err := a.nextWorkflowDefinition(c.Request().Context(), tx, d.Status)
 	if err != nil {
@@ -93,11 +93,11 @@ func (a *App) finalizeDocument(c echo.Context) error {
 	if err := tx.GetContext(c.Request().Context(), &d, `SELECT * FROM documents WHERE id=$1 FOR UPDATE`, c.Param("id")); err != nil {
 		return apiErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "document not found")
 	}
-	if !canEditDocumentObject(p, d) {
-		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope")
-	}
 	if d.Status == StatusFinalized {
 		return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents are immutable")
+	}
+	if !canEditDocumentObject(p, d) {
+		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope")
 	}
 	next, err := a.nextWorkflowDefinition(c.Request().Context(), tx, d.Status)
 	if err != nil {
