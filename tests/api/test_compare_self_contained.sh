@@ -27,6 +27,7 @@ if [ -z "$NEW_COMPARE_VERSION" ]; then echo "FAIL api: right version id missing"
 body="{\"left_version_id\":\"$BASE_COMPARE_VERSION\",\"right_version_id\":\"$NEW_COMPARE_VERSION\"}"
 code=$(auth_post_json "$EDITOR_TOKEN" /api/documents/compare "$body")
 expect_code "compare returns text bbox result" 200 "$code" || FAIL=$((FAIL+1))
+expect_json_nonempty "compare persistence id" id || FAIL=$((FAIL+1))
 expect_json_field "compare kind" data.comparison_kind text_bbox || FAIL=$((FAIL+1))
 expect_json_field "compare text supported" data.text_diff_supported true || FAIL=$((FAIL+1))
 expect_json_field "compare bbox supported" data.bbox_supported true || FAIL=$((FAIL+1))
