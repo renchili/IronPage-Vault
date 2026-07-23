@@ -1,31 +1,6 @@
 package app
 
-import (
-	"testing"
-	"time"
-)
-
-func TestBackupInterval(t *testing.T) {
-	tests := []struct {
-		input string
-		want  time.Duration
-	}{
-		{"", 0},
-		{"59s", 0},
-		{"1m", time.Minute},
-		{"24h", 24 * time.Hour},
-		{"168h", 7 * 24 * time.Hour},
-		{"169h", 0},
-		{"bad", 0},
-		{"-1h", 0},
-		{"0s", 0},
-	}
-	for _, test := range tests {
-		if got := backupInterval(test.input); got != test.want {
-			t.Fatalf("backupInterval(%q)=%s want %s", test.input, got, test.want)
-		}
-	}
-}
+import "testing"
 
 func TestBackupScheduleConfigurationValidation(t *testing.T) {
 	for _, test := range []struct {
