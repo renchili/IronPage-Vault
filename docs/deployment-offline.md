@@ -6,6 +6,27 @@ IronPage Vault runs as one local Compose service for an air-gapped environment. 
 
 The supported deployer requires Docker with Docker Compose v2, Bash, and the local tools listed in `README.md`, including `getent` and `timeout`.
 
+## Image build and runtime tools
+
+The supported first build is always:
+
+```bash
+bash scripts/deploy.sh
+```
+
+The deployer generates installation configuration before invoking Compose. The Dockerfile requires generated build arguments for the application root and HTTP port, so a bare `docker build .` is not a supported deployment command. After `.env` exists, the equivalent manual build is:
+
+```bash
+docker compose --env-file .env build ironpage
+```
+
+The Dockerfile uses two stages:
+
+1. the Go builder resolves modules, generates Swagger, and compiles the server binary;
+2. the runtime stage packages PostgreSQL, the binary, migrations, the canonical acceptance UI, and the entrypoint at installation-specific generated paths.
+
+The runtime image includes `pg_dump` and `pg_restore` for database backup/restore, `tar` for filesystem snapshots, `pdftotext` from `poppler-utils` for text extraction, and Python with `pypdf` and `reportlab` for local PDF rewriting. Runtime credentials, database identity, listener ports, and data paths are not stored as fixed image defaults.
+
 ## First deployment
 
 From the repository root:
@@ -147,7 +168,7 @@ The sole deployed acceptance HTML file is `public/index.html`. It contains no cr
 
 ## Evidence boundary
 
-Static source inspection can establish configuration ownership, loopback selection logic, port-probe logic, and path consistency. It cannot prove that a particular host port remained free until Docker bound it, or that startup, login, restart, PDF, RBAC, backup/restore, browser interaction, or complete regression succeeded.
+Static source inspection can establish configuration ownership, loopback selection logic, port-probe logic, image stages, runtime dependency declarations, and path consistency. It cannot prove that a particular host port remained free until Docker bound it, or that startup, login, restart, PDF, RBAC, backup/restore, browser interaction, or complete regression succeeded.
 
 Runtime claims require a pre-existing artifact tied to the exact revision. The supported complete command is:
 
