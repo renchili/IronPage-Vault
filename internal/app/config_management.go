@@ -6,14 +6,19 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
 
 const (
-	paginationDefaultKey = "pagination.default_page_size"
-	paginationMaxKey     = "pagination.max_page_size"
-	backupVolumeKey      = "backup.local_volume"
+	paginationDefaultKey      = "pagination.default_page_size"
+	paginationMaxKey          = "pagination.max_page_size"
+	backupVolumeKey           = "backup.local_volume"
+	backupScheduleEnabledKey  = "backup.schedule_enabled"
+	backupScheduleIntervalKey = "backup.interval"
+	minimumBackupInterval     = time.Minute
+	maximumBackupInterval     = 7 * 24 * time.Hour
 )
 
 var (
@@ -21,9 +26,34 @@ var (
 	errUnsupportedConfigKey  = errors.New("configuration key is not Admin-managed")
 )
 
+func validateBackupScheduleValue(key, rawValue string) (string, error) {
+	switch key {
+	case backupScheduleEnabledKey:
+		value, err := strconv.ParseBool(strings.TrimSpace(rawValue))
+		if err != nil {
+			return "", fmt.Errorf("backup.schedule_enabled must be true or false")
+		}
+		return strconv.FormatBool(value), nil
+	case backupScheduleIntervalKey:
+		value, err := time.ParseDuration(strings.TrimSpace(rawValue))
+		if err != nil {
+			return "", fmt.Errorf("backup.interval must be a Go duration such as 24h")
+		}
+		if value < minimumBackupInterval || value > maximumBackupInterval {
+			return "", fmt.Errorf("backup.interval must be between %s and %s", minimumBackupInterval, maximumBackupInterval)
+		}
+		return value.String(), nil
+	default:
+		return "", errUnsupportedConfigKey
+	}
+}
+
 func validateAdminConfigUpdate(ctx context.Context, tx *sqlx.Tx, cfg Config, key, rawValue string) (string, error) {
 	if key == backupVolumeKey {
 		return "", errDeploymentOwnedConfig
+	}
+	if key == backupScheduleEnabledKey || key == backupScheduleIntervalKey {
+		return validateBackupScheduleValue(key, rawValue)
 	}
 	if key != paginationDefaultKey && key != paginationMaxKey {
 		return "", errUnsupportedConfigKey

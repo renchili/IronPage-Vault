@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+const (
+	productMaxUploadBytes int64 = 200 * 1024 * 1024
+	productMaxPDFPages          = 500
+	productMaxBatchFiles        = 250
+	productMaxVersions          = 50
+)
+
 // Config contains runtime settings for the local IronPage Vault service.
 type Config struct {
 	HTTPAddr               string
@@ -57,10 +64,10 @@ func LoadConfig() Config {
 		PublicDir:              env("PUBLIC_DIR", ""),
 		SessionTTL:             8 * time.Hour,
 		RequestMaxAge:          60 * time.Second,
-		MaxUploadBytes:         int64(envInt("MAX_UPLOAD_BYTES", 200*1024*1024)),
-		MaxPDFPages:            envInt("MAX_PDF_PAGES", 500),
-		MaxBatchFiles:          envInt("MAX_BATCH_FILES", 250),
-		MaxVersions:            envInt("MAX_VERSIONS", 50),
+		MaxUploadBytes:         productMaxUploadBytes,
+		MaxPDFPages:            productMaxPDFPages,
+		MaxBatchFiles:          productMaxBatchFiles,
+		MaxVersions:            productMaxVersions,
 		DefaultPageSize:        25,
 		MaxPageSize:            100,
 		AcceptanceMode:         envBool("ACCEPTANCE_MODE", false),
@@ -126,6 +133,18 @@ func (c Config) Validate() error {
 	}
 	if err := requireSecret("AES_KEY", c.AESKey, 32); err != nil {
 		return err
+	}
+	if c.MaxUploadBytes != productMaxUploadBytes {
+		return fmt.Errorf("MAX_UPLOAD_BYTES is fixed at %d", productMaxUploadBytes)
+	}
+	if c.MaxPDFPages != productMaxPDFPages {
+		return fmt.Errorf("MAX_PDF_PAGES is fixed at %d", productMaxPDFPages)
+	}
+	if c.MaxBatchFiles != productMaxBatchFiles {
+		return fmt.Errorf("MAX_BATCH_FILES is fixed at %d", productMaxBatchFiles)
+	}
+	if c.MaxVersions != productMaxVersions {
+		return fmt.Errorf("MAX_VERSIONS is fixed at %d", productMaxVersions)
 	}
 
 	seedValues := []struct {
@@ -221,18 +240,6 @@ func env(k, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-func envInt(k string, fallback int) int {
-	v := os.Getenv(k)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return fallback
-	}
-	return n
 }
 
 func envBool(k string, fallback bool) bool {

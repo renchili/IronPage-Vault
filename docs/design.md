@@ -16,13 +16,22 @@ Fresh configuration accepts only an IPv4 loopback host binding and selects a hos
 
 ## Data ownership and mutation boundaries
 
-PostgreSQL is the source of truth for users, login attempts, sessions, replay state, documents, versions, workflow definitions/history, audit records, protected review metadata, Bates allocation, notifications, configuration, and backup jobs. PDF binaries and transformed versions are stored on the generated local filesystem target.
+PostgreSQL is the source of truth for users, login attempts, sessions, replay state, documents, versions, document files, workflow definitions/history, redaction proposals and confirmations, persisted document diffs, audit records, protected review metadata, Bates allocation, notifications, configuration, and backup jobs. PDF binaries and transformed versions are stored on the generated local filesystem target.
 
-A successful database mutation must include its required audit record in the same transaction. Workflow transitions additionally include status history and owner notification in that transaction. Annotation creation includes mention notifications. Authentication lockout/login/logout state includes its security audit. Notification acknowledgement, Admin configuration, user creation, template changes, workflow-definition replacement, rollback, redaction metadata, and Bates metadata use the same rule.
+The required persistence entities have distinct ownership:
+
+- `document_versions` owns revision identity and ordering;
+- `document_files` owns one version's local path, SHA-256, byte size, parsed page count, creator, and creation time;
+- `redaction_confirmations` owns the immutable link from proposal and source version to result version and confirming user;
+- `document_diffs` owns the encrypted structured result and the two compared document/version identities.
+
+Existing version rows are backfilled into `document_files` during migration. Existing confirmed redaction proposals are backfilled into `redaction_confirmations`. Upload, redaction, and Bates always write version/file rows in the same transaction. Comparison persists the protected diff and its audit in the same transaction.
+
+A successful database mutation must include its required audit record in the same transaction. Workflow transitions additionally include status history and owner notification in that transaction. Annotation creation includes mention notifications. Authentication lockout/login/logout state includes its security audit. Notification acknowledgement, Admin configuration, user creation, template changes, workflow-definition replacement, rollback, redaction metadata, Bates metadata, and persisted comparison use the same rule.
 
 Every audit requires an acting user. Automated scheduled backup and startup restore reconciliation use a protected system principal rather than nullable actor state. Startup creates that identity before reconciliation and backfills legacy scheduled rows that used `NULL`.
 
-File-producing mutations use a compensating filesystem boundary: the file is generated first while the database transaction remains uncommitted, and the generated file is removed if version, document, sequence, audit, notification, or commit work fails.
+File-producing mutations use a compensating filesystem boundary: the file is generated first while the database transaction remains uncommitted, and the generated file is removed if version, document-file, document pointer, sequence, audit, notification, or commit work fails.
 
 ## Operation coordination
 
@@ -36,6 +45,12 @@ Unsafe HTTP methods acquire the shared advisory lock for their complete handler.
 Restore has two middleware boundaries. Global middleware takes a non-blocking admission mutex so only one restore request can enter authentication. After normal authentication and Admin role validation, route middleware marks maintenance active, rejects new ordinary requests, drains active requests, and acquires the exclusive advisory lock before calling the restore handler. Invalid callers release admission without activating maintenance.
 
 The supported deployment has one API process and one local database/filesystem installation. The barrier therefore defines the recovery boundary for all supported application mutation paths. Direct external writes to PostgreSQL or `STORAGE_DIR` are outside the operating model.
+
+## Admin-managed backup schedule
+
+`backup.local_volume` remains deployment-owned. Admin manages `backup.schedule_enabled` and `backup.interval` through the generic config PATCH alongside the two pagination keys. Interval validation requires `1m <= interval <= 168h`; every accepted update is audited.
+
+The scheduler has no environment-variable enable switch. It evaluates the persisted values once at startup and every minute. Each evaluation reloads both keys, checks `MAX(created_at)` for completed scheduled jobs, and invokes the strict worker only when enabled and due. The schedule therefore survives restart and changes take effect without restart. Scheduled jobs still use the system principal and exclusive operation barrier.
 
 ## Package boundaries
 
@@ -67,31 +82,35 @@ Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
 
 Admin reads and replaces the ordered persisted chain through `/api/admin/workflow-statuses`. `Draft` remains the first mutable state and `Finalized` remains the last immutable state. A replacement must retain every status currently used by a document. Runtime transition and finalization resolve the next state from `workflow_status_definitions`; they do not use a hard-coded chain for request validation.
 
-A transition locks the document and commits the document state, status history, audit record, and owner notification together. Finalized is terminal; every document mutation rejects a Finalized record.
+A transition locks the document and commits the document state, status history, audit record, and owner notification together. Finalized is terminal. Existing durable mutation routes return `409 DOCUMENT_FINALIZED`: rollback, redaction proposal/confirmation, annotation creation/disposition, Bates, persisted comparison creation, workflow transition, and repeated finalization. The API has no document replacement or metadata mutation route. Finalized denials leave versions/files, redactions, annotations, persisted diffs, history, audit, and notifications unchanged.
 
-## Redaction, Bates, and comparison
+## PDF validation, revision ceiling, redaction, Bates, and comparison
 
-Redaction is a two-phase operation. A proposal stores protected coordinate-bound metadata with its audit in one transaction. Confirmation locks the staged proposal and document, produces a strict redacted PDF, verifies it, then commits the new version, document pointer/status, proposal state, history/notification when applicable, and audit together. Failed persistence removes the generated PDF.
+PDF intake first validates size/header and then uses the local PDF page-tree parser. Raw `/Type /Page` substring counting is not used. The parser resolves `/Pages` roots, compressed streams, and compressed object streams. Structural errors, zero pages, and page counts above 500 are rejected. The persisted parsed count is the Bates page-number range input.
 
-Bates numbering locks the document and global sequence, reserves the complete page-number range, produces and verifies the visible-numbered PDF, then commits the range, Bates job, version, document pointer, and audit together. Failed work rolls back the sequence and removes the generated PDF.
+The shared version helper permits 49 → 50 and rejects 50 → 51. Redaction checks the ceiling before output-file generation. Bates checks it before global sequence allocation. Both write `document_versions` and `document_files` together. Rollback only selects an existing version and creates no revision.
 
-Version comparison extracts structured text and location data to report added, removed, and modified blocks with page and bounding-box information.
+Redaction is a two-phase operation. A proposal stores protected coordinate-bound metadata with its audit in one transaction. Confirmation locks the staged proposal and document, produces a strict redacted PDF, verifies it, then commits the new version/file entity, document pointer/status, proposal state, `redaction_confirmations` row, history/notification when applicable, and audit together. Failed persistence removes the generated PDF.
+
+Bates numbering locks the document and global sequence, reserves the complete page-number range, produces and verifies the visible-numbered PDF, then commits the range, Bates job, version/file entity, document pointer, and audit together. Failed work rolls back the sequence and removes the generated PDF.
+
+Version comparison extracts structured text and location data to report added, removed, and modified blocks with page and bounding-box information. The result is encrypted and persisted in `document_diffs`; its audit commits in the same transaction. Because comparison creates durable metadata, either source document being Finalized is rejected before diff generation or persistence.
 
 ## Authentication, sessions, freshness, and replay
 
 Passwords are compared through bcrypt verifiers stored in protected form. Password inputs are validated against bcrypt's 72-byte limit. Failed attempts in the preceding 15 minutes are counted under a user row lock; the fifth attempt applies a 15-minute lock. Failed-attempt state and audit, successful reset/session creation and audit, and logout blacklist/session revocation and audit each commit atomically.
 
-JWTs are locally signed. PostgreSQL session state remains required for inactivity expiration and immediate logout. Authenticated requests require a fresh `X-Request-Timestamp` and unique `X-Request-ID`; blacklist reads, replay writes, and session updates fail closed.
+JWTs are locally signed. PostgreSQL session state remains required for inactivity expiration and immediate logout. Authenticated requests require a fresh `X-Request-Timestamp` and unique `X-Request-ID`; blacklist reads, replay writes, and session updates fail closed. Freshness is an absolute inclusive 60-second window, so an exact 60-second difference is accepted and 61 seconds is rejected. Replay uniqueness is the `(request_id,jti)` key, so one JWT cannot reuse an ID while a different JTI may use the same value.
 
 ## Protected metadata and audit reads
 
 AES-256-GCM columns hold sensitive source values. Deterministic lookup keys are used only for equality lookup. Audit writes store source IP and structured metadata in ciphertext columns plus a deterministic source-IP lookup. Startup backfills that lookup for existing rows. The Admin audit route queries typed protected rows, decrypts source IP and JSON metadata before response, and never treats blank compatibility columns as the source of truth.
 
-Restore lifecycle journals are encrypted as local AES-256-GCM envelopes. PostgreSQL command passwords are supplied through short-lived mode-`0600` `PGPASSFILE` files and are absent from `pg_dump`/`pg_restore` arguments.
+Restore lifecycle journals are encrypted as local AES-256-GCM envelopes. PostgreSQL command passwords are supplied through short-lived mode-`0600` `PGPASSFILE` files and are absent from `pg_dump`/`pg_restore` arguments. Document diff result payloads are also stored only as protected ciphertext.
 
 ## Configuration ownership
 
-`backup.local_volume` is deployment-owned and startup refreshes it from `BACKUP_DIR`; the generic Admin PATCH route rejects it. The generic route manages only the two pagination keys. Their rows are locked together and a proposed update must preserve `1 <= default <= max <= 100` before the transaction writes either value. Pagination clamps extremely large page numbers before multiplying the offset.
+`backup.local_volume` is deployment-owned and startup refreshes it from `BACKUP_DIR`; the generic Admin PATCH route rejects it. The generic route manages pagination and backup schedule keys only. Pagination rows are locked together and a proposed update must preserve `1 <= default <= max <= 100`. Backup schedule values are validated by type and duration bounds. Pagination clamps extremely large page numbers before multiplying the offset.
 
 ## Backup and recovery
 

@@ -25,7 +25,7 @@ The Dockerfile uses two stages:
 1. the Go builder resolves modules, generates Swagger, and compiles the server binary;
 2. the runtime stage packages PostgreSQL, the binary, migrations, the canonical acceptance UI, and the entrypoint at installation-specific generated paths.
 
-The runtime image includes `pg_dump` and `pg_restore` for database backup/restore, `tar` for filesystem snapshots, `pdftotext` from `poppler-utils` for text extraction, and Python with `pypdf` and `reportlab` for local PDF rewriting. Runtime credentials, database identity, listener ports, and data paths are not stored as fixed image defaults.
+The runtime image includes `pg_dump` and `pg_restore` for database backup/restore, `tar` for filesystem snapshots, `pdftotext` from `poppler-utils` for text extraction, and Python with `pypdf` and `reportlab` for local strict PDF rewriting. The Go binary contains the local `pdfcpu` parser used for page-tree validation and page counts. Runtime credentials, database identity, listener ports, and data paths are not stored as fixed image defaults.
 
 ## First deployment
 
@@ -48,13 +48,7 @@ No database identity, port, filesystem path, credential, signing key, encryption
 
 The availability probe reduces first-start collisions. It does not remove the operating-system race between probing and Docker binding; Compose remains the final authority and fails rather than silently changing persisted configuration.
 
-Running the same command again reuses the existing `.env`:
-
-```bash
-bash scripts/deploy.sh
-```
-
-This preserves the PostgreSQL identity and password, JWT signing material, AES encryption material, generated ports, paths, and persistent-volume targets for the installation. Existing installation ports are not regenerated during restart.
+Running the same command again reuses the existing `.env` and PostgreSQL volume. This preserves database identity and password, JWT signing material, AES encryption material, generated ports, paths, users, backup schedule settings, and other PostgreSQL configuration.
 
 ## Find the service URL
 
@@ -100,6 +94,21 @@ PGPORT            <- DB_PORT
 ```
 
 The image, Compose file, and Go application do not supply alternative local defaults. An incomplete runtime file fails validation.
+
+## Backup schedule ownership
+
+The deployment file intentionally contains no `BACKUP_INTERVAL`. Backup scheduling is Admin-managed PostgreSQL state:
+
+```text
+backup.schedule_enabled
+backup.interval
+```
+
+Migration initializes the schedule disabled with a `24h` interval. Admin can enable it and set an interval from `1m` through `168h` through `PATCH /api/admin/config/:key`. The scheduler reads the persisted values at startup and every minute, so changes survive restart and do not require Compose or environment-file changes. `BACKUP_DIR` itself remains deployment-owned and is exposed read-only as `backup.local_volume`.
+
+## Required schema migration
+
+Startup applies migrations in filename order. Migration `004_required_entities_and_backup_schedule.sql` creates and backfills `document_files`, `redaction_confirmations`, and `document_diffs`, then seeds the backup schedule rows. A retained installation must use the same generated `MIGRATIONS_DIR`; skipping this migration is unsupported.
 
 ## Customize a clean installation
 
@@ -168,7 +177,7 @@ The sole deployed acceptance HTML file is `public/index.html`. It contains no cr
 
 ## Evidence boundary
 
-Static source inspection can establish configuration ownership, loopback selection logic, port-probe logic, image stages, runtime dependency declarations, and path consistency. It cannot prove that a particular host port remained free until Docker bound it, or that startup, login, restart, PDF, RBAC, backup/restore, browser interaction, or complete regression succeeded.
+Static source inspection can establish configuration ownership, loopback selection logic, port-probe logic, image stages, runtime dependency declarations, migration inclusion, database-backed scheduler configuration, and path consistency. It cannot prove that a particular host port remained free until Docker bound it, or that startup, login, restart, PDF, RBAC, backup/restore, browser interaction, or complete regression succeeded.
 
 Runtime claims require a pre-existing artifact tied to the exact revision. The supported complete command is:
 

@@ -18,9 +18,11 @@ Authenticated endpoints require:
 
 ```text
 Authorization: Bearer <token>
-X-Request-ID: unique request id
-X-Request-Timestamp: RFC3339 timestamp within 60 seconds
+X-Request-ID: unique request id per JWT/JTI
+X-Request-Timestamp: RFC3339 timestamp within 60 seconds in either direction
 ```
+
+An absolute timestamp difference of exactly 60 seconds is accepted. A request 61 seconds old or 61 seconds in the future returns `401 REQUEST_EXPIRED`. Reusing the same request ID with the same JWT/JTI returns `409 REPLAY_DETECTED`; the replay key is scoped by JTI.
 
 Errors use:
 
@@ -44,7 +46,7 @@ During authorized restore maintenance, non-owner requests return `503` with `err
 
 | Role | Responsibilities |
 |---|---|
-| Admin | users, validated configuration, persisted workflow definitions, templates, audit logs, backup and restore |
+| Admin | users, pagination and backup schedule configuration, persisted workflow definitions, templates, audit logs, backup and restore |
 | Editor | owned-document upload, batch import, rollback, redaction confirmation, Bates, finalization |
 | Reviewer | readable-document review, annotations/dispositions, permitted workflow transitions |
 
@@ -87,21 +89,33 @@ The generic config PATCH accepts only:
 ```text
 pagination.default_page_size
 pagination.max_page_size
+backup.schedule_enabled
+backup.interval
 ```
 
-The request is:
+Examples:
 
 ```json
 {"value": "25"}
 ```
 
-Both persisted pagination rows are locked and validated as one pair before update. The pair must satisfy `1 <= default <= max <= 100`.
+```json
+{"value": "true"}
+```
+
+```json
+{"value": "30m"}
+```
+
+Both persisted pagination rows are locked and validated as one pair before update. The pair must satisfy `1 <= default <= max <= 100`. `backup.schedule_enabled` must parse as Boolean. `backup.interval` must be a Go duration between `1m` and `168h`. Both backup values are persisted in PostgreSQL, audited as `CONFIG_UPDATE`, and reloaded by the scheduler at startup and every minute; no process restart is required.
 
 | Condition | Status | Error code |
 |---|---:|---|
 | non-integer or invalid pagination pair | 400 | `INVALID_CONFIG_VALUE` |
+| invalid backup Boolean or interval | 400 | `INVALID_CONFIG_VALUE` |
 | unknown generic key | 400 | `CONFIG_KEY_NOT_MANAGED` |
 | deployment-owned `backup.local_volume` | 409 | `CONFIG_KEY_READ_ONLY` |
+| non-Admin update | 403 | `FORBIDDEN` |
 
 #### Workflow definitions
 
@@ -124,6 +138,8 @@ The array is the complete ordered chain. `Draft` must be first/mutable, `Finaliz
 #### Backup and restore
 
 Manual backup acquires an exclusive application mutation barrier before metadata collection, PostgreSQL dump and filesystem snapshot. It returns both strict artifact paths. Scheduled backup uses the same barrier and attributes its job/audit to the reserved system principal.
+
+The scheduler reads `backup.schedule_enabled` and `backup.interval` from PostgreSQL. It evaluates once at startup and then every minute. If enabled and the last completed scheduled backup is at least one configured interval old, it runs the strict worker. The persisted schedule survives restart and is included in backup table metadata.
 
 Restore requires both paths:
 
@@ -168,7 +184,23 @@ POST /api/admin/backup/restore/rst_example/resolve
 
 The initial chain is `Draft -> Under Review -> Redaction Pending -> Approved -> Finalized`. Runtime transition validation reads the persisted ordered definitions. A successful transition/finalization includes document state, status history, audit and owner notification in one transaction. Finalized is terminal.
 
-Comparison returns structured text changes with page and bounding-box data.
+PDF upload performs structural page-tree parsing. Invalid or zero-page files and files above 500 pages are rejected. `/Type /Pages` roots, compressed content streams, and page objects in compressed object streams are handled by the parser rather than counted as raw byte tokens.
+
+`document_versions` stores revision identity/order. `document_files` stores path, SHA-256, byte size, parsed page count, creator, and creation time for each version. Upload, redaction, and Bates commit the version/file pair together. Creation of version 50 is allowed from version 49; creation of version 51 returns `VERSION_LIMIT_REACHED` before output generation or Bates range allocation. Rollback selects an existing version and creates no new revision.
+
+Comparison returns an `id` plus structured text changes with page and bounding-box data:
+
+```json
+{
+  "id": "dif_example",
+  "data": {
+    "left_version_id": "ver_left",
+    "right_version_id": "ver_right"
+  }
+}
+```
+
+The complete result is encrypted into `document_diffs`; persistence and `DOCUMENT_DIFF_CREATE` audit commit in one transaction. Because compare creates durable metadata, either source document being Finalized causes `409 DOCUMENT_FINALIZED` before diff generation or persistence.
 
 ### Redactions, annotations, and Bates
 
@@ -182,9 +214,11 @@ Comparison returns structured text changes with page and bounding-box data.
 | PATCH | `/api/annotations/:id/disposition` | Reviewer + object policy |
 | POST | `/api/documents/:id/bates` | Editor + object policy |
 
-Redaction confirmation creates and verifies a strict new PDF version. Failed persistence removes the generated file. Annotation creation commits encrypted comment, audit, and mention notifications together; list responses decrypt the comment.
+Redaction confirmation creates and verifies a strict new PDF version, its `document_files` row, and one `redaction_confirmations` row linking proposal, source version, result version, and acting user. Failed persistence removes the generated file. Annotation creation commits encrypted comment, audit, and mention notifications together; list responses decrypt the comment.
 
-Bates reserves a global range equal to the source page count. The response includes `start_number` and `end_number`. Range reservation, Bates job, version, document pointer and audit commit together; failure rolls back the range and removes the generated file.
+Bates reserves a global range equal to the parsed source page count. The response includes `start_number` and `end_number`. Version limit validation happens before range allocation. Range reservation, Bates job, version, `document_files` row, document pointer and audit commit together; failure rolls back the range and removes the generated file.
+
+Every existing mutation route for a Finalized document returns `409 DOCUMENT_FINALIZED`: rollback, redaction proposal/confirmation, annotation creation/disposition, Bates, persisted comparison creation, workflow transition, and repeated finalization. There is no document-replacement or metadata-mutation route in this backend API. Denials do not alter versions, files, redactions, annotations, persisted diffs, history, audit, or notifications.
 
 ### Audit and notifications
 

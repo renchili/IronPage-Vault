@@ -69,8 +69,17 @@ func TestFreshnessAndLockoutRules(t *testing.T) {
 	if !IsRequestTimestampFresh(now, now.Add(-30*time.Second), time.Minute) {
 		t.Fatalf("fresh timestamp rejected")
 	}
-	if IsRequestTimestampFresh(now, now.Add(-2*time.Minute), time.Minute) {
-		t.Fatalf("stale timestamp accepted")
+	if !IsRequestTimestampFresh(now, now.Add(-time.Minute), time.Minute) {
+		t.Fatalf("exact 60-second-old timestamp should be accepted")
+	}
+	if !IsRequestTimestampFresh(now, now.Add(time.Minute), time.Minute) {
+		t.Fatalf("exact 60-second-future timestamp should be accepted")
+	}
+	if IsRequestTimestampFresh(now, now.Add(-61*time.Second), time.Minute) {
+		t.Fatalf("61-second-old timestamp accepted")
+	}
+	if IsRequestTimestampFresh(now, now.Add(61*time.Second), time.Minute) {
+		t.Fatalf("61-second-future timestamp accepted")
 	}
 	if ShouldLockAfterFailedAttempt(4) || !ShouldLockAfterFailedAttempt(5) {
 		t.Fatalf("lockout threshold mismatch")

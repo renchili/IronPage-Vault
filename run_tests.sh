@@ -239,6 +239,7 @@ api_stages=(
   api_contracts
   static_review_reject_flows
   acceptance_denials
+  request_guard_edges
   compare_acceptance
   finalized_immutability
   pdf_content_acceptance
@@ -260,6 +261,8 @@ else
   run_script static_review_reject_flows tests/api/test_static_review_reject_flows.sh
   load_api_tokens
   run_script acceptance_denials tests/api/test_acceptance_denials.sh
+  load_api_tokens
+  run_script request_guard_edges tests/api/test_request_guard_edges.sh
   load_api_tokens
   run_script compare_acceptance tests/api/test_compare_acceptance.sh
   load_api_tokens

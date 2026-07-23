@@ -51,15 +51,19 @@ func (a *App) applyBatesVersion(c echo.Context) error {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "document is outside this editor scope")
 	}
 	var v DocumentVersion
-	if err := tx.GetContext(c.Request().Context(), &v, `SELECT * FROM document_versions WHERE document_id=$1 AND version_number=$2`, docID, d.CurrentVersion); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &v, `SELECT version.id,version.document_id,version.version_number,file.file_path,file.file_sha256,file.size_bytes,file.page_count,version.created_by,version.created_at FROM document_versions AS version JOIN document_files AS file ON file.version_id=version.id WHERE version.document_id=$1 AND version.version_number=$2`, docID, d.CurrentVersion); err != nil {
 		return apiErr(c, http.StatusNotFound, "VERSION_NOT_FOUND", "current version not found")
 	}
-	if d.CurrentVersion >= a.cfg.MaxVersions {
+	newVersion, err := nextDocumentVersion(d.CurrentVersion, a.cfg.MaxVersions)
+	if errors.Is(err, errVersionLimitReached) {
 		return apiErr(c, http.StatusConflict, "VERSION_LIMIT_REACHED", "document already has 50 versions")
+	}
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "VERSION_LIMIT_ERROR", "could not validate document version limit")
 	}
 	pageCount := v.PageCount
 	if pageCount < 1 {
-		pageCount = 1
+		return apiErr(c, http.StatusInternalServerError, "VERSION_PAGE_COUNT_INVALID", "current version has an invalid page count")
 	}
 	allocatedStart, err := repository.AllocateBatesRange(c.Request().Context(), tx, req.Start, pageCount)
 	if err != nil {
@@ -69,7 +73,6 @@ func (a *App) applyBatesVersion(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "BATES_SEQUENCE_ERROR", "could not reserve Bates sequence")
 	}
 	req.Start = NormalizeBatesStart(allocatedStart)
-	newVersion := d.CurrentVersion + 1
 	dst := batesVersionPath(v.FilePath, newVersion)
 	committed := false
 	defer func() {
@@ -91,6 +94,9 @@ func (a *App) applyBatesVersion(c echo.Context) error {
 	}
 	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO document_versions(id,document_id,version_number,file_path,file_sha256,size_bytes,page_count,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW())`, verID, docID, newVersion, dst, info.SHA256, info.Size, info.PageCount, p.UserID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "VERSION_CREATE_ERROR", "could not create Bates version")
+	}
+	if err := insertDocumentFileWithExecutor(c.Request().Context(), tx, docID, verID, dst, info.SHA256, info.Size, info.PageCount, p.UserID); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_FILE_CREATE_ERROR", "could not record Bates document file")
 	}
 	if _, err := tx.ExecContext(c.Request().Context(), `UPDATE documents SET current_version=$1,updated_at=NOW() WHERE id=$2`, newVersion, docID); err != nil {
 		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_UPDATE_ERROR", "could not activate Bates version")

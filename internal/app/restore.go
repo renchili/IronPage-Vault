@@ -92,8 +92,13 @@ func (a *App) restoreBackupLocked(c echo.Context) error {
 		return apiErr(c, http.StatusBadRequest, "RESTORE_ARTIFACT_REQUIRED", "strict restore requires valid database and filesystem artifacts")
 	}
 
+	if err := RunMigrations(a.db, a.cfg.MigrationsDir); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "RESTORE_SCHEMA_ERROR", "restore was applied but required schema migrations could not be completed")
+	}
+
 	completed := cloneRestoreMetadata(baseMetadata)
 	completed["result"] = result
+	completed["schema_migrations_applied"] = true
 	record.Status = restoreStatusCompleted
 	record.Action = "BACKUP_RESTORE_COMPLETED"
 	record.OutcomeActorUserID = p.UserID

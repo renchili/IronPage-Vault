@@ -46,7 +46,7 @@ SEED_EDITOR_PASSWORD
 SEED_REVIEWER_PASSWORD
 ```
 
-When absent, affected stages are `SKIP`, the report is `INCOMPLETE`, and exit status is `2`. The report describes only rows in `results.tsv`; a probe cannot claim unexecuted RBAC, PDF, backup, browser, Docker, or full-regression coverage.
+When absent, affected stages are `SKIP`, the report is `INCOMPLETE`, and exit status is `2`. The report describes only rows in `results.tsv`; a probe cannot claim unexecuted RBAC, PDF, backup, browser, Docker, or full-regression coverage. When credentials are present, the local stateful stage list includes the real freshness/replay middleware suite as `request_guard_edges`.
 
 ## Static GitHub acceptance
 
@@ -65,7 +65,7 @@ Admission behavior:
 - ordinary reruns are denied;
 - one-time unlock requires the canonical target, exact failed run ID, reviewed reason, same revision, and unused marker.
 
-The later job defines static checks for workflow/shell/Python syntax, Go formatting, source inventory, documentation, repository/structure contracts, backup/metadata contracts, backup/restore integrity, and Swagger routes. The successful source inventory is retained only after every static gate succeeds.
+The later job defines static checks for workflow/shell/Python syntax, Go formatting, source inventory, documentation, repository/structure contracts, scheduled backup, metadata storage, backup/restore integrity, and Swagger routes. The successful source inventory is retained only after every static gate succeeds.
 
 GitHub creates a workflow-run object before YAML admission executes. The repository provides pre-checkout rejection and active-run collapse, not platform-level pre-dispatch prevention.
 
@@ -73,24 +73,51 @@ GitHub creates a workflow-run object before YAML admission executes. The reposit
 
 Static contracts require:
 
-- upload document/version/audit to share one transaction and remove an orphan directory on failure;
+- upload to commit document, version, `document_files`, and audit in one transaction and remove an orphan directory on failure;
+- redaction confirmation to commit version/file entity, proposal state, `redaction_confirmations`, document state, history/notification, and audit together;
+- Bates page-number range, job, version/file entity, document pointer and audit to commit together;
+- comparison to commit protected `document_diffs` and `DOCUMENT_DIFF_CREATE` audit together;
 - workflow/finalization document/history/audit/notification to share one transaction;
 - Admin workflow PUT to validate ordered definitions and runtime transitions to query persisted definitions;
-- redaction proposal/confirmation and annotation/mention side effects to check every write;
-- Bates page-range reservation, job, version, document pointer and audit to commit together;
+- annotation/mention side effects to check every write;
 - audit source IP/metadata to use ciphertext, deterministic source lookup/backfill, response decryption, and a non-empty acting user;
 - backup artifact cleanup when job/audit persistence fails;
 - every application mutation to participate in the shared advisory barrier;
 - manual and scheduled backup to hold the exclusive barrier across PostgreSQL dump and filesystem tar;
 - scheduled backup job/audit attribution to use the protected system principal;
+- scheduled backup settings to be Admin-managed, PostgreSQL-persisted, range-validated, reloaded at startup and every minute, and independent of `BACKUP_INTERVAL`;
 - global restore admission to prevent concurrent restore authentication;
 - authenticated Admin restore to activate route maintenance before handler work, reject new requests, drain active requests and prevent live mutation;
 - staged restore path validation, filesystem rollback and PostgreSQL single-transaction mode;
 - a Requested journal with no durable platform result to become Interrupted/unknown rather than Failed;
 - Interrupted resolution to require an Admin, Completed or Failed conclusion, and a non-empty verification note;
-- Admin config to reject deployment-owned/unknown keys and invalid pagination pairs before persistence;
+- Admin config to reject deployment-owned/unknown keys and invalid pagination or backup schedule values before persistence;
 - PostgreSQL child argv to exclude database passwords and use a mode-`0600` PGPASSFILE;
 - page values to clamp before offset multiplication.
+
+## Required boundary and negative definitions
+
+| Requirement | Definition |
+|---|---|
+| exact 60-second freshness accepted in either direction | `TestFreshnessAndLockoutRules` |
+| 59-second freshness accepted by middleware | `tests/api/test_request_guard_edges.sh` |
+| 61-second old/future timestamps rejected | `tests/api/test_request_guard_edges.sh` |
+| same JWT/JTI request ID replay rejected | `tests/api/test_request_guard_edges.sh` |
+| different JWT/JTI replay scope | `tests/api/test_request_guard_edges.sh` |
+| 0/1/499/500/501 PDF pages | `TestInspectPDFPageBoundaries` |
+| `/Pages` root and compressed token false positives | `TestInspectPDFIgnoresPagesRootAndCompressedStreamTokens` |
+| page object in compressed object stream | `TestInspectPDFReadsPageFromCompressedObjectStream` |
+| malformed PDF rejection | `TestInspectPDFRejectsMalformedPDF` |
+| 49 → 50 allowed | `TestVersionLimitAllowsFortyNineToFifty` |
+| 50 → 51 rejected | `TestVersionLimitRejectsFiftyToFiftyOne` |
+| rollback target within ceiling | `TestRollbackVersionMustRemainWithinCeiling` |
+| Admin backup Boolean/interval validation | `TestBackupScheduleConfigurationValidation`, `tests/api/test_admin_ops.sh` |
+| scheduler restart/reload source contract | `ci/scheduled_backup_contract_check.sh` |
+| complete Finalized mutation matrix | `tests/api/test_finalized_immutability.sh` |
+
+The Finalized definition stages a redaction and annotation before finalization, then verifies rejection of rollback, redaction proposal, redaction confirmation, annotation creation, annotation disposition, Bates, persisted comparison creation, workflow transition, and repeated finalization. It snapshots and rechecks version, redaction, annotation, audit, and notification counts. The one-to-one unique `document_files.version_id` contract makes an unchanged version set the API-visible file-entity boundary; repository contracts additionally verify that Finalized checks precede comparison generation and document/history write paths. The backend has no replacement-upload or metadata-mutation route, so those categories are statically verified as absent rather than represented by invented endpoints.
+
+Version-limit source ordering is also guarded: redaction must call `nextDocumentVersion` before `ApplyRedactionBurnIn`; Bates must call it before `AllocateBatesRange`. This establishes that revision 51 cannot create an orphan output or partially reserve the global sequence.
 
 ## Recovery and configuration test definitions
 
@@ -102,6 +129,7 @@ Static contracts require:
 | Requested becomes Interrupted/unknown | `TestRequestedRestoreBecomesInterruptedNotFailed` |
 | lifecycle journal encryption/plaintext rejection | `internal/app/restore_lifecycle_test.go` |
 | pagination pair bounds and config ownership | `internal/app/config_management_test.go` |
+| backup schedule validation | `internal/app/backup_scheduler_test.go`, `internal/app/backup_interval_test.go` |
 | maximum page offset cannot overflow | `TestMaximumPageOffsetDoesNotOverflowInt` |
 | password-free pg_dump/pg_restore argv | `TestPostgresCommandArgumentsExcludePassword` |
 | PGPASSFILE mode and escaping | `TestPGPassFileUsesRestrictedModeAndEscaping` |
@@ -111,7 +139,7 @@ Static contracts require:
 | complete source-shape guard | `tests/contracts/backup_restore_integrity.sh` |
 | complete Swaggo route inventory | `tests/contracts/swagger_route_coverage.sh` |
 
-`internal/app/workflow_definitions_test.go` defines ordered definitions and ordered-chain validation. `internal/app/pii_storage_test.go` defines encrypted and legacy audit response opening. `tests/api/test_admin_ops.sh` defines Admin workflow replacement, non-Admin denial, opened audit fields, strict backup/restore, configuration ownership, range validation and reconciliation errors.
+`internal/app/workflow_definitions_test.go` defines ordered definitions and ordered-chain validation. `internal/app/pii_storage_test.go` defines encrypted and legacy audit response opening. `tests/api/test_admin_ops.sh` defines Admin workflow replacement, backup schedule management, non-Admin denial, opened audit fields, strict backup/restore, configuration ownership, range validation and reconciliation errors.
 
 ## Docker and API acceptance definitions
 
@@ -123,11 +151,13 @@ The orchestrator is defined to create independent generated runtime files withou
 
 - generated bootstrap/restart behavior;
 - rolling lockout, login/session/logout failure handling and audit;
+- real timestamp freshness and replay rejection through authentication middleware;
 - role and object-access positive/negative paths;
-- persisted workflow management, transitions, history, notification and terminal immutability;
-- strict redaction, transactional Bates numbering and structured comparison;
+- persisted workflow management, transitions, history, notification and complete terminal immutability;
+- strict redaction, transactional Bates numbering, persisted required entities, and structured comparison;
+- 500-page and 50-revision boundary definitions;
 - audit filtering/decryption, annotations, mention notifications and read acknowledgement;
-- backup artifacts, restore state, maintenance and recovery;
+- backup artifacts, persisted schedule, restore state, maintenance and recovery;
 - Admin configuration ownership and pagination integrity;
 - uniform errors and pagination.
 

@@ -3,11 +3,25 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
+
+var errVersionLimitReached = errors.New("document version limit reached")
+
+func nextDocumentVersion(currentVersion, maxVersions int) (int, error) {
+	if currentVersion < 1 || maxVersions < 1 || currentVersion >= maxVersions {
+		return 0, errVersionLimitReached
+	}
+	return currentVersion + 1, nil
+}
+
+func validRollbackVersion(version, maxVersions int) bool {
+	return version >= 1 && version <= maxVersions
+}
 
 func (a *App) ensureMutableWithExecutor(ctx context.Context, executor sqlx.ExtContext, docID string, lock bool) (Document, error) {
 	var d Document

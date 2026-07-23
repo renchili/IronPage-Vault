@@ -8,7 +8,18 @@ type BackupTableCount struct {
 }
 
 func BackupSnapshotTables() []string {
-	return []string{"users", "documents", "document_versions", "audit_logs", "notifications", "backup_jobs"}
+	return []string{
+		"users",
+		"documents",
+		"document_versions",
+		"document_files",
+		"redaction_confirmations",
+		"document_diffs",
+		"audit_logs",
+		"notifications",
+		"config_entries",
+		"backup_jobs",
+	}
 }
 
 func (r Repository) CountBackupTables(ctx context.Context) ([]BackupTableCount, error) {

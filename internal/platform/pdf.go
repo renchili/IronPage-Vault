@@ -1,11 +1,12 @@
 package platform
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/pdfcpu/pdfcpu/pkg/api"
 )
 
 // PDFInfo describes locally inspected PDF metadata used by document intake.
@@ -15,11 +16,8 @@ type PDFInfo struct {
 	SHA256    string
 }
 
-// InspectPDF validates a local PDF file and returns lightweight intake metadata.
-//
-// This helper intentionally stays local and deterministic: it checks the PDF
-// header, size limit, approximate page count, and file digest without calling a
-// remote processor.
+// InspectPDF validates a local PDF file and returns intake metadata from a real
+// PDF page-tree parse. It never infers pages from byte substrings.
 func InspectPDF(path string, maxBytes int64, maxPages int) (PDFInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -43,17 +41,12 @@ func InspectPDF(path string, maxBytes int64, maxPages int) (PDFInfo, error) {
 		return PDFInfo{}, fmt.Errorf("not a pdf file")
 	}
 
-	if _, err := f.Seek(0, 0); err != nil {
-		return PDFInfo{}, err
-	}
-	raw, err := io.ReadAll(f)
+	pages, err := api.PageCountFile(path)
 	if err != nil {
-		return PDFInfo{}, err
+		return PDFInfo{}, fmt.Errorf("invalid pdf structure: %w", err)
 	}
-
-	pages := bytes.Count(raw, []byte("/Type /Page"))
-	if pages == 0 {
-		pages = 1
+	if pages < 1 {
+		return PDFInfo{}, fmt.Errorf("pdf contains no pages")
 	}
 	if pages > maxPages {
 		return PDFInfo{}, fmt.Errorf("pdf exceeds max page count")

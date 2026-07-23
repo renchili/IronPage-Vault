@@ -16,7 +16,7 @@ The implemented recovery boundary is strict logical backup and restore:
 - an exclusive application mutation barrier across dump and tar; and
 - restore that succeeds only after both artifacts are applied.
 
-Automated WAL archiving, scheduled physical base backups, and timestamp-target physical restore are not implemented or claimed.
+Admin-managed scheduled logical backup uses the same boundary. Its enable flag and interval are PostgreSQL configuration, so they are included in the dump and restored with the installation. Automated WAL archiving, scheduled physical base backups, and timestamp-target physical restore are not implemented or claimed.
 
 ## Recovery inputs
 
@@ -31,11 +31,13 @@ When an operator independently enables physical PostgreSQL PITR, its base-backup
 
 ## Database and filesystem consistency
 
-PostgreSQL stores each PDF version path and hash. The generated filesystem target stores the binary. Both must be restored to the same recovery boundary:
+PostgreSQL stores version identity in `document_versions` and file path, digest, size, and parsed page count in `document_files`. The generated filesystem target stores the binary. Both must be restored to the same recovery boundary:
 
 ```text
-document_versions.file_path -> restored local PDF file
+document_versions.id -> document_files.version_id -> restored local PDF file
 ```
+
+`redaction_confirmations` links proposals to source/result versions. `document_diffs` contains encrypted comparison results and version references. These entities, audit rows, notifications, and backup schedule configuration are restored through the same database dump.
 
 Every supported application mutation acquires a shared advisory lock. Backup acquires the corresponding exclusive lock before `pg_dump` and keeps it through the filesystem tar, so the two artifacts are created while application state is write-quiescent. Restoring database metadata without the corresponding file snapshot is not supported.
 
@@ -46,10 +48,11 @@ Every supported application mutation acquires a shared advisory lock. Backup acq
 3. Submit both artifacts to `POST /api/admin/backup/restore`.
 4. The service enters code-enforced maintenance, drains active requests, blocks new requests and application mutations, stages the filesystem, and runs `pg_restore --single-transaction`.
 5. Verify the restore response and the Completed job/audit state.
-6. If startup reports an Interrupted restore, inspect the database and filesystem because the result is unknown; then submit an Admin Completed or Failed resolution with a concrete verification note.
-7. Verify the generated health URL after maintenance ends.
-8. Verify representative metadata, version downloads, audit records, workflow state, notifications, backup metadata and sampled file hashes.
+6. Verify representative `document_versions`/`document_files` pairs, redaction confirmations, protected document diffs, backup schedule rows, and corresponding filesystem paths/hashes.
+7. If startup reports an Interrupted restore, inspect the database and filesystem because the result is unknown; then submit an Admin Completed or Failed resolution with a concrete verification note.
+8. Verify the generated health URL after maintenance ends.
+9. Verify representative metadata, version downloads, audit records, workflow state, notifications, backup metadata and sampled file hashes.
 
 ## Evidence boundary
 
-Strict backup/restore source paths, application barriers, maintenance, Interrupted resolution and contracts can be inspected statically. A successful recovery claim requires an executed restore artifact tied to the exact tested revision and recovery inputs. No documentation or static report may be treated as proof of automated physical PITR.
+Strict backup/restore source paths, the exclusive application mutation barrier, persisted schedule, code-enforced maintenance, Interrupted resolution and contracts can be inspected statically. A successful recovery claim requires an executed restore artifact tied to the exact tested revision and recovery inputs. No documentation or static report may be treated as proof of automated physical PITR.

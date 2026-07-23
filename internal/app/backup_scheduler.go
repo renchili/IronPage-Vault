@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"ironpage-vault/internal/platform"
@@ -13,28 +15,82 @@ import (
 	"ironpage-vault/internal/service"
 )
 
+const backupSchedulePollInterval = time.Minute
+
+type backupSchedule struct {
+	Enabled  bool
+	Interval time.Duration
+}
+
 func backupInterval(value string) time.Duration {
-	if value == "" {
-		return 0
-	}
 	interval, err := time.ParseDuration(value)
-	if err != nil || interval <= 0 {
+	if err != nil || interval < minimumBackupInterval || interval > maximumBackupInterval {
 		return 0
 	}
 	return interval
 }
 
-func (a *App) startBackupScheduler() {
-	interval := backupInterval(os.Getenv("BACKUP_INTERVAL"))
-	if interval == 0 {
-		return
+func (a *App) loadBackupSchedule(ctx context.Context) (backupSchedule, error) {
+	rows := []paginationConfigRow{}
+	if err := a.db.SelectContext(ctx, &rows, `SELECT key,value FROM config_entries WHERE key IN ($1,$2)`, backupScheduleEnabledKey, backupScheduleIntervalKey); err != nil {
+		return backupSchedule{}, err
 	}
+	values := map[string]string{}
+	for _, row := range rows {
+		values[row.Key] = row.Value
+	}
+	enabledRaw, enabledOK := values[backupScheduleEnabledKey]
+	intervalRaw, intervalOK := values[backupScheduleIntervalKey]
+	if !enabledOK || !intervalOK {
+		return backupSchedule{}, fmt.Errorf("backup schedule configuration is incomplete")
+	}
+	enabled, err := strconv.ParseBool(enabledRaw)
+	if err != nil {
+		return backupSchedule{}, fmt.Errorf("invalid persisted backup schedule enabled value: %w", err)
+	}
+	interval := backupInterval(intervalRaw)
+	if interval == 0 {
+		return backupSchedule{}, fmt.Errorf("invalid persisted backup interval")
+	}
+	return backupSchedule{Enabled: enabled, Interval: interval}, nil
+}
+
+func (a *App) scheduledBackupDue(ctx context.Context, interval time.Duration) (bool, error) {
+	var lastCompleted sql.NullTime
+	if err := a.db.GetContext(ctx, &lastCompleted, `SELECT MAX(created_at) FROM backup_jobs WHERE kind='scheduled_full_backup' AND status='Completed'`); err != nil {
+		return false, err
+	}
+	if !lastCompleted.Valid {
+		return true, nil
+	}
+	return !time.Now().UTC().Before(lastCompleted.Time.UTC().Add(interval)), nil
+}
+
+func (a *App) runScheduledBackupIfDue(ctx context.Context) error {
+	schedule, err := a.loadBackupSchedule(ctx)
+	if err != nil {
+		return err
+	}
+	if !schedule.Enabled {
+		return nil
+	}
+	due, err := a.scheduledBackupDue(ctx, schedule.Interval)
+	if err != nil || !due {
+		return err
+	}
+	return a.runScheduledBackup(ctx)
+}
+
+func (a *App) startBackupScheduler() {
 	go func() {
-		ticker := time.NewTicker(interval)
+		if err := a.runScheduledBackupIfDue(context.Background()); err != nil {
+			log.Printf("scheduled backup evaluation failed: %v", err)
+		}
+		ticker := time.NewTicker(backupSchedulePollInterval)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := a.runScheduledBackup(context.Background()); err != nil {
-				log.Printf("scheduled backup failed: %v", err)
+			if err := a.runScheduledBackupIfDue(context.Background()); err != nil {
+				log.Printf("scheduled backup evaluation failed: %v", err)
 			}
 		}
 	}()
