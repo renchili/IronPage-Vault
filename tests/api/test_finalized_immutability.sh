@@ -20,7 +20,7 @@ read_count() {
   local token="$1" path="$2" name="$3"
   local code
   code=$(auth_get "$token" "$path")
-  expect_code "$name" 200 "$code" || return 1
+  expect_code "$name" 200 "$code" >&2 || return 1
   json_data_count
 }
 
@@ -42,7 +42,7 @@ REDACTION_ID="$(json_field id)"
 code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/$DOC_ID/workflow/transition" '{"status":"Under Review"}')
 expect_code "probe draft to under review" 200 "$code" || FAIL=$((FAIL+1))
 
-code=$(auth_post_json "$REVIEWER_TOKEN" "/api/documents/$DOC_ID/annotations" '{"type":"Comment","page":1,"comment":"annotation before finalization","disposition":"Needs Discussion"}')
+code=$(auth_post_json "$REVIEWER_TOKEN" "/api/documents/$DOC_ID/annotations" '{"type":"Sticky note","page":1,"comment":"annotation before finalization","disposition":"Needs Discussion"}')
 expect_code "create annotation before finalization" 201 "$code" || FAIL=$((FAIL+1))
 ANNOTATION_ID="$(json_field id)"
 
@@ -68,7 +68,7 @@ expect_finalized_denial "finalized document rejects redaction proposal" "$code" 
 code=$(auth_post_json "$EDITOR_TOKEN" "/api/documents/$DOC_ID/redactions/$REDACTION_ID/confirm" '{}')
 expect_finalized_denial "finalized document rejects redaction confirmation" "$code" || FAIL=$((FAIL+1))
 
-code=$(auth_post_json "$REVIEWER_TOKEN" "/api/documents/$DOC_ID/annotations" '{"type":"Comment","page":1,"comment":"must be rejected","disposition":"Needs Discussion"}')
+code=$(auth_post_json "$REVIEWER_TOKEN" "/api/documents/$DOC_ID/annotations" '{"type":"Sticky note","page":1,"comment":"must be rejected","disposition":"Needs Discussion"}')
 expect_finalized_denial "finalized document rejects annotation creation" "$code" || FAIL=$((FAIL+1))
 
 code=$(auth_patch_json "$REVIEWER_TOKEN" "/api/annotations/$ANNOTATION_ID/disposition" '{"disposition":"Approved"}')
