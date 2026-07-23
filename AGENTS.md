@@ -150,8 +150,10 @@ If this working record cannot be established, stop before editing files.
 Updating an existing file is the default. New files are forbidden unless one of these conditions is satisfied:
 
 1. the user explicitly requests the exact new repository path;
-2. a loaded rule names the exact required path and that path is genuinely absent;
+2. a loaded rule contains a task-specific mandatory statement naming the exact required path and that path is genuinely absent;
 3. a required production, schema, migration, or test component has no existing owner file and cannot be implemented correctly in the existing repository layout.
+
+Generic, default, example, fallback, suggested, or illustrative output-path lists in a Skill do not satisfy condition 2 and do not authorize creating files. A heading such as `Default outputs`, a reusable example, or a path mentioned only as a possible convention is not a task-specific mandate.
 
 A broad request such as `update documentation`, `add tests`, `generate a report`, `document the change`, `complete the project`, or `fix everything` does not authorize creating arbitrary files.
 
@@ -168,7 +170,7 @@ If that record cannot be established, do not create the file.
 Documentation rules are stricter:
 
 - update existing canonical documentation instead of creating another document;
-- do not create implementation-status, follow-up, review-fix, roadmap, questions, report, acceptance-summary, handoff, notes, checklist, or assistant-history documents unless the user explicitly names the exact path or a loaded rule mandates that exact path;
+- do not create implementation-status, follow-up, review-fix, roadmap, questions, report, acceptance-summary, handoff, notes, checklist, or assistant-history documents unless the user explicitly names the exact path or a task-specific mandatory rule requires that exact path;
 - do not create duplicate README files, alternate API documents, versioned copies, timestamped reports, or one-document-per-finding files;
 - do not turn a temporary working record, review report, tool output, or assistant explanation into repository documentation;
 - the existence of a `docs/` directory is not permission to add more files;
