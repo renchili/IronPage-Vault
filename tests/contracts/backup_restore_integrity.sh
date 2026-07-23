@@ -124,6 +124,7 @@ for phrase in \
   'rejects repeated finalization'; do
   require "$phrase" tests/api/test_finalized_immutability.sh "Finalized matrix missing: $phrase"
 done
+require 'SELECT * FROM documents WHERE id IN ($1,$2) ORDER BY id FOR UPDATE' internal/app/workflows.go "persisted comparison documents are not locked with finalization"
 require 'if leftDoc.Status == StatusFinalized || rightDoc.Status == StatusFinalized' internal/app/workflows.go "persisted comparison does not reject Finalized documents"
 if test "$(grep -n 'if leftDoc.Status == StatusFinalized || rightDoc.Status == StatusFinalized' internal/app/workflows.go | head -1 | cut -d: -f1)" -ge "$(grep -n 'result := versionTextComparisonResult' internal/app/workflows.go | head -1 | cut -d: -f1)"; then
   fail "Finalized comparison guard runs after diff generation"
@@ -159,4 +160,4 @@ require 'application mutation barrier' docs/backup-recovery.md "backup barrier d
 require 'Interrupted' docs/backup-recovery.md "interrupted restore documentation missing"
 require 'PGPASSFILE' docs/security.md "postgres credential boundary documentation missing"
 
- echo "PASS: backup/restore integrity static contract"
+echo "PASS: backup/restore integrity static contract"
