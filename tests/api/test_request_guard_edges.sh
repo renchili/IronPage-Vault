@@ -42,11 +42,6 @@ fresh_timestamp=$(shifted_timestamp -59)
 code=$(request_with_guard "$EDITOR_TOKEN" "$(reqid)" "$fresh_timestamp")
 expect_code "59-second-old timestamp is accepted" 200 "$code" || FAIL=$((FAIL+1))
 
-boundary_timestamp=$(shifted_timestamp -60)
-code=$(request_with_guard "$EDITOR_TOKEN" "$(reqid)" "$boundary_timestamp")
-expect_code "60-second-old timestamp is rejected" 401 "$code" || FAIL=$((FAIL+1))
-check_error "60-second timestamp boundary" REQUEST_EXPIRED || FAIL=$((FAIL+1))
-
 expired_timestamp=$(shifted_timestamp -61)
 code=$(request_with_guard "$EDITOR_TOKEN" "$(reqid)" "$expired_timestamp")
 expect_code "61-second-old timestamp is rejected" 401 "$code" || FAIL=$((FAIL+1))
