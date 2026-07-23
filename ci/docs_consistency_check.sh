@@ -11,20 +11,47 @@ def stop(message):
 
 
 required = [
-    "README.md", "ci/BOUNDARY.md", "docs/questions.md",
-    "docs/requirement-check.md", "docs/security.md", "docs/design.md",
-    "docs/backup-recovery.md", "docs/testing.md", "docs/usage.md",
-    "docs/pitr.md", "docs/deployment-offline.md", "docs/api-spec.md",
-    "docs/metadata-security.md", "docs/swagger-artifacts.md",
-    "skills/full-project-acceptance-hard-gates/SKILL.md",
+    "AGENTS.md", "AGENT.md", "README.md", "ci/BOUNDARY.md",
+    "docs/api-spec.md", "docs/backup-recovery.md", "docs/deployment-offline.md",
+    "docs/design.md", "docs/pitr.md", "docs/rbac.md", "docs/security.md",
+    "docs/testing.md", "skills/full-project-acceptance-hard-gates/SKILL.md",
     "skills/project-generation-workflow/SKILL.md",
 ]
 for name in required:
     if not Path(name).is_file():
         stop(f"missing required file: {name}")
-for obsolete in ["docs/implementation-status.md", "docs/test-effectiveness-followup.md"]:
-    if Path(obsolete).exists():
-        stop(f"obsolete process/status document remains: {obsolete}")
+
+expected_handwritten_docs = {
+    "docs/api-spec.md",
+    "docs/backup-recovery.md",
+    "docs/deployment-offline.md",
+    "docs/design.md",
+    "docs/pitr.md",
+    "docs/rbac.md",
+    "docs/security.md",
+    "docs/testing.md",
+}
+actual_handwritten_docs = {
+    str(path)
+    for path in Path("docs").rglob("*")
+    if path.is_file() and not str(path).startswith("docs/swagger/")
+}
+if actual_handwritten_docs != expected_handwritten_docs:
+    extra = sorted(actual_handwritten_docs - expected_handwritten_docs)
+    missing = sorted(expected_handwritten_docs - actual_handwritten_docs)
+    stop(f"canonical docs differ: extra={extra} missing={missing}")
+
+swagger_dir = Path("docs/swagger")
+if swagger_dir.exists():
+    allowed_generated = {"docs.go", "swagger.json", "swagger.yaml"}
+    unexpected = sorted(
+        str(path)
+        for path in swagger_dir.rglob("*")
+        if path.is_file() and path.name not in allowed_generated
+    )
+    if unexpected:
+        stop(f"unexpected files under docs/swagger: {unexpected}")
+
 if Path("deploy/aws").exists() or Path("docs/aws-deployment.md").exists():
     stop("cloud deployment material conflicts with the air-gapped scope")
 if not Path("public/index.html").is_file() or Path("public/manual-test.html").exists():
@@ -55,32 +82,6 @@ stale = {
 for label, pattern in stale.items():
     if re.search(pattern, docs, re.IGNORECASE | re.MULTILINE):
         stop(f"stale documentation claim: {label}")
-
-questions = Path("docs/questions.md").read_text(encoding="utf-8")
-sections = list(re.finditer(r"^## (.+)$", questions, re.MULTILINE))
-topics = {m.group(1).strip() for m in sections}
-expected_topics = {
-    "Rolling failed-login lockout",
-    "Initial administrator and acceptance fixtures",
-    "Authentication state failures must fail closed",
-    "Acceptance browser surface",
-    "Buildable frontend design and interaction handoff",
-    "Static reviewer acceptance",
-    "CI admission and one-time unlock",
-    "Regression and current-revision evidence",
-}
-if topics != expected_topics:
-    stop(f"clarification topics differ: {sorted(topics)}")
-expected_subsections = [
-    "Easy-to-make interpretation", "Why it fails",
-    "Correct requirement interpretation", "Required implementation",
-    "Acceptance evidence",
-]
-for index, match in enumerate(sections):
-    end = sections[index + 1].start() if index + 1 < len(sections) else len(questions)
-    actual = re.findall(r"^### (.+)$", questions[match.end():end], re.MULTILINE)
-    if actual != expected_subsections:
-        stop(f"invalid clarification structure for {match.group(1)!r}")
 
 acceptance = Path("skills/full-project-acceptance-hard-gates/SKILL.md").read_text(encoding="utf-8")
 generation = Path("skills/project-generation-workflow/SKILL.md").read_text(encoding="utf-8")
@@ -141,17 +142,10 @@ for path, phrases in {
         "operation coordination", "system principal", "Interrupted",
         "same-repository open PR", "Draft -> Under Review -> Redaction Pending -> Approved -> Finalized",
     ],
-    "docs/requirement-check.md": [
-        "admin get/put route", "deterministic source-ip lookup/backfill",
-        "canonical manual target validation", "ordered validation",
-        "backup recovery boundary", "restore maintenance", "password-free argv",
-        "buildable frontend generation rules", "exact component, icon, size",
-        "arbitrary yaml/json packages cannot substitute",
-    ],
     "docs/testing.md": [
         "exact same-repository open PR", "audit source ip/metadata",
         "staged restore", "ordered definitions", "backup/restore integrity",
-        "Requested becomes Interrupted/unknown",
+        "Requested becomes Interrupted/unknown", "Swagger generation and contract boundary",
     ],
     "docs/api-spec.md": [
         "put | `/api/admin/workflow-statuses`", "source_ip",
@@ -164,7 +158,14 @@ for path, phrases in {
     ],
     "docs/security.md": [
         "Mandatory acting-user audit", "PGPASSFILE", "database passwords therefore do not appear in subprocess argv",
-        "configuration integrity", "Interrupted",
+        "configuration integrity", "Interrupted", "users.username_ciphertext", "Protected metadata and lookup",
+    ],
+    "docs/rbac.md": [
+        "Contextual field visibility", "Ciphertext and lookup companion columns",
+        "Admin is not Editor", "Object-level policy",
+    ],
+    "docs/deployment-offline.md": [
+        "Image build and runtime tools", "pg_dump", "pypdf", "docker compose --env-file .env build ironpage",
     ],
     "docs/pitr.md": [
         "exclusive application mutation barrier", "code-enforced maintenance", "Interrupted",
