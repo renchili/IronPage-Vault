@@ -18,6 +18,7 @@ check() {
 
 check "rule entrypoints exist" "test -f AGENTS.md && test -f AGENT.md"
 check "rule entrypoint roles are unambiguous" "grep -q 'mandatory repository entrypoint' AGENTS.md && grep -q 'Project-adapted rules belong in \`AGENT.md\`' AGENTS.md && grep -q '# AGENT Rules for IronPage Vault' AGENT.md"
+check "rule discovery and file creation are constrained" "grep -q 'Tolerant rule-source discovery' AGENTS.md && grep -q 'Strict file-creation boundary' AGENTS.md && grep -q 'Generic, default, example, fallback, suggested, or illustrative output-path lists' AGENTS.md"
 check "generation is static and externally independent" "grep -q 'static source-completion tasks' skills/project-generation-workflow/SKILL.md && grep -q 'trigger, rerun, retry, dispatch, or wait for CI' skills/project-generation-workflow/SKILL.md && grep -q 'CI triggered or awaited: \`none\`' skills/project-generation-workflow/SKILL.md"
 check "generation rejects minimization and early stop" "grep -q 'must not optimize for the smallest change count' skills/project-generation-workflow/SKILL.md && grep -q 'Do not stop scanning after the first P0' skills/project-generation-workflow/SKILL.md && grep -q 'Continue until no known in-scope static defect is deferred' skills/project-generation-workflow/SKILL.md"
 check "generation requires buildable UI decisions" "grep -q 'Frontend design and implementation contract' skills/project-generation-workflow/SKILL.md && grep -q 'exact icon library and icon name' skills/project-generation-workflow/SKILL.md && grep -q 'Special-interaction contract' skills/project-generation-workflow/SKILL.md && grep -q 'Platform and app-review compliance' skills/project-generation-workflow/SKILL.md && grep -q 'frontend portion is incomplete' skills/project-generation-workflow/SKILL.md"
@@ -32,7 +33,7 @@ check "canonical contract layout" "test -d tests/contracts && test ! -e unit_tes
 check "upload document version and audit are atomic" "bash tests/contracts/upload_audit_order.sh"
 check "single acceptance UI" "test -f public/index.html && test ! -e public/manual-test.html"
 check "air-gapped deployment scope" "test ! -e deploy/aws && test ! -e docs/aws-deployment.md && ! grep -RInE 'AWS|EKS|Lambda|CloudFormation' README.md docs scripts Dockerfile docker-compose.yml"
-check "obsolete process status documents removed" "test ! -e docs/implementation-status.md && test ! -e docs/test-effectiveness-followup.md && test ! -d docs/review-fixes"
+check "canonical documentation set" "grep -q 'expected_handwritten_docs' ci/docs_consistency_check.sh && test ! -e docs/questions.md && test ! -e docs/requirement-check.md && test ! -e docs/metadata-security.md && test ! -e docs/role-field-visibility.md && test ! -e docs/architecture-boundaries.md && test ! -e docs/runtime-tools.md && test ! -e docs/docker-builder.md && test ! -e docs/swagger-artifacts.md && test ! -e docs/usage.md && test ! -e docs/swagger/README.md"
 check "one-command deployer" "test -f scripts/deploy.sh && bash -n scripts/deploy.sh"
 check "runtime file exclusions" "grep -Fxq '.env' .gitignore && grep -Fxq '.env' .dockerignore"
 check "bootstrap acceptance uses deployer" "grep -q 'scripts/deploy.sh' tests/api/test_bootstrap_restart_docker.sh"
