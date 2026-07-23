@@ -77,7 +77,7 @@ func listConfigSwagger() {}
 
 // patchConfigSwagger documents config patch.
 // @Summary Patch Admin-managed config
-// @Description Only pagination.default_page_size and pagination.max_page_size are Admin-managed. Values must satisfy 1 <= default <= max <= 100. backup.local_volume is deployment-owned and read-only.
+// @Description Admin manages pagination.default_page_size, pagination.max_page_size, backup.schedule_enabled, and backup.interval. Pagination must satisfy 1 <= default <= max <= 100. Backup interval must be between 1m and 168h and is reloaded by the scheduler without restart. backup.local_volume is deployment-owned and read-only.
 // @Tags admin
 // @Security BearerAuth
 // @Param key path string true "config key"
