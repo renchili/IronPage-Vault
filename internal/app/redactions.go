@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"net/http"
 	"os"
 
@@ -117,8 +118,12 @@ func (a *App) confirmRedaction(c echo.Context) error {
 	if err := tx.GetContext(c.Request().Context(), &v, `SELECT version.id,version.document_id,version.version_number,file.file_path,file.file_sha256,file.size_bytes,file.page_count,version.created_by,version.created_at FROM document_versions AS version JOIN document_files AS file ON file.version_id=version.id WHERE version.document_id=$1 AND version.version_number=$2`, docID, d.CurrentVersion); err != nil {
 		return apiErr(c, http.StatusNotFound, "VERSION_NOT_FOUND", "current version not found")
 	}
-	if d.CurrentVersion >= a.cfg.MaxVersions {
+	newVersion, err := nextDocumentVersion(d.CurrentVersion, a.cfg.MaxVersions)
+	if errors.Is(err, errVersionLimitReached) {
 		return apiErr(c, http.StatusConflict, "VERSION_LIMIT_REACHED", "document already has 50 versions")
+	}
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "VERSION_LIMIT_ERROR", "could not validate document version limit")
 	}
 	regions, err := a.confirmedRedactionRegionsWithExecutor(c.Request().Context(), tx, docID, c.Param("redaction_id"))
 	if err != nil {
@@ -128,7 +133,6 @@ func (a *App) confirmRedaction(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "REDACTION_QUERY_ERROR", "could not load redaction regions")
 	}
 
-	newVersion := d.CurrentVersion + 1
 	dst := redactedVersionPath(v.FilePath, newVersion)
 	committed := false
 	defer func() {
