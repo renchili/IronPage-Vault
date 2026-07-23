@@ -35,11 +35,11 @@ check "password hash uses sealed storage on user create" "grep -q 'sealPasswordH
 check "password hash uses sealed storage on seed users" "grep -q 'sealPasswordHash(cfg.AESKey, hash)' internal/app/database.go"
 check "login opens sealed password hash before bcrypt compare" "grep -q 'openPasswordHash(a.cfg.AESKey, u.PasswordHash)' internal/app/auth.go && grep -q 'CompareHashAndPassword' internal/app/auth.go"
 check "password hash sealed storage test exists" "grep -q 'TestPasswordHashIsSealedAndBcryptCompatible' internal/app/credential_storage_test.go"
-check "metadata matrix covers protected pii fields" "grep -q 'User identity' docs/metadata-security.md && grep -q 'Document title' docs/metadata-security.md && grep -q 'Notification message' docs/metadata-security.md && grep -q 'Audit source IP' docs/metadata-security.md && grep -q 'Audit metadata' docs/metadata-security.md"
-check "role visibility matrix covers all roles" "test -f docs/role-field-visibility.md && grep -q 'Admin' docs/role-field-visibility.md && grep -q 'Editor' docs/role-field-visibility.md && grep -q 'Reviewer' docs/role-field-visibility.md"
-check "metadata matrix document exists" "test -f docs/metadata-security.md"
-check "metadata matrix covers redaction" "grep -q 'Redaction reason' docs/metadata-security.md"
-check "metadata matrix covers annotation" "grep -q 'Annotation comment' docs/metadata-security.md"
+check "security document covers protected pii fields" "grep -q 'User identity' docs/security.md && grep -q 'Document title' docs/security.md && grep -q 'Notification message' docs/security.md && grep -q 'Audit source IP' docs/security.md && grep -q 'Audit metadata' docs/security.md"
+check "rbac document covers role field visibility" "grep -q 'Contextual field visibility' docs/rbac.md && grep -q 'Admin' docs/rbac.md && grep -q 'Editor' docs/rbac.md && grep -q 'Reviewer' docs/rbac.md"
+check "canonical security document exists" "test -f docs/security.md"
+check "security document covers redaction" "grep -q 'Redaction reason' docs/security.md"
+check "security document covers annotation" "grep -q 'Annotation comment' docs/security.md"
 
 TOTAL=$((PASS+FAIL))
 echo "METADATA STORAGE SUMMARY total=$TOTAL passed=$PASS failed=$FAIL"

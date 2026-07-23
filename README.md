@@ -39,7 +39,7 @@ tests/contracts/     repository, structure, and generated-contract checks
 testdata/            local PDF and CSV fixtures
 ci/                  static workflow contracts and manual regression helpers
 scripts/deploy.sh    one-command secure local deployment
-docs/                API, design, security, deployment, testing, and operations docs
+docs/                eight canonical API, design, security, deployment, testing, and recovery documents
 public/index.html    canonical acceptance-only browser probe
 ```
 
@@ -162,22 +162,23 @@ A static reviewer reads source and existing evidence only and must not trigger, 
 
 ## Generated API documentation
 
-Swaggo annotations in Go source are authoritative. Supported execution entrypoints generate files under `docs/swagger/`:
+Swaggo annotations in Go source are authoritative. Supported execution entrypoints generate transient files under `docs/swagger/`:
 
 ```bash
 bash scripts/generate_swagger.sh
 ```
 
-Static review does not authorize generation.
+Static review does not authorize generation. Generated files are not hand-maintained documentation and are not retained merely to keep the directory populated.
 
 ## Documentation
 
-- `docs/api-spec.md` — API contract and examples
-- `docs/design.md` — architecture and transaction boundaries
-- `docs/security.md` — security model
-- `docs/rbac.md` — role and object-access rules
-- `docs/usage.md` — operational API examples
-- `docs/testing.md` — test and static evidence boundaries
-- `docs/deployment-offline.md` — generated offline deployment
-- `docs/backup-recovery.md` — strict backup and staged restore
-- `docs/pitr.md` — recovery strategy and limitations
+The hand-maintained documentation set is intentionally limited to:
+
+- `docs/api-spec.md` — API contract, routes, errors, and examples
+- `docs/design.md` — architecture, ownership, and transaction boundaries
+- `docs/security.md` — authentication, encryption, audit, and protected-field storage
+- `docs/rbac.md` — role, object-access, and field-visibility rules
+- `docs/testing.md` — static, generated-contract, API, browser, and regression evidence boundaries
+- `docs/deployment-offline.md` — build, runtime dependencies, and generated offline deployment
+- `docs/backup-recovery.md` — backup consistency, maintenance restore, and reconciliation
+- `docs/pitr.md` — recovery strategy and explicit PITR limitations

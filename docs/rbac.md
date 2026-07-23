@@ -77,6 +77,22 @@ Reviewer may add review activity only after Draft and before Finalized.
 
 The workflow state machine independently rejects skipped or invalid transitions.
 
+## Contextual field visibility
+
+The server opens encrypted fields only after role and object-access checks. Raw ciphertext, deterministic lookup values, and security-control fields are never serialized to any role.
+
+| Field group | Admin | Editor | Reviewer | Masking rule |
+|---|---:|---:|---:|---|
+| `users.password_hash` | Hidden | Hidden | Hidden | Go JSON tag is `json:"-"`; only authentication code may open the verifier for bcrypt comparison. |
+| User identity | Visible on user-admin endpoints and current-principal responses | Visible only for the current principal/JWT context | Visible only for the current principal/JWT context | Stored as `username_ciphertext`; the compatibility username column is a deterministic lookup key, not plaintext. |
+| User display name | Visible on user-admin endpoints and current-principal responses | Visible only where the API returns the current principal | Visible only where the API returns the current principal | Stored as `display_name_ciphertext`; the compatibility field stays blank for new writes. |
+| Document title | Only when Admin has oversight read access to the document | Visible for owned/readable documents | Visible for reviewer-readable documents | Stored as `title_ciphertext`; opened only after object-level access checks. |
+| Redaction coordinates and reason | Hidden from list responses | Hidden from list responses | Hidden from list responses | Protected geometry and reason fields are not selected by list queries. |
+| Annotation comment | Only when Admin has document read access | Visible only on readable document endpoints | Visible only on readable document endpoints | Stored encrypted; mention parsing uses only the request-local plaintext copy. |
+| Notification message | Visible only for the recipient | Visible only for the recipient | Visible only for the recipient | Stored as `message_ciphertext`; opened only for the authenticated recipient. |
+| Audit source IP and metadata | Visible on the Admin audit endpoint | Hidden | Hidden | Stored as ciphertext and opened only in the Admin audit response path. |
+| Ciphertext and lookup companion columns | Hidden | Hidden | Hidden | Companion fields use `json:"-"` or response-local decoding and are never API fields. |
+
 ## Required positive evidence
 
 Acceptance must prove at least:

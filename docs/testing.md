@@ -17,6 +17,20 @@ ci/                    static workflow contracts and manual full-regression help
 
 A static acceptance reviewer reads source and pre-existing evidence only. The reviewer must not run tests, scripts, generators, formatters, builds, containers, databases, browsers, deployments, or CI to fill evidence gaps. Missing execution does not alter the static verdict, and static inspection must not claim runtime execution.
 
+## Swagger generation and contract boundary
+
+Route-level annotations under `internal/app/swagger_*.go` are the API contract source of truth. `scripts/generate_swagger.sh` writes transient generated files under `docs/swagger/`:
+
+```text
+docs/swagger/docs.go
+docs/swagger/swagger.json
+docs/swagger/swagger.yaml
+```
+
+Supported execution entrypoints generate these files before compilation or generated-contract comparison. `run_tests.sh`, the Docker builder, and `ci/run_full_regression.sh` own that lifecycle. `.github/workflows/ci.yml` does not generate Swagger or compile the application; it checks route annotations statically through `tests/contracts/swagger_route_coverage.sh`.
+
+Generated files are revision-specific artifacts, not hand-maintained repository documentation. A static reviewer must not run the generator to fill a missing artifact and must not treat an earlier generated file as proof for the current revision. `ci/swagger_contract_check.sh` may compare generated routes only when a supported execution entrypoint already generated the files.
+
 ## Local report entrypoint
 
 ```bash
