@@ -22,7 +22,7 @@ X-Request-ID: unique request id per JWT/JTI
 X-Request-Timestamp: RFC3339 timestamp within 60 seconds in either direction
 ```
 
-A request 59 seconds from server time is accepted. A request 61 seconds old or 61 seconds in the future returns `401 REQUEST_EXPIRED`. Reusing the same request ID with the same JWT/JTI returns `409 REPLAY_DETECTED`; the replay key is scoped by JTI.
+An absolute timestamp difference of exactly 60 seconds is accepted. A request 61 seconds old or 61 seconds in the future returns `401 REQUEST_EXPIRED`. Reusing the same request ID with the same JWT/JTI returns `409 REPLAY_DETECTED`; the replay key is scoped by JTI.
 
 Errors use:
 
@@ -200,7 +200,7 @@ Comparison returns an `id` plus structured text changes with page and bounding-b
 }
 ```
 
-The complete result is encrypted into `document_diffs`; persistence and `DOCUMENT_DIFF_CREATE` audit commit in one transaction.
+The complete result is encrypted into `document_diffs`; persistence and `DOCUMENT_DIFF_CREATE` audit commit in one transaction. Because compare creates durable metadata, either source document being Finalized causes `409 DOCUMENT_FINALIZED` before diff generation or persistence.
 
 ### Redactions, annotations, and Bates
 
@@ -218,7 +218,7 @@ Redaction confirmation creates and verifies a strict new PDF version, its `docum
 
 Bates reserves a global range equal to the parsed source page count. The response includes `start_number` and `end_number`. Version limit validation happens before range allocation. Range reservation, Bates job, version, `document_files` row, document pointer and audit commit together; failure rolls back the range and removes the generated file.
 
-Every existing mutation route for a Finalized document returns `409 DOCUMENT_FINALIZED`: rollback, redaction proposal/confirmation, annotation creation/disposition, Bates, workflow transition, and repeated finalization. There is no document-replacement or metadata-mutation route in this backend API. Denials do not alter versions, files, redactions, annotations, history, audit, or notifications.
+Every existing mutation route for a Finalized document returns `409 DOCUMENT_FINALIZED`: rollback, redaction proposal/confirmation, annotation creation/disposition, Bates, persisted comparison creation, workflow transition, and repeated finalization. There is no document-replacement or metadata-mutation route in this backend API. Denials do not alter versions, files, redactions, annotations, persisted diffs, history, audit, or notifications.
 
 ### Audit and notifications
 
