@@ -163,6 +163,9 @@ func (a *App) compareVersions(c echo.Context) error {
 	if !canReadDocumentObject(p, leftDoc) || !canReadDocumentObject(p, rightDoc) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "version comparison is outside this principal scope")
 	}
+	if leftDoc.Status == StatusFinalized || rightDoc.Status == StatusFinalized {
+		return apiErr(c, http.StatusConflict, "DOCUMENT_FINALIZED", "finalized documents cannot create persisted comparison metadata")
+	}
 	result := versionTextComparisonResult(left, right)
 	resultCiphertext, err := sealAuditMetadata(a.cfg.AESKey, result)
 	if err != nil {
