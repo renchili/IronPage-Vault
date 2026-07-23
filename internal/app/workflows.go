@@ -163,5 +163,25 @@ func (a *App) compareVersions(c echo.Context) error {
 	if !canReadDocumentObject(p, leftDoc) || !canReadDocumentObject(p, rightDoc) {
 		return apiErr(c, http.StatusForbidden, "DOCUMENT_ACCESS_DENIED", "version comparison is outside this principal scope")
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": versionTextComparisonResult(left, right)})
+	result := versionTextComparisonResult(left, right)
+	resultCiphertext, err := sealAuditMetadata(a.cfg.AESKey, result)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_DIFF_ENCRYPT_ERROR", "could not protect version comparison")
+	}
+	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "TX_ERROR", "could not start comparison transaction")
+	}
+	defer tx.Rollback()
+	diffID := makeIdentifier("dif")
+	if _, err := tx.ExecContext(c.Request().Context(), `INSERT INTO document_diffs(id,left_document_id,right_document_id,left_version_id,right_version_id,result_ciphertext,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,NOW())`, diffID, left.DocumentID, right.DocumentID, left.ID, right.ID, resultCiphertext, p.UserID); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "DOCUMENT_DIFF_CREATE_ERROR", "could not persist version comparison")
+	}
+	if err := a.auditWithExecutor(c, tx, p.UserID, "DOCUMENT_DIFF_CREATE", left.DocumentID, map[string]interface{}{"diff_id": diffID, "left_version_id": left.ID, "right_version_id": right.ID, "right_document_id": right.DocumentID}); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "AUDIT_CREATE_ERROR", "could not record version comparison audit")
+	}
+	if err := tx.Commit(); err != nil {
+		return apiErr(c, http.StatusInternalServerError, "COMMIT_ERROR", "could not commit version comparison")
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"id": diffID, "data": result})
 }
