@@ -82,7 +82,7 @@ Draft -> Under Review -> Redaction Pending -> Approved -> Finalized
 
 Admin reads and replaces the ordered persisted chain through `/api/admin/workflow-statuses`. `Draft` remains the first mutable state and `Finalized` remains the last immutable state. A replacement must retain every status currently used by a document. Runtime transition and finalization resolve the next state from `workflow_status_definitions`; they do not use a hard-coded chain for request validation.
 
-A transition locks the document and commits the document state, status history, audit record, and owner notification together. Finalized is terminal. Finalized status is checked before object-policy denial so every existing mutation route returns `409 DOCUMENT_FINALIZED`. The API has no document replacement or metadata mutation route; rollback, redaction proposal/confirmation, annotation creation/disposition, Bates, workflow transition, and repeated finalization are the complete existing mutation matrix.
+A transition locks the document and commits the document state, status history, audit record, and owner notification together. Finalized is terminal. Existing durable mutation routes return `409 DOCUMENT_FINALIZED`: rollback, redaction proposal/confirmation, annotation creation/disposition, Bates, persisted comparison creation, workflow transition, and repeated finalization. The API has no document replacement or metadata mutation route. Finalized denials leave versions/files, redactions, annotations, persisted diffs, history, audit, and notifications unchanged.
 
 ## PDF validation, revision ceiling, redaction, Bates, and comparison
 
@@ -94,13 +94,13 @@ Redaction is a two-phase operation. A proposal stores protected coordinate-bound
 
 Bates numbering locks the document and global sequence, reserves the complete page-number range, produces and verifies the visible-numbered PDF, then commits the range, Bates job, version/file entity, document pointer, and audit together. Failed work rolls back the sequence and removes the generated PDF.
 
-Version comparison extracts structured text and location data to report added, removed, and modified blocks with page and bounding-box information. The result is encrypted and persisted in `document_diffs`; its audit commits in the same transaction.
+Version comparison extracts structured text and location data to report added, removed, and modified blocks with page and bounding-box information. The result is encrypted and persisted in `document_diffs`; its audit commits in the same transaction. Because comparison creates durable metadata, either source document being Finalized is rejected before diff generation or persistence.
 
 ## Authentication, sessions, freshness, and replay
 
 Passwords are compared through bcrypt verifiers stored in protected form. Password inputs are validated against bcrypt's 72-byte limit. Failed attempts in the preceding 15 minutes are counted under a user row lock; the fifth attempt applies a 15-minute lock. Failed-attempt state and audit, successful reset/session creation and audit, and logout blacklist/session revocation and audit each commit atomically.
 
-JWTs are locally signed. PostgreSQL session state remains required for inactivity expiration and immediate logout. Authenticated requests require a fresh `X-Request-Timestamp` and unique `X-Request-ID`; blacklist reads, replay writes, and session updates fail closed. Freshness is an absolute 60-second window. Replay uniqueness is the `(request_id,jti)` key, so one JWT cannot reuse an ID while a different JTI may use the same value.
+JWTs are locally signed. PostgreSQL session state remains required for inactivity expiration and immediate logout. Authenticated requests require a fresh `X-Request-Timestamp` and unique `X-Request-ID`; blacklist reads, replay writes, and session updates fail closed. Freshness is an absolute inclusive 60-second window, so an exact 60-second difference is accepted and 61 seconds is rejected. Replay uniqueness is the `(request_id,jti)` key, so one JWT cannot reuse an ID while a different JTI may use the same value.
 
 ## Protected metadata and audit reads
 
