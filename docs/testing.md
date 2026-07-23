@@ -46,7 +46,7 @@ SEED_EDITOR_PASSWORD
 SEED_REVIEWER_PASSWORD
 ```
 
-When absent, affected stages are `SKIP`, the report is `INCOMPLETE`, and exit status is `2`. The report describes only rows in `results.tsv`; a probe cannot claim unexecuted RBAC, PDF, backup, browser, Docker, or full-regression coverage.
+When absent, affected stages are `SKIP`, the report is `INCOMPLETE`, and exit status is `2`. The report describes only rows in `results.tsv`; a probe cannot claim unexecuted RBAC, PDF, backup, browser, Docker, or full-regression coverage. When credentials are present, the local stateful stage list includes the real freshness/replay middleware suite as `request_guard_edges`.
 
 ## Static GitHub acceptance
 
@@ -99,7 +99,8 @@ Static contracts require:
 
 | Requirement | Definition |
 |---|---|
-| 59-second freshness accepted | `tests/api/test_request_guard_edges.sh` |
+| exact 60-second freshness accepted in either direction | `TestFreshnessAndLockoutRules` |
+| 59-second freshness accepted by middleware | `tests/api/test_request_guard_edges.sh` |
 | 61-second old/future timestamps rejected | `tests/api/test_request_guard_edges.sh` |
 | same JWT/JTI request ID replay rejected | `tests/api/test_request_guard_edges.sh` |
 | different JWT/JTI replay scope | `tests/api/test_request_guard_edges.sh` |
@@ -114,7 +115,7 @@ Static contracts require:
 | scheduler restart/reload source contract | `ci/scheduled_backup_contract_check.sh` |
 | complete Finalized mutation matrix | `tests/api/test_finalized_immutability.sh` |
 
-The Finalized definition stages a redaction and annotation before finalization, then verifies rejection of rollback, redaction proposal, redaction confirmation, annotation creation, annotation disposition, Bates, workflow transition, and repeated finalization. It snapshots and rechecks version, redaction, annotation, audit, and notification counts. The backend has no replacement-upload or metadata-mutation route, so those categories are statically verified as absent rather than represented by invented endpoints.
+The Finalized definition stages a redaction and annotation before finalization, then verifies rejection of rollback, redaction proposal, redaction confirmation, annotation creation, annotation disposition, Bates, persisted comparison creation, workflow transition, and repeated finalization. It snapshots and rechecks version, redaction, annotation, audit, and notification counts. The one-to-one unique `document_files.version_id` contract makes an unchanged version set the API-visible file-entity boundary; repository contracts additionally verify that Finalized checks precede comparison generation and document/history write paths. The backend has no replacement-upload or metadata-mutation route, so those categories are statically verified as absent rather than represented by invented endpoints.
 
 Version-limit source ordering is also guarded: redaction must call `nextDocumentVersion` before `ApplyRedactionBurnIn`; Bates must call it before `AllocateBatesRange`. This establishes that revision 51 cannot create an orphan output or partially reserve the global sequence.
 
