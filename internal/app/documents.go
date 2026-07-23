@@ -229,8 +229,8 @@ func (a *App) rollbackVersion(c echo.Context) error {
 	var req struct {
 		Version int `json:"version"`
 	}
-	if err := c.Bind(&req); err != nil || req.Version < 1 {
-		return apiErr(c, http.StatusBadRequest, "VERSION_REQUIRED", "version must be positive")
+	if err := c.Bind(&req); err != nil || !validRollbackVersion(req.Version, a.cfg.MaxVersions) {
+		return apiErr(c, http.StatusBadRequest, "VERSION_REQUIRED", "version must be between 1 and 50")
 	}
 
 	tx, err := a.db.BeginTxx(c.Request().Context(), nil)
