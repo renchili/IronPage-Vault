@@ -16,6 +16,17 @@ BACKUP_DIR
 
 The schema does not seed a fixed machine path. After migration, startup writes the installation's actual `BACKUP_DIR` to `config_entries`. Operators must use the retained `.env`, not an assumed container path. `backup.local_volume` is deployment-owned and the generic Admin config API rejects attempts to change it.
 
+## Persisted backup schedule
+
+Scheduled backup is product configuration, not deployment environment configuration. Migration seeds:
+
+```text
+backup.schedule_enabled=false
+backup.interval=24h
+```
+
+Admin may PATCH either key. `backup.schedule_enabled` must be Boolean; `backup.interval` must be between `1m` and `168h`. Accepted changes are audited. The scheduler reloads both values once at startup and once every minute. When enabled, it compares the latest completed `scheduled_full_backup` time with the configured interval. This provides restart persistence and live reload semantics without `BACKUP_INTERVAL` or a process restart.
+
 ## Application mutation barrier
 
 Every `/api/` request except an operation that owns an exclusive boundary acquires a shared PostgreSQL advisory lock for the complete request. This includes authenticated GET requests because freshness, replay protection, and session activity update PostgreSQL. Manual backup, scheduled backup, restore, and Interrupted-restore resolution acquire the matching exclusive advisory lock on a dedicated database connection. Exclusive HTTP operations hold the shared lock only while authentication state is updated, release it, and then acquire the exclusive lock; this avoids lock promotion while still preventing authentication writes from crossing the operation boundary.
@@ -36,6 +47,8 @@ The Admin backup API succeeds only when all of these exist:
 | Audit | encrypted artifact metadata with an acting user |
 
 The manual and scheduled paths acquire the exclusive application mutation barrier before collecting metadata, running `pg_dump`, and archiving `STORAGE_DIR`. The database dump and filesystem tar are therefore taken while application state is write-quiescent and form one recovery boundary.
+
+The backup table inventory includes users, documents, `document_versions`, `document_files`, `redaction_confirmations`, `document_diffs`, audit logs, notifications, configuration entries, and backup jobs. The PostgreSQL dump itself remains the complete database artifact; these counts provide explicit metadata evidence for required persistent entities and the persisted schedule.
 
 Dump, tar, manifest and metadata are generated before the database job. The job and audit commit together. If metadata write, job insertion, audit insertion, or commit fails, `backup_cleanup.go` removes the dump, tar, manifest, metadata and error/missing markers. A database record cannot report a completed backup whose files were removed, and generated files cannot remain after failed persistence.
 
@@ -129,15 +142,16 @@ The PostgreSQL command and filesystem rename cannot be one cross-system ACID tra
 ## Operational recovery order
 
 1. Retain `.env` and the generated database/storage identity.
-2. Select a completed backup and both paths returned by its manifest/API response.
+2. Select one completed backup and both artifact paths returned by its manifest/API response.
 3. Submit both paths to the Admin restore route; after authorization, the API enforces maintenance and drains other requests.
 4. Verify the returned restore ID is `Restored` and the jobs list contains its Completed restore row with the requesting Admin in `created_by`.
 5. Verify Admin audit results contain both `BACKUP_RESTORE_REQUESTED` and `BACKUP_RESTORE_COMPLETED` for that acting user and request ID.
-6. If the process exited with an unknown result, restart with the same installation configuration, inspect the retained Interrupted record and restored data, then use the resolution route with a concrete verification note.
-7. Verify representative documents, versions, files, audit records and notifications before resuming normal use.
+6. Verify `document_files`, `redaction_confirmations`, `document_diffs`, and backup schedule config rows exist as expected in the restored PostgreSQL state.
+7. If the process exited with an unknown result, restart with the same installation configuration, inspect the retained Interrupted record and restored data, then use the resolution route with a concrete verification note.
+8. Verify representative documents, versions, files, audit records and notifications before resuming normal use.
 
 Restoring only the dump or only the filesystem archive is unsupported. Reconciliation also requires the requesting Admin identity to exist in the restored same-installation snapshot so the audit foreign-key contract can be preserved.
 
 ## Static and execution evidence
 
-Static inspection can verify strict mode checks, application mutation barrier definitions, authenticated maintenance admission, cleanup paths, safe archive extraction, rollback functions, PostgreSQL single-transaction flags, PGPASSFILE handling, encrypted lifecycle persistence, acting-user preservation, Interrupted semantics, operator resolution, startup ordering, and failure handling. It does not claim that an execution occurred. Existing runtime evidence, when available, applies only to its exact revision and inputs; static review neither requires nor creates it.
+Static inspection can verify strict mode checks, application mutation barrier definitions, persisted scheduler configuration, authenticated maintenance admission, cleanup paths, safe archive extraction, rollback functions, PostgreSQL single-transaction flags, PGPASSFILE handling, encrypted lifecycle persistence, acting-user preservation, Interrupted semantics, operator resolution, startup ordering, and failure handling. It does not claim that an execution occurred. Existing runtime evidence, when available, applies only to its exact revision and inputs; static review neither requires nor creates it.
