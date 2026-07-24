@@ -104,15 +104,17 @@ for phrase in [
         stop(f"acceptance Skill missing rule: {phrase}")
 for phrase in [
     "static source-completion tasks",
-    "must not optimize for the smallest change count",
-    "Do not stop scanning after the first P0",
-    "Continue until no known in-scope static defect is deferred",
+    "This is a reusable development workflow.",
+    "A user-provided example reveals a general capability or quality gap.",
+    "Absolute blocker and no-bypass rule",
+    "Any execution blocker immediately stops the blocked operation.",
+    "Project and surface classification",
+    "Separate environment-owned and product-owned UI",
+    "Interaction state-machine contract",
+    "Editable prototype contract",
+    "Do not create fixed default documentation paths in this Skill.",
     "CI triggered or awaited: `none`",
-    "Frontend design and implementation contract",
-    "exact icon library and icon name",
-    "Special-interaction contract",
-    "Platform and app-review compliance",
-    "Do not invent YAML, JSON, schema, manifest, token-registry, or “review pack” deliverables",
+    "Do not claim formal acceptance unless the applicable acceptance workflow was explicitly requested and loaded.",
 ]:
     if phrase not in generation:
         stop(f"generation Skill missing rule: {phrase}")
